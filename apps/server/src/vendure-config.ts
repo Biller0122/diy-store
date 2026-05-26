@@ -94,8 +94,22 @@ export const config: VendureConfig = {
     DefaultJobQueuePlugin.init({ useDatabaseForBuffer: true }),
     DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: true }),
     EmailPlugin.init({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      devMode: (process.env.NODE_ENV !== 'production') as any,
+      ...(process.env.SMTP_HOST
+        ? {
+            devMode: false,
+            transport: {
+              type: 'smtp',
+              host: process.env.SMTP_HOST,
+              port: parseInt(process.env.SMTP_PORT || '587'),
+              auth: {
+                user: process.env.SMTP_USER || '',
+                pass: process.env.SMTP_PASS || '',
+              },
+            },
+          }
+        : {
+            devMode: true,
+          }),
       outputPath: path.join(__dirname, '../static/email/test-emails'),
       route: 'mailbox',
       handlers: defaultEmailHandlers,
