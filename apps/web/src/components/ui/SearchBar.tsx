@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
-import { Search, X, Clock, TrendingUp, ArrowRight } from 'lucide-react';
+import { Search, X, Clock, TrendingUp, ArrowRight, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
@@ -53,7 +53,6 @@ async function fetchResults(term: string): Promise<{ name: string; slug: string;
     return (result.hits as any[]).map((h) => ({ name: h.name, slug: h.slug, price: h.price, image: h.imageUrl, category: h.category }));
   }
 
-  // Fallback: Vendure search
   const data = await vendureShopFetch<{ search: { totalItems: number; items: any[] } }>(SEARCH_QUERY, { term });
   return (data.search?.items ?? []).map((item: any) => ({
     name:  item.productName,
@@ -69,10 +68,19 @@ export function SearchBar() {
   const [query, setQuery]               = useState('');
   const [results, setResults]           = useState<{ name: string; slug: string; price?: number; image?: string; category?: string }[]>([]);
   const [loading, setLoading]           = useState(false);
+  const [focused, setFocused]           = useState(false);
   const [recent, setRecent]             = useState<string[]>([]);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
-  const inputRef   = useRef<HTMLInputElement>(null);
-  const searchRef  = useRef<ReturnType<typeof setTimeout>>(null);
+  const inputRef  = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<ReturnType<typeof setTimeout>>(null);
+
+  const handleClose = () => {
+    setQuery('');
+    setResults([]);
+    setFocused(false);
+    inputRef.current?.blur();
+    closeSearch();
+  };
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -90,10 +98,11 @@ export function SearchBar() {
 
   useEffect(() => {
     if (searchOpen) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => { inputRef.current?.focus(); setFocused(true); }, 100);
     } else {
       setQuery('');
       setResults([]);
+      setFocused(false);
     }
   }, [searchOpen]);
 
@@ -101,10 +110,10 @@ export function SearchBar() {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        if (searchOpen) closeSearch();
+        if (searchOpen) handleClose();
         else useUIStore.getState().openSearch();
       }
-      if (e.key === 'Escape') closeSearch();
+      if (e.key === 'Escape') handleClose();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -137,47 +146,75 @@ export function SearchBar() {
     if (!query.trim()) return;
     saveRecent(query.trim());
     trackSearch(query.trim());
-    closeSearch();
+    handleClose();
     router.push(`/search?q=${encodeURIComponent(query.trim())}`);
   };
 
   if (!searchOpen) return null;
 
+  const showX = focused || !!query;
+
   return (
     <AnimatePresence>
+      {/* Overlay container — stops above bottom nav on mobile so it stays tappable */}
       <m.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex items-start justify-center pt-20 px-4"
-        onClick={(e) => e.target === e.currentTarget && closeSearch()}
+        className="fixed inset-x-0 top-0 bottom-16 md:inset-0 z-[200] flex items-start justify-center pt-4 md:pt-20 px-0 md:px-4"
       >
-        <div className="absolute inset-0 bg-dark/80 backdrop-blur-sm" />
+        {/* Backdrop — clicking closes search */}
+        <div
+          className="absolute inset-0 bg-dark/80 backdrop-blur-sm"
+          onClick={handleClose}
+        />
 
+        {/* Search panel */}
         <m.div
-          initial={{ opacity: 0, scale: 0.95, y: -20 }}
+          initial={{ opacity: 0, scale: 0.98, y: -10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -20 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="relative w-full max-w-2xl glass-strong rounded-2xl overflow-hidden shadow-2xl"
+          exit={{ opacity: 0, scale: 0.98, y: -10 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="relative w-full md:max-w-2xl glass-strong md:rounded-2xl overflow-hidden shadow-2xl mx-0 md:mx-4"
         >
-          {/* Input */}
-          <div className="flex items-center gap-3 px-4 py-4 border-b border-[var(--glass-border)]">
-            <Search size={18} className="text-foreground-muted shrink-0" />
+          {/* Input row */}
+          <div className="flex items-center gap-2 px-3 md:px-4 py-3 md:py-4 border-b border-[var(--glass-border)]">
+
+            {/* Mobile back button */}
+            <button
+              onClick={handleClose}
+              className="md:hidden flex-shrink-0 p-1.5 -ml-1 rounded-lg text-foreground-muted hover:text-foreground hover:bg-white/10 transition-colors"
+              aria-label="Буцах"
+            >
+              <ArrowLeft size={20} />
+            </button>
+
+            {/* Search icon — desktop only */}
+            <Search size={18} className="hidden md:block text-foreground-muted shrink-0" />
+
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => handleInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSubmit();
-              }}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
               placeholder={PLACEHOLDERS[placeholderIdx]}
-              className="flex-1 bg-transparent text-foreground placeholder:text-foreground-muted text-sm outline-none"
+              className="flex-1 bg-transparent text-foreground placeholder:text-foreground-muted text-sm outline-none min-w-0"
             />
-            <div className="flex items-center gap-2">
-              {query && (
-                <button onClick={() => { setQuery(''); setResults([]); }} className="text-foreground-muted hover:text-foreground">
-                  <X size={16} />
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* X button — clears text and closes on mobile, only clears on desktop when has text */}
+              {showX && (
+                <button
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // prevent input blur before click fires
+                    handleClose();
+                  }}
+                  className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-foreground-muted hover:text-foreground"
+                  aria-label="Хаах"
+                >
+                  <X size={14} />
                 </button>
               )}
               <kbd className="hidden sm:flex items-center gap-1 text-[10px] text-foreground-muted border border-[var(--glass-border)] rounded px-1.5 py-0.5">
@@ -187,9 +224,8 @@ export function SearchBar() {
           </div>
 
           {/* Results */}
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[calc(100dvh-160px)] md:max-h-[60vh] overflow-y-auto">
 
-            {/* Loading skeleton */}
             {loading && (
               <div className="p-3 space-y-2">
                 {[1,2,3].map((i) => (
@@ -204,7 +240,6 @@ export function SearchBar() {
               </div>
             )}
 
-            {/* Search results */}
             {!loading && results.length > 0 && (
               <div className="p-3">
                 <p className="text-[10px] text-foreground-muted font-semibold uppercase tracking-wider mb-2 px-2">
@@ -214,7 +249,7 @@ export function SearchBar() {
                   <Link
                     key={item.slug}
                     href={`/product/${item.slug}`}
-                    onClick={() => { saveRecent(query); trackSearch(query, results.length); closeSearch(); }}
+                    onClick={() => { saveRecent(query); trackSearch(query, results.length); handleClose(); }}
                     className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors group"
                   >
                     <div className="w-10 h-10 rounded-lg bg-surface overflow-hidden shrink-0">
@@ -238,7 +273,6 @@ export function SearchBar() {
                     <ArrowRight size={14} className="text-foreground-muted group-hover:text-brand transition-colors" />
                   </Link>
                 ))}
-                {/* View all */}
                 <button
                   onClick={handleSubmit}
                   className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[var(--glass-border)] text-sm text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
@@ -249,7 +283,6 @@ export function SearchBar() {
               </div>
             )}
 
-            {/* Empty state */}
             {!loading && query && results.length === 0 && (
               <div className="p-8 text-center">
                 <p className="text-foreground-muted text-sm mb-3">"{query}" илэрц олдсонгүй</p>
@@ -262,7 +295,6 @@ export function SearchBar() {
               </div>
             )}
 
-            {/* No query: recent + popular */}
             {!query && (
               <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {recent.length > 0 && (
@@ -290,7 +322,7 @@ export function SearchBar() {
                     <Link
                       key={p.slug}
                       href={`/search?q=${p.name}`}
-                      onClick={closeSearch}
+                      onClick={handleClose}
                       className="flex items-center gap-2 p-2 rounded-xl hover:bg-white/5 transition-colors"
                     >
                       <TrendingUp size={13} className="text-brand" />
@@ -302,8 +334,8 @@ export function SearchBar() {
             )}
           </div>
 
-          {/* Footer shortcuts */}
-          <div className="border-t border-[var(--glass-border)] px-4 py-2 flex items-center gap-4 text-[10px] text-foreground-muted">
+          {/* Footer shortcuts — desktop only */}
+          <div className="hidden md:flex border-t border-[var(--glass-border)] px-4 py-2 items-center gap-4 text-[10px] text-foreground-muted">
             <span className="flex items-center gap-1">
               <kbd className="border border-[var(--glass-border)] rounded px-1">Enter</kbd> Хайх
             </span>
