@@ -20,9 +20,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/apps/server/package.json ./apps/server/package.json
 COPY --from=builder /app/apps/server/dist ./apps/server/dist
-COPY --from=builder /app/apps/server/static ./apps/server/static
-
-RUN mkdir -p apps/server/static/assets apps/server/static/email/templates/partials apps/server/static/email/test-emails
+RUN mkdir -p apps/server/static/assets \
+    apps/server/static/email/templates/partials \
+    apps/server/static/email/test-emails
 
 EXPOSE 3001
 CMD ["node", "apps/server/dist/index.js"]
