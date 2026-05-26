@@ -47,7 +47,7 @@ export const config: VendureConfig = {
       } as any)
     : {
         type: 'postgres',
-        synchronize: process.env.NODE_ENV !== 'production',
+        synchronize: process.env.NODE_ENV !== 'production' || process.env.DB_SYNCHRONIZE === 'true',
         logging: process.env.NODE_ENV === 'development',
         database: process.env.DB_NAME || 'vendure',
         host: process.env.DB_HOST || 'localhost',
