@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+coverage
+.git
+.claude
+.codex-logs
+.vendure
+*.log
+.env
+.env.local
+apps/*/.env
+apps/*/.env.local
+apps/*/node_modules
+apps/*/.next
+apps/*/dist
+apps/*/coverage

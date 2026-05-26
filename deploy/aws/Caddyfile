@@ -1,0 +1,27 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode gzip zstd
+
+	handle /shop-api* {
+		reverse_proxy server:3001
+	}
+
+	handle /admin-api* {
+		reverse_proxy server:3001
+	}
+
+	handle /assets* {
+		reverse_proxy server:3001
+	}
+
+	handle /mailbox* {
+		reverse_proxy server:3001
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

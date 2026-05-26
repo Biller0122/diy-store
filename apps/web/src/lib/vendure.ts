@@ -1,11 +1,18 @@
-const SHOP_API =
-  process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
+const PUBLIC_SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
+
+function getShopApi() {
+  if (PUBLIC_SHOP_API.startsWith('http')) return PUBLIC_SHOP_API;
+  if (typeof window === 'undefined') {
+    return process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
+  }
+  return PUBLIC_SHOP_API;
+}
 
 export async function vendureShopFetch<T>(
   query: string,
   variables?: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch(SHOP_API, {
+  const res = await fetch(getShopApi(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

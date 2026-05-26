@@ -10,6 +10,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   compress: true,
+  output: 'standalone',
   poweredByHeader: false,
 
   images: {

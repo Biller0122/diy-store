@@ -1,27 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { Search, Plus, Edit3, Trash2, Package, ToggleLeft, ToggleRight } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { MOCK_SUPPLIER_PRODUCTS } from '@/lib/supplier-data';
 
-const STATUS_CLS: Record<string, string> = {
-  true: 'bg-success/15 text-success',
-  false: 'bg-foreground-muted/15 text-foreground-muted',
+type SupplierProduct = {
+  id: string;
+  variantId: string;
+  name: string;
+  slug: string;
+  image: string;
+  price: number;
+  originalPrice?: number;
+  rating: number;
+  reviewCount: number;
+  badge?: string;
+  inStock: boolean;
 };
 
 export default function SupplierProductsPage() {
   const { supplier } = useSupplierStore();
   const [search, setSearch] = useState('');
+  const supplierId = supplier?.id;
+  const supplierSlug = supplier?.slug;
 
-  const rawProducts = supplier?.slug ? (MOCK_SUPPLIER_PRODUCTS[supplier.slug] ?? []) : [];
-  const allProducts = rawProducts.length > 0 ? rawProducts : [
+  const rawProducts = supplierSlug ? (MOCK_SUPPLIER_PRODUCTS[supplierSlug] ?? []) : [];
+  const localProducts = useMemo<SupplierProduct[]>(() => {
+    if (typeof window === 'undefined' || !supplierId) return [];
+    try {
+      const stored = localStorage.getItem(`diy-supplier-products:${supplierId}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }, [supplierId]);
+
+  const fallbackProducts = useMemo(() => [
     { id: 'p1', variantId: 'v1', name: 'Dulux EasyCare 4L Цагаан', slug: 'dulux-white', image: '', price: 5990000, rating: 4.8, reviewCount: 124, badge: 'ТОП', inStock: true },
     { id: 'p2', variantId: 'v2', name: 'Caparol Indeko 10L', slug: 'caparol-10l', image: '', price: 18990000, originalPrice: 22990000, rating: 4.6, reviewCount: 89, badge: 'ХЯМДРАЛ', inStock: true },
     { id: 'p3', variantId: 'v3', name: 'Knauf Праймер 25кг', slug: 'knauf-primer', image: '', price: 3990000, rating: 4.5, reviewCount: 67, inStock: true },
     { id: 'p4', variantId: 'v4', name: 'Sadolin Extra 1L', slug: 'sadolin-1l', image: '', price: 2490000, rating: 4.3, reviewCount: 28, inStock: false },
     { id: 'p5', variantId: 'v5', name: 'Marshall Будаг 2.5L', slug: 'marshall-25', image: '', price: 4990000, rating: 4.4, reviewCount: 33, inStock: true },
-  ];
+  ], []);
+
+  const allProducts = [...localProducts, ...(rawProducts.length > 0 ? rawProducts : fallbackProducts)];
 
   const filtered = allProducts.filter((p) =>
     !search || p.name.toLowerCase().includes(search.toLowerCase())
@@ -35,9 +59,9 @@ export default function SupplierProductsPage() {
           <h2 className="text-xl font-bold text-foreground">Миний бараа</h2>
           <p className="text-sm text-foreground-muted mt-0.5">{allProducts.length} нийт бараа</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/20">
+        <Link href="/supplier/products/new" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/20">
           <Plus size={16} /> Бараа нэмэх
-        </button>
+        </Link>
       </div>
 
       {/* Search */}
@@ -72,6 +96,7 @@ export default function SupplierProductsPage() {
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-lg bg-surface flex items-center justify-center shrink-0">
                         {product.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img src={product.image} alt={product.name} className="w-full h-full object-cover rounded-lg" />
                         ) : (
                           <Package size={16} className="text-foreground-muted" />

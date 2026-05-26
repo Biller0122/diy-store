@@ -1,0 +1,94 @@
+services:
+  postgres-vendure:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - vendure-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_NAME}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_TYPE: postgres
+      DB_HOST: postgres-vendure
+      DB_PORT: 5432
+      VENDURE_DISABLE_TELEMETRY: 'true'
+    depends_on:
+      postgres-vendure:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - vendure-assets:/app/apps/server/static/assets
+      - vendure-emails:/app/apps/server/static/email/test-emails
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+        NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+        NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+      INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+      NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+      NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+      NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+    depends_on:
+      - server
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/aws/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+      - server
+
+volumes:
+  vendure-db-data:
+  redis-data:
+  vendure-assets:
+  vendure-emails:
+  caddy-data:
+  caddy-config:
