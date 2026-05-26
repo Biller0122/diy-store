@@ -1,0 +1,59 @@
+services:
+  # PostgreSQL for Vendure (commerce backend)
+  postgres-vendure:
+    image: postgres:16-alpine
+    container_name: diy-store-vendure-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${VENDURE_DB_NAME:-vendure}
+      POSTGRES_USER: ${VENDURE_DB_USERNAME:-vendure}
+      POSTGRES_PASSWORD: ${VENDURE_DB_PASSWORD:-vendure}
+    ports:
+      - '5432:5432'
+    volumes:
+      - vendure-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${VENDURE_DB_USERNAME:-vendure}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for Strapi CMS
+  postgres-strapi:
+    image: postgres:16-alpine
+    container_name: diy-store-strapi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${STRAPI_DB_NAME:-strapi}
+      POSTGRES_USER: ${STRAPI_DB_USERNAME:-strapi}
+      POSTGRES_PASSWORD: ${STRAPI_DB_PASSWORD:-strapi}
+    ports:
+      - '5433:5432'
+    volumes:
+      - strapi-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${STRAPI_DB_USERNAME:-strapi}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and job queues
+  redis:
+    image: redis:7-alpine
+    container_name: diy-store-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  vendure-db-data:
+  strapi-db-data:
+  redis-data:

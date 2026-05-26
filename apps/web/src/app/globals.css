@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+/* Dark mode via class strategy (next-themes) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Design Tokens ─────────────────────────────────────────── */
+@theme {
+  /* Brand */
+  --color-brand:        #FF4500;
+  --color-brand-hover:  #E03D00;
+  --color-brand-light:  #FF6B35;
+
+  /* Surfaces */
+  --color-dark:         #0A0A0F;
+  --color-surface:      #111118;
+  --color-card:         #16161F;
+  --color-card-hover:   #1C1C28;
+  --color-muted:        #71717A;
+  --color-border:       #1F1F2E;
+
+  /* Accent */
+  --color-amber:        #F59E0B;
+  --color-success:      #10B981;
+  --color-info:         #3B82F6;
+  --color-error:        #EF4444;
+
+  /* Text */
+  --color-foreground:   #FAFAFA;
+  --color-foreground-muted: #A1A1AA;
+
+  /* Fonts */
+  --font-display: var(--font-sora), 'Sora', ui-sans-serif, system-ui;
+  --font-body:    var(--font-dm-sans), 'DM Sans', ui-sans-serif, system-ui;
+  --font-mono:    var(--font-jetbrains), 'JetBrains Mono', ui-monospace;
+
+  /* Border radius */
+  --radius-sm:  6px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  24px;
+  --radius-2xl: 32px;
+}
+
+/* ─── CSS Variables for glass & dynamic values ─────────────── */
+:root {
+  --glass-bg:           rgba(255, 255, 255, 0.03);
+  --glass-border:       rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.16);
+  --glass-blur:         20px;
+  --brand-glow:         0 0 40px rgba(255, 69, 0, 0.25);
+  --brand-glow-strong:  0 0 60px rgba(255, 69, 0, 0.4);
+  --card-shadow:        0 4px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #0A0A0F;
+  color: #FAFAFA;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Glassmorphism Utilities ───────────────────────────────── */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+}
+
+.glass-hover {
+  transition: border-color 0.2s ease;
+}
+.glass-hover:hover {
+  border-color: var(--glass-border-hover);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* ─── Brand Glow ────────────────────────────────────────────── */
+.glow-brand { box-shadow: var(--brand-glow); }
+.glow-brand-strong { box-shadow: var(--brand-glow-strong); }
+
+/* ─── Gradient Mesh Background ──────────────────────────────── */
+.gradient-mesh {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(255, 69, 0, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 80%, rgba(59, 130, 246, 0.06) 0%, transparent 50%),
+    #0A0A0F;
+}
+
+/* ─── Gradient Text ─────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #FF4500 0%, #FF6B35 50%, #F59E0B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Animated Gradient Border ──────────────────────────────── */
+.gradient-border {
+  position: relative;
+  border-radius: 16px;
+}
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, #FF4500, #F59E0B, #FF4500);
+  background-size: 200% 200%;
+  animation: gradient-rotate 3s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.gradient-border:hover::before { opacity: 1; }
+
+/* ─── Keyframes ─────────────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33% { transform: translateY(-8px) rotate(1deg); }
+  66% { transform: translateY(-4px) rotate(-1deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 69, 0, 0.2); }
+  50% { box-shadow: 0 0 40px rgba(255, 69, 0, 0.5); }
+}
+
+@keyframes gradient-rotate {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes slide-up-fade {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ─── Animation Classes ─────────────────────────────────────── */
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-float-delayed { animation: float 4s ease-in-out 1.5s infinite; }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+.animate-slide-up { animation: slide-up-fade 0.4s ease forwards; }
+.animate-scale-in { animation: scale-in 0.3s ease forwards; }
+
+/* ─── Orange Dot Indicator ──────────────────────────────────── */
+.dot-brand {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #FF4500;
+  box-shadow: 0 0 8px rgba(255, 69, 0, 0.6);
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #0A0A0F; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ─── Focus Ring ────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #FF4500;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Selection ─────────────────────────────────────────────── */
+::selection {
+  background: rgba(255, 69, 0, 0.3);
+  color: #FAFAFA;
+}
+
+/* ─── Skeleton Loader ───────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, #16161F 0%, #1C1C28 50%, #16161F 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ─── Safe area for mobile ──────────────────────────────────── */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
