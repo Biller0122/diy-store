@@ -190,7 +190,7 @@ export default function ProductsScreen() {
             <TouchableOpacity
               key={product.id}
               style={styles.row}
-              onPress={() => router.push(`/product/${product.id}`)}
+              onPress={() => router.push({ pathname: '/product/[id]', params: { id: product.id } })}
               activeOpacity={0.75}
             >
               {/* Image placeholder */}
