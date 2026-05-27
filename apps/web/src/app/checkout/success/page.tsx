@@ -1,48 +1,51 @@
 'use client';
 
-import { Suspense, useEffect, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { m } from 'framer-motion';
 import Link from 'next/link';
 import { trackPurchase } from '@/lib/analytics/ga4';
 
 function SuccessContent() {
-  const params  = useSearchParams();
-  const orderNo = params.get('order') ?? 'ORD-UNKNOWN';
+  const params   = useSearchParams();
+  const router   = useRouter();
+  const orderNo  = params.get('order') ?? 'ORD-UNKNOWN';
+  const orderId  = params.get('id') ?? orderNo;
   const firedRef = useRef(false);
+  const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
     if (firedRef.current) return;
     firedRef.current = true;
 
-    // Track purchase (order total unknown at this point — use order store if available)
     trackPurchase({ id: orderNo, total: 0, items: [] });
 
-    // Dynamically import to avoid SSR issues
     import('canvas-confetti').then(({ default: confetti }) => {
       const end = Date.now() + 3000;
       const colors = ['#FF4500', '#FF6B35', '#FFD700', '#00C851', '#33B5E5'];
-
       const frame = () => {
-        confetti({
-          particleCount: 3,
-          angle: 60,
-          spread: 55,
-          origin: { x: 0 },
-          colors,
-        });
-        confetti({
-          particleCount: 3,
-          angle: 120,
-          spread: 55,
-          origin: { x: 1 },
-          colors,
-        });
+        confetti({ particleCount: 3, angle: 60,  spread: 55, origin: { x: 0 }, colors });
+        confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 }, colors });
         if (Date.now() < end) requestAnimationFrame(frame);
       };
       frame();
     });
   }, []);
+
+  // Auto-redirect countdown to tracking page
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setCountdown((v) => {
+        if (v <= 1) {
+          window.clearInterval(interval);
+          router.push(`/track/${orderId}`);
+          return 0;
+        }
+        return v - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [orderId, router]);
 
   return (
     <div className="min-h-screen bg-dark flex items-center justify-center p-4">
@@ -84,7 +87,7 @@ function SuccessContent() {
           </p>
         </m.div>
 
-        {/* Card */}
+        {/* Status card */}
         <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -92,7 +95,7 @@ function SuccessContent() {
           className="mt-6 bg-card border border-[var(--glass-border)] rounded-2xl p-5 text-left space-y-3"
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-success/10 border border-success/20 flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-success/10 border border-success/20 flex items-center justify-center shrink-0">
               <span className="text-success text-sm">📦</span>
             </div>
             <div>
@@ -100,8 +103,17 @@ function SuccessContent() {
               <p className="text-xs text-foreground-muted">Захиалга баталгаажсан</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 opacity-60">
-            <div className="w-8 h-8 rounded-full bg-surface border border-[var(--glass-border)] flex items-center justify-center flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 animate-pulse">
+              <span className="text-sm">🔍</span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground animate-pulse">Жолооч хайж байна...</p>
+              <p className="text-xs text-foreground-muted">Ойр орчмоос жолооч олж байна</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 opacity-50">
+            <div className="w-8 h-8 rounded-full bg-surface border border-[var(--glass-border)] flex items-center justify-center shrink-0">
               <span className="text-sm">🚚</span>
             </div>
             <div>
@@ -109,8 +121,8 @@ function SuccessContent() {
               <p className="text-xs text-foreground-muted">Удахгүй...</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 opacity-60">
-            <div className="w-8 h-8 rounded-full bg-surface border border-[var(--glass-border)] flex items-center justify-center flex-shrink-0">
+          <div className="flex items-center gap-3 opacity-50">
+            <div className="w-8 h-8 rounded-full bg-surface border border-[var(--glass-border)] flex items-center justify-center shrink-0">
               <span className="text-sm">🏠</span>
             </div>
             <div>
@@ -128,20 +140,25 @@ function SuccessContent() {
           className="mt-5 space-y-3"
         >
           <Link
-            href="/account/orders"
+            href={`/track/${orderId}`}
             className="block w-full py-3 rounded-xl bg-brand text-white font-bold text-sm hover:bg-brand-hover transition-colors text-center"
           >
-            Захиалга хянах
+            Захиалга хянах → {countdown > 0 && `(${countdown}с)`}
+          </Link>
+          <Link
+            href="/account/orders"
+            className="block w-full py-3 rounded-xl bg-surface border border-[var(--glass-border)] text-foreground font-semibold text-sm hover:bg-card transition-colors text-center"
+          >
+            Миний захиалгууд
           </Link>
           <Link
             href="/"
-            className="block w-full py-3 rounded-xl bg-surface border border-[var(--glass-border)] text-foreground font-semibold text-sm hover:bg-card transition-colors text-center"
+            className="block w-full py-3 rounded-xl bg-surface border border-[var(--glass-border)] text-foreground-muted font-semibold text-sm hover:bg-card transition-colors text-center"
           >
             Дэлгүүр рүү буцах
           </Link>
         </m.div>
 
-        {/* Email note */}
         <m.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import Link from 'next/link';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8,19 +7,19 @@ import {
 } from 'recharts';
 import {
   TrendingUp, ShoppingCart, Users, Package,
-  AlertTriangle, ArrowRight,
+  AlertTriangle, ArrowRight, Wifi, WifiOff,
 } from 'lucide-react';
 import {
-  getMockMetrics, getMockRevenueData, getTopProducts,
-  getLowStockProducts, MOCK_ORDERS,
+  getTopProducts, getLowStockProducts,
 } from '@/lib/admin-data';
+import { useAdminMetrics, useAdminOrders } from '@/lib/use-admin-data';
 
 const STATE_LABEL: Record<string, { label: string; cls: string }> = {
-  PaymentAuthorized: { label: 'Баталгаажсан',  cls: 'bg-blue-500/15 text-blue-400' },
+  PaymentAuthorized: { label: 'Баталгаажсан',   cls: 'bg-blue-500/15 text-blue-400' },
   PaymentSettled:    { label: 'Төлбөр хийгдсэн', cls: 'bg-green-500/15 text-green-400' },
-  Shipped:           { label: 'Илгээсэн',      cls: 'bg-purple-500/15 text-purple-400' },
-  Delivered:         { label: 'Хүргэсэн',      cls: 'bg-emerald-500/15 text-emerald-400' },
-  Cancelled:         { label: 'Цуцалсан',      cls: 'bg-red-500/15 text-red-400' },
+  Shipped:           { label: 'Илгээсэн',         cls: 'bg-purple-500/15 text-purple-400' },
+  Delivered:         { label: 'Хүргэсэн',         cls: 'bg-emerald-500/15 text-emerald-400' },
+  Cancelled:         { label: 'Цуцалсан',         cls: 'bg-red-500/15 text-red-400' },
 };
 
 function MetricCard({
@@ -45,13 +44,9 @@ function MetricCard({
 type TooltipPayload = { value: number };
 
 const CustomTooltip = ({
-  active,
-  payload,
-  label,
+  active, payload, label,
 }: {
-  active?: boolean;
-  payload?: TooltipPayload[];
-  label?: string;
+  active?: boolean; payload?: TooltipPayload[]; label?: string;
 }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -64,21 +59,30 @@ const CustomTooltip = ({
 };
 
 export default function AdminDashboard() {
-  const metrics = useMemo(() => getMockMetrics(), []);
-  const revenue = useMemo(() => getMockRevenueData(), []);
-  const topProducts = useMemo(() => getTopProducts(), []);
-  const lowStock = useMemo(() => getLowStockProducts(), []);
-  const recentOrders = MOCK_ORDERS.slice(0, 8);
+  const { metrics, revenueData, isLive: metricsLive } = useAdminMetrics();
+  const { orders: recentOrders, isLive: ordersLive } = useAdminOrders(1, 8);
+  const topProducts = getTopProducts();
+  const lowStock = getLowStockProducts();
+
+  const isLive = metricsLive || ordersLive;
 
   return (
     <div className="space-y-6">
+      {/* Live indicator */}
+      <div className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl w-fit ${
+        isLive ? 'bg-success/10 text-success' : 'bg-foreground-muted/10 text-foreground-muted'
+      }`}>
+        {isLive ? <Wifi size={12} /> : <WifiOff size={12} />}
+        {isLive ? 'Шууд өгөгдөл' : 'Туршилтын өгөгдөл'}
+      </div>
+
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard
           icon={TrendingUp}
           label="Өнөөдрийн борлуулалт"
-          value={`₮${(metrics.todayRevenue / 1000).toFixed(0)}K`}
-          sub="vs өчигдөр +12%"
+          value={`₮${(metrics.todayRevenue / 100000).toFixed(0)}K`}
+          sub="Нийт орлого"
           color="bg-brand/15 text-brand"
         />
         <MetricCard
@@ -90,9 +94,9 @@ export default function AdminDashboard() {
         />
         <MetricCard
           icon={Users}
-          label="Шинэ хэрэглэгч"
+          label="Нийт хэрэглэгч"
           value={String(metrics.newCustomers)}
-          sub="Энэ 7 хоногт"
+          sub="Бүртгэлтэй"
           color="bg-purple-500/15 text-purple-400"
         />
         <MetricCard
@@ -112,7 +116,7 @@ export default function AdminDashboard() {
         </div>
         <div className="h-52">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={revenue} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+            <AreaChart data={revenueData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#FF4500" stopOpacity={0.3} />
@@ -120,29 +124,10 @@ export default function AdminDashboard() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: '#888' }}
-                tickLine={false}
-                axisLine={false}
-                interval={4}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: '#888' }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
-                width={36}
-              />
+              <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#888' }} tickLine={false} axisLine={false} interval={4} />
+              <YAxis tick={{ fontSize: 9, fill: '#888' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} width={36} />
               <Tooltip content={<CustomTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke="#FF4500"
-                strokeWidth={2}
-                fill="url(#revGrad)"
-                dot={false}
-              />
+              <Area type="monotone" dataKey="revenue" stroke="#FF4500" strokeWidth={2} fill="url(#revGrad)" dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -170,8 +155,8 @@ export default function AdminDashboard() {
                     <ShoppingCart size={12} className="text-foreground-muted" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-foreground truncate">
-                      #{order.code}
+                    <p className="text-xs font-semibold text-foreground truncate font-mono">
+                      {order.code}
                     </p>
                     <p className="text-[10px] text-foreground-muted truncate">
                       {order.customer?.firstName} {order.customer?.lastName}
@@ -203,9 +188,7 @@ export default function AdminDashboard() {
             <div className="space-y-2">
               {topProducts.map((p) => (
                 <div key={p.rank} className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-foreground-muted w-4 text-center shrink-0">
-                    {p.rank}
-                  </span>
+                  <span className="text-[10px] font-bold text-foreground-muted w-4 text-center shrink-0">{p.rank}</span>
                   <div className="w-7 h-7 rounded-lg bg-surface flex items-center justify-center shrink-0">
                     <Package size={12} className="text-foreground-muted" />
                   </div>

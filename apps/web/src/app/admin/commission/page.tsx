@@ -27,15 +27,37 @@ function fmt(n: number) {
   return `₮${Math.round(n / 100).toLocaleString('mn-MN')}`;
 }
 
+const COMMISSION_STORAGE_KEY = 'diy-admin-commission-tiers';
+
+function loadTiers() {
+  if (typeof window === 'undefined') return DEFAULT_TIERS;
+  try {
+    const saved = window.localStorage.getItem(COMMISSION_STORAGE_KEY);
+    return saved ? (JSON.parse(saved) as CommissionTier[]) : DEFAULT_TIERS;
+  } catch {
+    return DEFAULT_TIERS;
+  }
+}
+
 export default function AdminCommissionPage() {
-  const [tiers, setTiers] = useState(DEFAULT_TIERS);
+  const [tiers, setTiers] = useState<CommissionTier[]>(DEFAULT_TIERS);
   const [saved, setSaved] = useState(false);
+
+  // Load persisted tiers on mount
+  useState(() => {
+    setTiers(loadTiers());
+  });
 
   function updateRate(id: string, rate: number) {
     setTiers((prev) => prev.map((t) => t.id === id ? { ...t, rate: Math.max(0, Math.min(50, rate)) } : t));
   }
 
   function save() {
+    try {
+      window.localStorage.setItem(COMMISSION_STORAGE_KEY, JSON.stringify(tiers));
+    } catch {
+      // storage unavailable
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }

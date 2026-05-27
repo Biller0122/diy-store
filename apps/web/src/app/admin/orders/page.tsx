@@ -6,16 +6,17 @@ import {
   useReactTable, getCoreRowModel, getSortedRowModel,
   getFilteredRowModel, flexRender, type ColumnDef, type SortingState,
 } from '@tanstack/react-table';
-import { Search, ArrowUpDown, ChevronRight, Download } from 'lucide-react';
-import { MOCK_ORDERS, type AdminOrder } from '@/lib/admin-data';
+import { Search, ArrowUpDown, ChevronRight, Download, Wifi, WifiOff } from 'lucide-react';
+import { type AdminOrder } from '@/lib/admin-data';
+import { useAdminOrders } from '@/lib/use-admin-data';
 
 const TABS = [
   { key: '', label: 'Бүгд' },
   { key: 'PaymentAuthorized', label: 'Хүлээгдэж буй' },
-  { key: 'PaymentSettled', label: 'Боловсруулж буй' },
-  { key: 'Shipped', label: 'Илгээсэн' },
-  { key: 'Delivered', label: 'Хүргэгдсэн' },
-  { key: 'Cancelled', label: 'Цуцлагдсан' },
+  { key: 'PaymentSettled',    label: 'Боловсруулж буй' },
+  { key: 'Shipped',           label: 'Илгээсэн' },
+  { key: 'Delivered',         label: 'Хүргэгдсэн' },
+  { key: 'Cancelled',         label: 'Цуцлагдсан' },
 ];
 
 const STATE_BADGE: Record<string, string> = {
@@ -42,14 +43,7 @@ export default function AdminOrdersPage() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [search, setSearch] = useState('');
 
-  const filtered = useMemo(() =>
-    MOCK_ORDERS.filter(o =>
-      (tab === '' || o.state === tab) &&
-      (search === '' ||
-        o.code.toLowerCase().includes(search.toLowerCase()) ||
-        (o.customer?.phoneNumber ?? '').includes(search) ||
-        `${o.customer?.firstName} ${o.customer?.lastName}`.toLowerCase().includes(search.toLowerCase()))
-    ), [tab, search]);
+  const { orders, totalItems, isLoading, isLive } = useAdminOrders(1, 200, tab || undefined, search || undefined);
 
   const columns = useMemo<ColumnDef<AdminOrder>[]>(() => [
     {
@@ -59,7 +53,7 @@ export default function AdminOrdersPage() {
           Дугаар <ArrowUpDown size={11} />
         </button>
       ),
-      cell: ({ getValue }) => <span className="text-xs font-mono font-bold text-brand">#{getValue() as string}</span>,
+      cell: ({ getValue }) => <span className="text-xs font-mono font-bold text-brand">{getValue() as string}</span>,
     },
     {
       id: 'customer',
@@ -129,7 +123,7 @@ export default function AdminOrdersPage() {
   ], []);
 
   const table = useReactTable({
-    data: filtered,
+    data: orders,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -139,7 +133,7 @@ export default function AdminOrdersPage() {
   });
 
   const handleExportCSV = () => {
-    const rows = filtered.map(o =>
+    const rows = orders.map((o) =>
       [o.code, `${o.customer?.firstName} ${o.customer?.lastName}`, o.state, Math.round(o.totalWithTax / 100), formatDate(o.createdAt)].join(',')
     );
     const csv = ['Дугаар,Хэрэглэгч,Төлөв,Нийт,Огноо', ...rows].join('\n');
@@ -153,9 +147,17 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="space-y-4">
+      {/* Live indicator */}
+      <div className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl w-fit ${
+        isLive ? 'bg-success/10 text-success' : 'bg-foreground-muted/10 text-foreground-muted'
+      }`}>
+        {isLive ? <Wifi size={12} /> : <WifiOff size={12} />}
+        {isLive ? 'Шууд өгөгдөл' : 'Туршилтын өгөгдөл'}
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">
-        {TABS.map(t => (
+        {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -164,11 +166,6 @@ export default function AdminOrdersPage() {
             }`}
           >
             {t.label}
-            {t.key !== '' && (
-              <span className="ml-1.5 opacity-60">
-                {MOCK_ORDERS.filter(o => o.state === t.key).length}
-              </span>
-            )}
           </button>
         ))}
       </div>
@@ -194,38 +191,45 @@ export default function AdminOrdersPage() {
 
       {/* Table */}
       <div className="bg-card border border-[var(--glass-border)] rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className="border-b border-[var(--glass-border)]">
-                  {hg.headers.map((header) => (
-                    <th key={header.id} className="px-4 py-3 text-left">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-[var(--glass-border)] last:border-0 hover:bg-white/[0.02] transition-colors">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {table.getRowModel().rows.length === 0 && (
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+          </div>
+        )}
+        {!isLoading && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                {table.getHeaderGroups().map((hg) => (
+                  <tr key={hg.id} className="border-b border-[var(--glass-border)]">
+                    {hg.headers.map((header) => (
+                      <th key={header.id} className="px-4 py-3 text-left">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="border-b border-[var(--glass-border)] last:border-0 hover:bg-white/[0.02] transition-colors">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-4 py-3">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!isLoading && table.getRowModel().rows.length === 0 && (
           <div className="py-12 text-center text-foreground-muted text-sm">Захиалга олдсонгүй</div>
         )}
       </div>
 
-      <p className="text-xs text-foreground-muted text-right">{filtered.length} захиалга</p>
+      <p className="text-xs text-foreground-muted text-right">{totalItems} захиалга нийт</p>
     </div>
   );
 }

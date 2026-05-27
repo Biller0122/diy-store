@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Navigation, Package, Phone, RefreshCw } from 'lucide-react';
+import { Navigation, Package, Phone, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
 interface LiveDriver {
   id: string;
@@ -16,12 +16,14 @@ interface LiveDriver {
   eta?: number;
 }
 
-const MOCK_DRIVERS: LiveDriver[] = [
-  { id: 'd1', name: 'Анхбаяр Дамдин', phone: '8800-1122', vehicleType: 'MOTORCYCLE', vehiclePlate: '2345-УБА', status: 'DELIVERING', lat: 47.920, lng: 106.985, currentOrder: 'DIY-AB12CD34', eta: 8 },
-  { id: 'd2', name: 'Болд Ганбаяр',   phone: '9911-2233', vehicleType: 'CAR',        vehiclePlate: '3456-УВА', status: 'DELIVERING', lat: 47.908, lng: 106.920, currentOrder: 'DIY-EF56GH78', eta: 15 },
+const INITIAL_DRIVERS: LiveDriver[] = [
+  { id: 'd1', name: 'Анхбаяр Дамдин', phone: '8800-1122', vehicleType: 'MOTORCYCLE', vehiclePlate: '2345-УБА', status: 'DELIVERING', lat: 47.920, lng: 106.985, currentOrder: 'DIY-2026-01001', eta: 8 },
+  { id: 'd2', name: 'Болд Ганбаяр',   phone: '9911-2233', vehicleType: 'CAR',        vehiclePlate: '3456-УВА', status: 'DELIVERING', lat: 47.908, lng: 106.920, currentOrder: 'DIY-2026-01002', eta: 15 },
   { id: 'd3', name: 'Сарнай Батсүх',  phone: '8822-3344', vehicleType: 'MOTORCYCLE', vehiclePlate: '1234-УБА', status: 'ONLINE',     lat: 47.935, lng: 106.910 },
   { id: 'd4', name: 'Дорж Мөнхбат',   phone: '9933-4455', vehicleType: 'CAR',        vehiclePlate: '5678-УВА', status: 'OFFLINE',    lat: 47.880, lng: 106.870 },
 ];
+
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:3002';
 
 function DriverMap({ drivers }: { drivers: LiveDriver[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -66,6 +68,15 @@ function DriverMap({ drivers }: { drivers: LiveDriver[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Update markers when driver positions change
+  useEffect(() => {
+    const L = markersRef.current;
+    drivers.forEach((d) => {
+      const marker = L.get(d.id) as { setLatLng?: (pos: [number, number]) => void } | undefined;
+      marker?.setLatLng?.([d.lat, d.lng]);
+    });
+  }, [drivers]);
+
   return (
     <>
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -87,8 +98,52 @@ const STATUS_LABEL: Record<LiveDriver['status'], string> = {
 };
 
 export default function AdminDeliveriesPage() {
-  const [drivers] = useState<LiveDriver[]>(MOCK_DRIVERS);
+  const [drivers, setDrivers] = useState<LiveDriver[]>(INITIAL_DRIVERS);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [socketConnected, setSocketConnected] = useState(false);
+
+  // Connect to WebSocket for live driver positions
+  useEffect(() => {
+    let socket: import('socket.io-client').Socket | null = null;
+
+    import('socket.io-client').then(({ io }) => {
+      socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+
+      socket.on('connect', () => setSocketConnected(true));
+      socket.on('disconnect', () => setSocketConnected(false));
+
+      socket.on('driver:location', (payload: { driverId: string; lat: number; lng: number }) => {
+        setDrivers((prev) =>
+          prev.map((d) =>
+            d.id === payload.driverId
+              ? { ...d, lat: payload.lat, lng: payload.lng, status: 'DELIVERING' }
+              : d,
+          ),
+        );
+        setLastRefresh(new Date());
+      });
+
+      socket.on('driver:online', (payload: { driverId: string }) => {
+        setDrivers((prev) =>
+          prev.map((d) =>
+            d.id === payload.driverId ? { ...d, status: 'ONLINE' } : d,
+          ),
+        );
+      });
+
+      socket.on('driver:offline', (payload: { driverId: string }) => {
+        setDrivers((prev) =>
+          prev.map((d) =>
+            d.id === payload.driverId ? { ...d, status: 'OFFLINE' } : d,
+          ),
+        );
+      });
+    });
+
+    return () => {
+      socket?.disconnect();
+    };
+  }, []);
 
   const delivering = drivers.filter((d) => d.status === 'DELIVERING').length;
   const online = drivers.filter((d) => d.status === 'ONLINE').length;
@@ -104,12 +159,20 @@ export default function AdminDeliveriesPage() {
             Сүүлд шинэчлэгдсэн: {lastRefresh.toLocaleTimeString('mn-MN')}
           </p>
         </div>
-        <button
-          onClick={() => setLastRefresh(new Date())}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-[var(--glass-border)] text-sm text-foreground-muted hover:text-foreground transition-colors"
-        >
-          <RefreshCw size={14} /> Шинэчлэх
-        </button>
+        <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl ${
+            socketConnected ? 'bg-success/10 text-success' : 'bg-foreground-muted/10 text-foreground-muted'
+          }`}>
+            {socketConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
+            {socketConnected ? 'Шууд холболт' : 'Туршилтын өгөгдөл'}
+          </div>
+          <button
+            onClick={() => { setDrivers(INITIAL_DRIVERS); setLastRefresh(new Date()); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-[var(--glass-border)] text-sm text-foreground-muted hover:text-foreground transition-colors"
+          >
+            <RefreshCw size={14} /> Шинэчлэх
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -128,12 +191,10 @@ export default function AdminDeliveriesPage() {
 
       {/* Map + list */}
       <div className="flex-1 grid lg:grid-cols-[1fr_300px] gap-4 min-h-0">
-        {/* Map */}
         <div className="bg-card rounded-2xl border border-[var(--glass-border)] overflow-hidden min-h-[400px]">
           <DriverMap drivers={drivers} />
         </div>
 
-        {/* Driver list */}
         <div className="bg-card rounded-2xl border border-[var(--glass-border)] overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-[var(--glass-border)]">
             <p className="text-sm font-semibold text-foreground">Жолоочид ({drivers.length})</p>

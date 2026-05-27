@@ -147,7 +147,12 @@ export default function ActiveDeliveryPage() {
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1000] px-3 pb-3 md:left-60">
         <div className="pointer-events-auto mx-auto max-w-3xl rounded-t-[2rem] border border-white/10 bg-[#111315]/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl md:rounded-[2rem]">
           <div className="mb-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-brand">Одоогийн заавар</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-brand">Одоогийн заавар</p>
+              {delivery.orderNumber && (
+                <span className="font-mono text-xs text-foreground-muted">{delivery.orderNumber}</span>
+              )}
+            </div>
             <h2 className="mt-1 text-lg font-black text-foreground">{instructions[step] ?? 'Хүргэлт хийж байна'}</h2>
             <p className="mt-1 text-sm text-foreground-muted">Зай: {delivery.distance} км · Тооцоолсон хугацаа: ~{delivery.estimatedDuration} минут</p>
           </div>

@@ -41,6 +41,7 @@ services:
       DB_HOST: postgres-vendure
       DB_PORT: 5432
       VENDURE_DISABLE_TELEMETRY: 'true'
+      FIREBASE_MOCK_MODE: 'true'
     ports:
       - '3002:3002'
     depends_on:
@@ -60,6 +61,7 @@ services:
         NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
         NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
         NEXT_PUBLIC_SITE_URL: http://${SITE_DOMAIN}
+        NEXT_PUBLIC_SOCKET_URL: http://${SITE_DOMAIN}:3002
     restart: unless-stopped
     ports:
       - '8080:3000'
@@ -68,9 +70,12 @@ services:
       PORT: 3000
       INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
       INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+      INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+      INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
       NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
       NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
       NEXT_PUBLIC_SITE_URL: http://${SITE_DOMAIN}
+      NEXT_PUBLIC_SOCKET_URL: http://${SITE_DOMAIN}:3002
     depends_on:
       - server
 

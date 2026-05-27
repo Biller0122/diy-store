@@ -8,6 +8,7 @@ import type { ActiveDelivery } from '@/lib/driver-store';
 export const MOCK_DELIVERY_REQUEST: ActiveDelivery = {
   id: 'delivery-dev-001',
   orderId: 'ORD-2026-0526',
+  orderNumber: 'DIY-2026-01001',
   customerName: 'Бат-Эрдэнэ',
   customerPhone: '99112233',
   dropoffAddress: 'Чингэлтэй, 3-р хороо, 12-р байр',
@@ -41,11 +42,14 @@ export default function DeliveryRequestPopup({
   open,
   onAccept,
   onReject,
+  request,
 }: {
   open: boolean;
   onAccept: (delivery: ActiveDelivery) => void;
   onReject: () => void;
+  request?: ActiveDelivery;
 }) {
+  const delivery = request ?? MOCK_DELIVERY_REQUEST;
   const [seconds, setSeconds] = useState(30);
   const progress = useMemo(() => Math.max(0, (seconds / 30) * 100), [seconds]);
 
@@ -67,6 +71,8 @@ export default function DeliveryRequestPopup({
       window.clearInterval(interval);
     };
   }, [open, onReject]);
+
+  const feeDisplay = `₮${Math.round(delivery.fee / 100).toLocaleString()}`;
 
   return (
     <AnimatePresence>
@@ -94,6 +100,9 @@ export default function DeliveryRequestPopup({
                   <p className="text-xs font-bold uppercase tracking-wider text-brand">Шинэ захиалга</p>
                 </div>
                 <h2 className="text-2xl font-black text-foreground">Хүргэлт ирлээ!</h2>
+                {delivery.orderNumber && (
+                  <p className="mt-0.5 font-mono text-xs text-foreground-muted">{delivery.orderNumber}</p>
+                )}
               </div>
               <div className="relative h-14 w-14 shrink-0">
                 <svg className="h-14 w-14 -rotate-90" viewBox="0 0 44 44">
@@ -118,40 +127,40 @@ export default function DeliveryRequestPopup({
               <div>
                 <p className="mb-2 text-xs font-semibold text-foreground-muted">Авах цэгүүд</p>
                 <div className="space-y-2">
-                  {MOCK_DELIVERY_REQUEST.pickupStops.map((stop) => (
+                  {delivery.pickupStops.map((stop) => (
                     <div key={stop.supplierId} className="flex items-center gap-2 text-sm text-foreground">
                       <span>📍</span>
-                      <span>{stop.supplierName} - {stop.address.replace(' дүүрэг', '')}</span>
+                      <span>{stop.supplierName} — {stop.address.replace(' дүүрэг', '')}</span>
                     </div>
                   ))}
                 </div>
               </div>
               <div className="border-t border-white/10 pt-3">
-                <p className="mb-1 text-xs font-semibold text-foreground-muted">Хүргэх</p>
-                <p className="text-sm text-foreground">🏠 Чингэлтэй, 3-р хороо</p>
+                <p className="mb-1 text-xs font-semibold text-foreground-muted">Хүргэх хаяг</p>
+                <p className="text-sm text-foreground">🏠 {delivery.dropoffAddress}</p>
               </div>
             </div>
 
             <div className="my-5 grid grid-cols-3 gap-2 text-center">
               <div className="rounded-2xl bg-white/[0.04] p-3">
-                <p className="text-lg font-black text-foreground">4.2 км</p>
+                <p className="text-lg font-black text-foreground">{delivery.distance.toFixed(1)} км</p>
                 <p className="text-[11px] text-foreground-muted">Зай</p>
               </div>
               <div className="rounded-2xl bg-white/[0.04] p-3">
-                <p className="text-lg font-black text-foreground">2</p>
+                <p className="text-lg font-black text-foreground">{delivery.pickupStops.length}</p>
                 <p className="text-[11px] text-foreground-muted">Дэлгүүр</p>
               </div>
               <div className="rounded-2xl bg-white/[0.04] p-3">
-                <p className="text-lg font-black text-foreground">~25</p>
+                <p className="text-lg font-black text-foreground">~{delivery.estimatedDuration}</p>
                 <p className="text-[11px] text-foreground-muted">Минут</p>
               </div>
             </div>
 
-            <p className="mb-5 text-center text-4xl font-black text-brand">₮8,500</p>
+            <p className="mb-5 text-center text-4xl font-black text-brand">{feeDisplay}</p>
 
             <div className="space-y-2">
               <button
-                onClick={() => onAccept(MOCK_DELIVERY_REQUEST)}
+                onClick={() => onAccept(delivery)}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-success py-4 text-base font-black text-white shadow-lg shadow-success/20 transition hover:brightness-110"
               >
                 <CheckCircle2 size={20} /> Хүлээн авах

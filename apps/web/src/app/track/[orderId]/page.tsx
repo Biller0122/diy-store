@@ -17,6 +17,7 @@ type DeliveryStatus = 'SEARCHING' | 'OFFERED' | 'ACCEPTED' | 'IN_PROGRESS' | 'CO
 
 interface DispatchData {
   status: DeliveryStatus;
+  orderNumber?: string;
   driver?: {
     id: string; name: string; phone: string;
     vehicleType: string; vehiclePlate: string; rating: number;
@@ -25,6 +26,7 @@ interface DispatchData {
   estimatedArrivalMinutes?: number;
   driverLat?: number;
   driverLng?: number;
+  pickupStops?: { supplierName: string; address: string; status: 'PENDING' | 'PICKED_UP' }[];
 }
 
 const STATUS_STEPS = [
@@ -231,7 +233,9 @@ function StatusPanel({ orderId, data, sheetOpen, onToggleSheet }: {
           <ArrowLeft size={18} />
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="font-bold text-sm text-foreground truncate">Захиалга #{orderId}</h1>
+          <h1 className="font-bold text-sm text-foreground truncate font-mono">
+            {data.orderNumber ?? `#${orderId.slice(0, 12)}`}
+          </h1>
           <p className="text-xs text-foreground-muted">Шууд хянах</p>
         </div>
         {/* Mobile collapse toggle */}
@@ -310,7 +314,7 @@ function StatusPanel({ orderId, data, sheetOpen, onToggleSheet }: {
       <div className="mx-4 mb-4 p-4 rounded-2xl bg-surface border border-[var(--glass-border)]">
         <p className="text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-3">Авах цэгүүд</p>
         <div className="space-y-3">
-          {MOCK_PICKUP_STOPS.map((stop, i) => (
+          {(data.pickupStops ?? MOCK_PICKUP_STOPS).map((stop, i) => (
             <div key={i} className="flex items-start gap-2.5">
               <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-xs ${
                 stop.status === 'PICKED_UP' ? 'bg-success text-white' : 'bg-amber/20 text-amber border border-amber/30'
