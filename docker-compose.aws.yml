@@ -56,8 +56,10 @@ services:
       args:
         NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
         NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
-        NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+        NEXT_PUBLIC_SITE_URL: http://${SITE_DOMAIN}
     restart: unless-stopped
+    ports:
+      - '8080:3000'
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -65,7 +67,7 @@ services:
       INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
       NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
       NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
-      NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+      NEXT_PUBLIC_SITE_URL: http://${SITE_DOMAIN}
     depends_on:
       - server
 

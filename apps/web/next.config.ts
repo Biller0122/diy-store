@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'http',  hostname: 'localhost', port: '3001', pathname: '/assets/**' },
+      { protocol: 'http',  hostname: '52.77.245.218', port: '8080', pathname: '/assets/**' },
       { protocol: 'https', hostname: '*.algolia.net' },
       { protocol: 'https', hostname: '*.algolianet.com' },
       { protocol: 'https', hostname: 'diy-store.mn', pathname: '/**' },
@@ -23,6 +24,15 @@ const nextConfig: NextConfig = {
     ],
     formats: ['image/avif', 'image/webp'],
     minimumCacheTTL: 60 * 60 * 24 * 7, // 7 days
+  },
+
+  async rewrites() {
+    return [
+      { source: '/shop-api',           destination: 'http://server:3001/shop-api' },
+      { source: '/admin-api',          destination: 'http://server:3001/admin-api' },
+      { source: '/assets/:path*',      destination: 'http://server:3001/assets/:path*' },
+      { source: '/mailbox/:path*',     destination: 'http://server:3001/mailbox/:path*' },
+    ];
   },
 
   async headers() {
