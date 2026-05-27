@@ -21,7 +21,8 @@
     "@vendure/core": "^3.6.0",
     "@vendure/email-plugin": "^3.6.0",
     "algoliasearch": "^5.52.1",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

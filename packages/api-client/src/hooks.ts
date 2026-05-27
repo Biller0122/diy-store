@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Customer, Driver, Order, PaginatedList, Product, Supplier } from '@diy-store/types';
+import { io, type Socket } from 'socket.io-client';
+import type { Customer, Driver, Order, OrderStatus, PaginatedList, Product, Supplier } from '@diy-store/types';
 import { shopFetch } from './client';
 import {
   ACTIVE_CUSTOMER_QUERY,
@@ -21,6 +23,21 @@ type AuthResponse<T> = {
   token?: string;
   message?: string;
 };
+
+type DriverLocation = {
+  orderId?: string;
+  driverId: string;
+  lat: number;
+  lng: number;
+};
+
+type OrderStatusEvent = {
+  orderId: string;
+  status: OrderStatus | string;
+};
+
+const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+const SOCKET_URL = runtimeEnv?.NEXT_PUBLIC_SOCKET_URL || 'http://52.77.245.218:3002';
 
 const SUPPLIERS_QUERY = `
   query Suppliers {
@@ -184,4 +201,54 @@ export function useDriverAuth() {
     },
   });
   return { login };
+}
+
+export function useSocketConnection(room?: { orderId?: string; driverId?: string }) {
+  const socket = useMemo<Socket>(() => io(SOCKET_URL, { transports: ['websocket'], autoConnect: false }), []);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    socket.connect();
+    socket.on('connect', () => {
+      setIsConnected(true);
+      if (room?.orderId) socket.emit('order:join', room.orderId);
+      if (room?.driverId) socket.emit('driver:join', room.driverId);
+    });
+    socket.on('disconnect', () => setIsConnected(false));
+
+    return () => {
+      socket.removeAllListeners();
+      socket.disconnect();
+    };
+  }, [socket, room?.orderId, room?.driverId]);
+
+  return { socket, isConnected };
+}
+
+export function useDriverLocation(orderId?: string) {
+  const { socket, isConnected } = useSocketConnection(orderId ? { orderId } : undefined);
+  const [location, setLocation] = useState<DriverLocation | null>(null);
+
+  useEffect(() => {
+    socket.on('driver:location', (payload: DriverLocation) => setLocation(payload));
+    return () => {
+      socket.off('driver:location');
+    };
+  }, [socket]);
+
+  return { location, isConnected };
+}
+
+export function useOrderStatus(orderId?: string) {
+  const { socket, isConnected } = useSocketConnection(orderId ? { orderId } : undefined);
+  const [status, setStatus] = useState<OrderStatusEvent | null>(null);
+
+  useEffect(() => {
+    socket.on('order:status', (payload: OrderStatusEvent) => setStatus(payload));
+    return () => {
+      socket.off('order:status');
+    };
+  }, [socket]);
+
+  return { status, isConnected };
 }
