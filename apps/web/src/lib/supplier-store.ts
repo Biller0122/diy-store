@@ -26,8 +26,8 @@ interface SupplierState {
   devOtp: string | null;
   isLoading: boolean;
   error: string | null;
-  requestLoginOtp: (phone: string) => Promise<boolean>;
-  verifyLoginOtp: (phone: string, otp: string) => Promise<{ success: boolean; redirectTo?: string }>;
+  requestLoginOtp: (email: string) => Promise<boolean>;
+  verifyLoginOtp: (email: string, otp: string) => Promise<{ success: boolean; redirectTo?: string }>;
   logout: () => void;
   setSupplier: (supplier: SupplierUser) => void;
   clearError: () => void;
@@ -102,6 +102,10 @@ export function normalizeSupplierPhone(phone: string) {
   return phone.replace(/\D/g, '').slice(-8);
 }
 
+export function normalizeSupplierEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
 export function getSupplierRegistry(): Record<string, SupplierUser> {
   if (typeof window === 'undefined') return { ...BUILT_IN_SUPPLIERS };
   try {
@@ -116,9 +120,15 @@ export function saveSupplierToRegistry(supplier: SupplierUser) {
   if (typeof window === 'undefined') return;
   try {
     const reg = getSupplierRegistry();
-    reg[supplier.phone] = supplier;
+    const key = supplier.email ? normalizeSupplierEmail(supplier.email) : supplier.phone;
+    reg[key] = supplier;
     window.localStorage.setItem(SUPPLIER_REGISTRY_KEY, JSON.stringify(reg));
   } catch { /* ignore */ }
+}
+
+function findSupplierByEmail(email: string) {
+  const cleanEmail = normalizeSupplierEmail(email);
+  return Object.values(getSupplierRegistry()).find((supplier) => normalizeSupplierEmail(supplier.email) === cleanEmail);
 }
 
 export function setSupplierCookies(supplier: SupplierUser | null) {
@@ -141,29 +151,29 @@ export const useSupplierStore = create<SupplierState>()(
       isLoading: false,
       error: null,
 
-      requestLoginOtp: async (phoneInput) => {
+      requestLoginOtp: async (emailInput) => {
         set({ isLoading: true, error: null });
         await new Promise((r) => setTimeout(r, 500));
-        const phone = normalizeSupplierPhone(phoneInput);
-        const found = getSupplierRegistry()[phone];
+        const email = normalizeSupplierEmail(emailInput);
+        const found = findSupplierByEmail(email);
         if (!found) {
-          set({ isLoading: false, error: 'Энэ дугаартай нийлүүлэгч бүртгэлгүй байна.' });
+          set({ isLoading: false, error: 'Энэ и-мэйлтэй нийлүүлэгч бүртгэлгүй байна.' });
           return false;
         }
         if (found.status === 'SUSPENDED') {
           set({ isLoading: false, error: 'Таны данс түр хаагдсан байна. Тусламж: 7700-8899' });
           return false;
         }
-        console.log(`[Supplier OTP] ${phone}: ${DEV_OTP}`);
+        console.log(`[Supplier Email OTP] ${email}: ${DEV_OTP}`);
         set({ isLoading: false, devOtp: DEV_OTP });
         return true;
       },
 
-      verifyLoginOtp: async (phoneInput, otp) => {
+      verifyLoginOtp: async (emailInput, otp) => {
         set({ isLoading: true, error: null });
         await new Promise((r) => setTimeout(r, 400));
-        const phone = normalizeSupplierPhone(phoneInput);
-        const found = getSupplierRegistry()[phone];
+        const email = normalizeSupplierEmail(emailInput);
+        const found = findSupplierByEmail(email);
         if (!found || otp !== DEV_OTP) {
           set({ isLoading: false, error: 'Код буруу байна. Дахин оролдоно уу.' });
           return { success: false };

@@ -69,6 +69,52 @@ export const ACTIVE_CUSTOMER_QUERY = `
   }
 `;
 
+export const LOGIN_SUPPLIER_MUTATION = `
+  mutation LoginSupplier($email: String!) {
+    loginSupplier(email: $email) {
+      success
+      message
+      email
+    }
+  }
+`;
+
+export const REGISTER_SUPPLIER_MUTATION = `
+  mutation RegisterSupplier($input: RegisterSupplierInput!) {
+    registerSupplier(input: $input) {
+      success
+      message
+      email
+    }
+  }
+`;
+
+export const VERIFY_SUPPLIER_OTP_MUTATION = `
+  mutation VerifySupplierOTP($input: VerifySupplierOTPInput!) {
+    verifySupplierOTP(input: $input) {
+      success
+      message
+      supplierId
+      token
+    }
+  }
+`;
+
+export const SUPPLIER_QUERY = `
+  query Supplier($id: ID!) {
+    supplier(id: $id) {
+      id
+      businessName
+      ownerName
+      email
+      phone
+      status
+      productCount
+      rating
+    }
+  }
+`;
+
 export const ADMIN_PRODUCTS_QUERY = `
   query AdminProducts($skip: Int!, $take: Int!) {
     products(options: { skip: $skip, take: $take }) {

@@ -113,7 +113,7 @@ export default function DashboardScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>
-              Сайн байна уу, {supplier?.firstName ?? 'Нийлүүлэгч'}! 👋
+              Сайн байна уу, {supplier?.ownerName ?? 'Нийлүүлэгч'}! 👋
             </Text>
             <Text style={styles.dateText}>{getTodayLabel()}</Text>
           </View>

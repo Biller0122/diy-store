@@ -6,11 +6,12 @@ import { Supplier, SupplierStatus } from './supplier.entity';
 
 export interface RegisterSupplierInput {
   ownerName: string;
-  phone: string;
+  email: string;
+  phone?: string;
 }
 
 export interface VerifySupplierOtpInput {
-  phone: string;
+  email: string;
   otp: string;
 }
 
@@ -23,10 +24,13 @@ export class SupplierService {
 
   async registerSupplier(input: RegisterSupplierInput): Promise<Supplier> {
     const ownerName = input.ownerName.trim();
-    const phone = this.normalizePhone(input.phone);
+    const email = this.normalizeEmail(input.email);
+    const phone = input.phone ? this.normalizePhone(input.phone) : '';
     if (ownerName.length < 2) throw new Error('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
-    if (!/^[6789]\d{7}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
-    if (await this.getSupplierByPhone(phone)) throw new Error('Энэ дугаар бүртгэлтэй байна');
+    if (!this.isValidEmail(email)) throw new Error('И-мэйл хаяг буруу байна');
+    if (phone && !/^[6789]\d{7}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
+    if (await this.getSupplierByEmail(email)) throw new Error('Энэ и-мэйл хаяг бүртгэлтэй байна');
+    if (phone && await this.getSupplierByPhone(phone)) throw new Error('Энэ дугаар бүртгэлтэй байна');
 
     const otpCode = this.generateOtp();
     const supplier = this.supplierRepo.create({
@@ -34,7 +38,7 @@ export class SupplierService {
       phone,
       businessName: ownerName,
       slug: await this.createUniqueSlug(ownerName),
-      email: `${phone}@pending.supplier.local`,
+      email,
       status: SupplierStatus.PENDING_VERIFICATION,
       otpCode,
       otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
@@ -48,27 +52,44 @@ export class SupplierService {
     });
 
     const saved = await this.supplierRepo.save(supplier);
-    console.log(`[Supplier OTP] ${phone}: ${otpCode}`);
-    console.log('[Supplier] NEW REGISTRATION:', { id: saved.id, name: saved.ownerName, phone: saved.phone, status: saved.status });
+    console.log(`[Supplier Email OTP] ${email}: ${otpCode}`);
+    console.log('[Supplier] NEW REGISTRATION:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
+    return saved;
+  }
+
+  async loginSupplier(emailInput: string): Promise<Supplier> {
+    const email = this.normalizeEmail(emailInput);
+    if (!this.isValidEmail(email)) throw new Error('И-мэйл хаяг буруу байна');
+    const supplier = await this.getSupplierByEmail(email);
+    if (!supplier) throw new Error('Бүртгэл олдсонгүй');
+    if (supplier.status === SupplierStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
+    if (supplier.status === SupplierStatus.REJECTED) throw new Error('Таны бүртгэл татгалзсан байна');
+
+    supplier.otpCode = this.generateOtp();
+    supplier.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const saved = await this.supplierRepo.save(supplier);
+    console.log(`[Supplier Login Email OTP] ${email}: ${saved.otpCode}`);
     return saved;
   }
 
   async verifyOTP(input: VerifySupplierOtpInput): Promise<{ supplier: Supplier; token: string }> {
-    const phone = this.normalizePhone(input.phone);
-    const supplier = await this.getSupplierByPhone(phone);
+    const email = this.normalizeEmail(input.email);
+    const supplier = await this.getSupplierByEmail(email);
     if (!supplier) throw new Error('Бүртгэл олдсонгүй');
     if (!supplier.otpCode || supplier.otpCode !== input.otp.trim()) throw new Error('Код буруу байна');
     if (!supplier.otpExpiresAt || supplier.otpExpiresAt.getTime() < Date.now()) throw new Error('Кодын хугацаа дууссан байна');
 
-    supplier.status = SupplierStatus.PENDING_APPROVAL;
+    if (supplier.status === SupplierStatus.PENDING_VERIFICATION) {
+      supplier.status = SupplierStatus.PENDING_APPROVAL;
+      supplier.statusHistory = [
+        ...(supplier.statusHistory ?? []),
+        { status: SupplierStatus.PENDING_APPROVAL, at: new Date().toISOString() },
+      ];
+    }
     supplier.otpCode = null;
     supplier.otpExpiresAt = null;
-    supplier.statusHistory = [
-      ...(supplier.statusHistory ?? []),
-      { status: SupplierStatus.PENDING_APPROVAL, at: new Date().toISOString() },
-    ];
     const saved = await this.supplierRepo.save(supplier);
-    console.log('NEW SUPPLIER REGISTERED:', { id: saved.id, name: saved.ownerName, phone: saved.phone, status: saved.status });
+    console.log('SUPPLIER EMAIL VERIFIED:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
     return { supplier: saved, token: randomBytes(24).toString('hex') };
   }
 
@@ -104,6 +125,14 @@ export class SupplierService {
 
   private normalizePhone(phone: string) {
     return phone.replace(/\D/g, '').slice(-8);
+  }
+
+  private normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
+  }
+
+  private isValidEmail(email: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 
   private generateOtp() {

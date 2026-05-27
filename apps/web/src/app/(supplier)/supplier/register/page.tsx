@@ -6,16 +6,12 @@ import { useRouter } from 'next/navigation';
 import { m } from 'framer-motion';
 import { Check, Loader2, Store } from 'lucide-react';
 import OTPInput from '@/components/auth/OTPInput';
-import {
-  normalizeSupplierPhone, getSupplierRegistry, saveSupplierToRegistry,
-  type SupplierUser,
-} from '@/lib/supplier-store';
+import { getSupplierRegistry, saveSupplierToRegistry, type SupplierUser } from '@/lib/supplier-store';
 
 const DEV_OTP = '1234';
 
-function formatPhone(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  return digits.length > 4 ? `${digits.slice(0, 4)} ${digits.slice(4)}` : digits;
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
 }
 
 async function gqlFetch<T>(query: string, variables: Record<string, unknown>): Promise<T> {
@@ -36,7 +32,7 @@ const REGISTER_GQL = `
     registerSupplier(input: $input) {
       success
       message
-      phone
+      email
     }
   }
 `;
@@ -56,7 +52,7 @@ export default function SupplierRegisterPage() {
   const router = useRouter();
   const [step, setStep] = useState<'info' | 'otp' | 'success'>('info');
   const [ownerName, setOwnerName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [otpError, setOtpError] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -64,7 +60,7 @@ export default function SupplierRegisterPage() {
   const [attempts, setAttempts] = useState(3);
   const [countdown, setCountdown] = useState(60);
 
-  const cleanPhone = useMemo(() => normalizeSupplierPhone(phone), [phone]);
+  const cleanEmail = useMemo(() => normalizeEmail(email), [email]);
 
   async function sendOtp() {
     setError('');
@@ -72,15 +68,15 @@ export default function SupplierRegisterPage() {
       setError('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
       return;
     }
-    if (!/^[6789]\d{7}$/.test(cleanPhone)) {
-      setError('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError('И-мэйл хаяг буруу байна');
       return;
     }
     setLoading(true);
     try {
       const data = await gqlFetch<{ registerSupplier: { success: boolean; message: string } }>(
         REGISTER_GQL,
-        { input: { ownerName: ownerName.trim(), phone: cleanPhone } },
+        { input: { ownerName: ownerName.trim(), email: cleanEmail } },
       );
       if (!data.registerSupplier.success) {
         setError(data.registerSupplier.message || 'Алдаа гарлаа');
@@ -93,18 +89,18 @@ export default function SupplierRegisterPage() {
       // Dev fallback: create supplier locally if server unavailable
       if (process.env.NODE_ENV === 'development') {
         const reg = getSupplierRegistry();
-        if (reg[cleanPhone]) {
-          setError('Энэ дугаар бүртгэлтэй байна. Нэвтэрч орно уу.');
+        if (reg[cleanEmail]) {
+          setError('Энэ и-мэйл бүртгэлтэй байна. Нэвтэрч орно уу.');
           setLoading(false);
           return;
         }
         const newSupplier: SupplierUser = {
           id: `sup-${Date.now()}`,
           businessName: ownerName.trim(),
-          slug: cleanPhone,
+          slug: cleanEmail.replace(/[^a-z0-9]+/g, '-'),
           ownerName: ownerName.trim(),
-          phone: cleanPhone,
-          email: `${cleanPhone}@supplier.mn`,
+          phone: '',
+          email: cleanEmail,
           status: 'PENDING',
           commissionRate: 12,
           rating: 0,
@@ -112,7 +108,7 @@ export default function SupplierRegisterPage() {
           productCount: 0,
         };
         saveSupplierToRegistry(newSupplier);
-        console.log(`[Supplier Register OTP] ${cleanPhone}: ${DEV_OTP}`);
+        console.log(`[Supplier Register Email OTP] ${cleanEmail}: ${DEV_OTP}`);
         setDevOtp(DEV_OTP);
         setStep('otp');
         setCountdown(60);
@@ -130,7 +126,7 @@ export default function SupplierRegisterPage() {
     try {
       const data = await gqlFetch<{ verifySupplierOTP: { success: boolean; message: string } }>(
         VERIFY_GQL,
-        { input: { phone: cleanPhone, otp } },
+        { input: { email: cleanEmail, otp } },
       );
       if (!data.verifySupplierOTP.success) throw new Error(data.verifySupplierOTP.message);
       setStep('success'); // Don't set cookies — supplier needs admin approval first
@@ -146,10 +142,10 @@ export default function SupplierRegisterPage() {
         }
         // Upgrade status in registry so admin panel sees PENDING_APPROVAL
         const reg = getSupplierRegistry();
-        const found = reg[cleanPhone];
+        const found = reg[cleanEmail];
         if (found) {
           saveSupplierToRegistry({ ...found, status: 'PENDING_APPROVAL' });
-          console.log('NEW SUPPLIER REGISTERED:', { id: found.id, name: found.ownerName, phone: found.phone, status: 'PENDING_APPROVAL' });
+          console.log('NEW SUPPLIER REGISTERED:', { id: found.id, name: found.ownerName, email: found.email, status: 'PENDING_APPROVAL' });
         }
         setStep('success'); // Don't auto-login — supplier must await admin approval
       } else {
@@ -213,7 +209,7 @@ export default function SupplierRegisterPage() {
             {step === 'info' ? 'Нийлүүлэгчээр бүртгүүлэх' : 'Баталгаажуулах код'}
           </h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            {step === 'info' ? 'Мэдээллээ оруулна уу' : `${formatPhone(cleanPhone)} дугаарт код илгээлээ`}
+            {step === 'info' ? 'Мэдээллээ оруулна уу' : `${cleanEmail} хаягт код илгээлээ`}
           </p>
         </div>
 
@@ -229,12 +225,12 @@ export default function SupplierRegisterPage() {
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">Утасны дугаар*</span>
+              <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">И-мэйл хаяг*</span>
               <input
-                value={phone}
-                onChange={(e) => setPhone(formatPhone(e.target.value))}
-                placeholder="9911 2233"
-                inputMode="numeric"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="supplier@example.com"
+                type="email"
                 className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-brand/60"
               />
             </label>

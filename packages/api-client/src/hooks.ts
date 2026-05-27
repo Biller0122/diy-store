@@ -81,11 +81,11 @@ const DRIVER_STATUS_QUERY = `
 `;
 
 const SUPPLIER_LOGIN_MUTATION = `
-  mutation SupplierLogin($phone: String!) {
-    loginSupplier(phone: $phone) {
+  mutation SupplierLogin($email: String!) {
+    loginSupplier(email: $email) {
       success
       message
-      phone
+      email
     }
   }
 `;
@@ -179,10 +179,10 @@ export function useCustomerAuth() {
 
 export function useSupplierAuth() {
   const login = useMutation({
-    mutationFn: async (phone: string): Promise<AuthResponse<Supplier>> => {
-      const data = await shopFetch<{ loginSupplier: { success: boolean; message: string; phone?: string } }>(
+    mutationFn: async (email: string): Promise<AuthResponse<Supplier>> => {
+      const data = await shopFetch<{ loginSupplier: { success: boolean; message: string; email?: string } }>(
         SUPPLIER_LOGIN_MUTATION,
-        { phone },
+        { email },
       );
       return { success: data.loginSupplier.success, message: data.loginSupplier.message };
     },

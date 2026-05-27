@@ -55,14 +55,33 @@ export class SupplierResolver {
       const supplier = await this.supplierService.registerSupplier(input);
       return {
         success: true,
-        message: 'Баталгаажуулах код илгээгдлээ',
-        phone: supplier.phone,
+        message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
+        email: supplier.email,
       };
     } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Алдаа гарлаа. Дахин оролдоно уу.',
-        phone: null,
+        email: null,
+      };
+    }
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  async loginSupplier(@Args('email') email: string) {
+    try {
+      const supplier = await this.supplierService.loginSupplier(email);
+      return {
+        success: true,
+        message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
+        email: supplier.email,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Алдаа гарлаа. Дахин оролдоно уу.',
+        email: null,
       };
     }
   }

@@ -61,18 +61,19 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
 
   input RegisterSupplierInput {
     ownerName: String!
-    phone: String!
+    email: String!
+    phone: String
   }
 
   input VerifySupplierOTPInput {
-    phone: String!
+    email: String!
     otp: String!
   }
 
   type SupplierRegistrationResult {
     success: Boolean!
     message: String!
-    phone: String
+    email: String
   }
 
   type SupplierOTPResult {
@@ -129,6 +130,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     createSupplier(input: CreateSupplierInput!): Supplier!
     updateSupplier(id: ID!, input: UpdateSupplierInput!): Supplier!
     registerSupplier(input: RegisterSupplierInput!): SupplierRegistrationResult!
+    loginSupplier(email: String!): SupplierRegistrationResult!
     verifySupplierOTP(input: VerifySupplierOTPInput!): SupplierOTPResult!
     updateSupplierStatus(id: ID!, status: String!, reason: String): Supplier!
   }
