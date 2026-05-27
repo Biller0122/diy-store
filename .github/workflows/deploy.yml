@@ -1,0 +1,25 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd ~/diy-store
+            git stash
+            git pull origin main
+            docker compose -f docker-compose.aws.yml --env-file .env.production build web server
+            docker compose -f docker-compose.aws.yml --env-file .env.production up -d postgres-vendure redis server web
+            docker compose -f docker-compose.aws.yml --env-file .env.production ps
