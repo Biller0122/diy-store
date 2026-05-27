@@ -273,10 +273,10 @@ function LoginForm() {
           {/* Register success */}
           {tab === 'register' && regSuccess && (
             <div className="text-center py-8">
-              <p className="text-5xl mb-4">✉️</p>
+              <p className="text-5xl mb-4">✅</p>
               <h3 className="font-bold text-foreground text-lg mb-2">Бүртгэл амжилттай!</h3>
               <p className="text-sm text-foreground-muted mb-6">
-                {regEmail} хаяг руу баталгаажуулах имэйл илгээлээ. Имэйлийг нээж данс идэвхжүүлнэ үү.
+                {regEmail} хаягаар бүртгэл үүслээ. Одоо нэвтэрч болно.
               </p>
               <button
                 onClick={() => handleTabChange('login')}

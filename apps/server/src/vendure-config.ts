@@ -30,6 +30,7 @@ export const config: VendureConfig = {
   },
   authOptions: {
     tokenMethod: ['bearer', 'cookie'],
+    requireVerification: false,
     superadminCredentials: {
       identifier: process.env.SUPERADMIN_USERNAME || 'superadmin',
       password: process.env.SUPERADMIN_PASSWORD || 'superadmin',
@@ -94,28 +95,27 @@ export const config: VendureConfig = {
     DefaultJobQueuePlugin.init({ useDatabaseForBuffer: true }),
     DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: true }),
     EmailPlugin.init({
+      devMode: !process.env.SMTP_HOST,
+      outputPath: path.join(__dirname, '../static/email/test-emails'),
+      route: 'mailbox',
+      handlers: defaultEmailHandlers,
+      templatePath: path.join(__dirname, '../static/email/templates'),
       ...(process.env.SMTP_HOST
         ? {
-            devMode: false,
             transport: {
               type: 'smtp',
               host: process.env.SMTP_HOST,
               port: parseInt(process.env.SMTP_PORT || '587'),
+              secure: false,
               auth: {
                 user: process.env.SMTP_USER || '',
                 pass: process.env.SMTP_PASS || '',
               },
             },
           }
-        : {
-            devMode: true,
-          }),
-      outputPath: path.join(__dirname, '../static/email/test-emails'),
-      route: 'mailbox',
-      handlers: defaultEmailHandlers,
-      templatePath: path.join(__dirname, '../static/email/templates'),
+        : {}),
       globalTemplateVars: {
-        fromAddress: process.env.EMAIL_FROM || '"DIY Store" <noreply@diy-store.mn>',
+        fromAddress: process.env.SMTP_FROM || process.env.EMAIL_FROM || '"DIY Store" <noreply@diy-store.mn>',
         verifyEmailAddressUrl: `${process.env.STOREFRONT_URL || 'http://localhost:3000'}/verify`,
         passwordResetUrl: `${process.env.STOREFRONT_URL || 'http://localhost:3000'}/password-reset`,
         changeEmailAddressUrl: `${process.env.STOREFRONT_URL || 'http://localhost:3000'}/verify-email-address-change`,

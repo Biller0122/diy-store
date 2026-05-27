@@ -40,14 +40,26 @@ const LOGIN_MUTATION = `
         identifier
       }
       ... on InvalidCredentialsError {
+        errorCode
+        message
+      }
+      ... on NotVerifiedError {
+        errorCode
         message
       }
       ... on NativeAuthStrategyError {
+        errorCode
         message
       }
     }
   }
 `;
+
+const LOGIN_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_CREDENTIALS_ERROR: 'И-мэйл эсвэл нууц үг буруу байна',
+  NOT_VERIFIED_ERROR: 'И-мэйл баталгаажаагүй байна. Имэйлээ шалгана уу.',
+  NATIVE_AUTH_STRATEGY_ERROR: 'Нэвтрэх боломжгүй байна. Дахин оролдоно уу.',
+};
 
 const REGISTER_MUTATION = `
   mutation Register($input: RegisterCustomerInput!) {
@@ -119,12 +131,13 @@ export const useAuthStore = create<AuthState>()(
 
           const result = data.login;
           if (result.id) {
-            // fetch customer details
             await get().fetchActiveCustomer();
             set({ isLoading: false });
             return true;
           } else {
-            set({ isLoading: false, error: result.message ?? 'Нэвтрэхэд алдаа гарлаа' });
+            const errorCode = (result as any).errorCode as string | undefined;
+            const msg = (errorCode && LOGIN_ERROR_MESSAGES[errorCode]) ?? result.message ?? 'Нэвтрэхэд алдаа гарлаа';
+            set({ isLoading: false, error: msg });
             return false;
           }
         } catch (err: unknown) {
