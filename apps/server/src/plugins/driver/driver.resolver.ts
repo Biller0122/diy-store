@@ -1,9 +1,10 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { ID } from '@vendure/core';
+import { Allow, ID, Permission } from '@vendure/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Driver, DriverStatus } from './driver.entity';
 import { DriverService } from './driver.service';
+import type { RegisterDriverInput } from './driver.service';
 
 @Resolver()
 export class DriverResolver {
@@ -14,22 +15,26 @@ export class DriverResolver {
   ) {}
 
   @Query()
+  @Allow(Permission.Public)
   async drivers(@Args('status') status?: DriverStatus) {
     const where = status ? { status } : {};
     return this.driverRepo.find({ where, order: { createdAt: 'DESC' } });
   }
 
   @Query()
+  @Allow(Permission.Public)
   async driver(@Args('id') id: ID) {
     return this.driverService.getDriverById(String(id));
   }
 
   @Query()
+  @Allow(Permission.Public)
   async getDriverProfile(@Args('id') id: ID) {
     return this.driverService.getDriverById(String(id));
   }
 
   @Query()
+  @Allow(Permission.Public)
   async getNearbyDrivers(
     @Args('lat') lat: number,
     @Args('lng') lng: number,
@@ -39,9 +44,10 @@ export class DriverResolver {
   }
 
   @Mutation()
-  async registerDriver(@Args('ownerName') ownerName: string, @Args('phone') phone: string) {
+  @Allow(Permission.Public)
+  async registerDriver(@Args('input') input: RegisterDriverInput) {
     try {
-      const driver = await this.driverService.registerDriver(ownerName, phone);
+      const driver = await this.driverService.registerDriver(input);
       return { success: true, message: 'Баталгаажуулах код илгээгдлээ', phone: driver.phone };
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : 'Алдаа гарлаа', phone: null };
@@ -49,6 +55,7 @@ export class DriverResolver {
   }
 
   @Mutation()
+  @Allow(Permission.Public)
   async loginDriver(@Args('phone') phone: string) {
     try {
       const driver = await this.driverService.loginDriver(phone);
@@ -59,6 +66,7 @@ export class DriverResolver {
   }
 
   @Mutation()
+  @Allow(Permission.Public)
   async loginDriverByPassword(@Args('email') email: string, @Args('password') password: string) {
     try {
       const { driver, token } = await this.driverService.loginDriverByPassword(email, password);
@@ -69,6 +77,7 @@ export class DriverResolver {
   }
 
   @Mutation()
+  @Allow(Permission.Public)
   async verifyDriverOTP(@Args('phone') phone: string, @Args('otp') otp: string) {
     try {
       const { driver, token } = await this.driverService.verifyOTP(phone, otp);
@@ -79,12 +88,20 @@ export class DriverResolver {
   }
 
   @Mutation()
+  @Allow(Permission.Public)
   async updateDriverLocation(@Args('id') id: ID, @Args('lat') lat: number, @Args('lng') lng: number) {
     return this.driverService.updateDriverLocation(String(id), lat, lng);
   }
 
   @Mutation()
+  @Allow(Permission.Public)
   async setOnlineStatus(@Args('id') id: ID, @Args('isOnline') isOnline: boolean) {
     return this.driverService.setOnlineStatus(String(id), isOnline);
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  async updateDriverStatus(@Args('id') id: ID, @Args('status') status: DriverStatus) {
+    return this.driverService.updateDriverStatus(String(id), status);
   }
 }

@@ -12,7 +12,7 @@ async function createMockDriver(
   status: DriverStatus = DriverStatus.ACTIVE,
   phone = '88001122',
 ) {
-  const driver = await driverService.registerDriver('Ганбаатар', phone);
+  const driver = await driverService.registerDriver({ ownerName: 'Ганбаатар', phone });
   driver.status = status;
   return driver;
 }
@@ -21,15 +21,15 @@ describe('DriverService', () => {
   describe('registerDriver', () => {
     test('creates driver with PENDING status', async () => {
       const { driverService } = createService();
-      const result = await driverService.registerDriver('Ганбаатар', '88001122');
+      const result = await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
       expect(result.status).toBe(DriverStatus.PENDING_VERIFICATION);
       expect(result.vehicleType).toBe(VehicleType.MOTORCYCLE);
     });
 
     test('duplicate phone fails', async () => {
       const { driverService } = createService();
-      await driverService.registerDriver('Ганбаатар', '88001122');
-      await expect(driverService.registerDriver('Дорж', '88001122')).rejects.toThrow('бүртгэлтэй');
+      await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
+      await expect(driverService.registerDriver({ ownerName: 'Дорж', phone: '88001122' })).rejects.toThrow('бүртгэлтэй');
     });
   });
 

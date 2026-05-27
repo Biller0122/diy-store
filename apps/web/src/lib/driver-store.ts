@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { vendureShopFetch } from './vendure';
 
 export type DriverStatus = 'PENDING_VERIFICATION' | 'PENDING_APPROVAL' | 'ACTIVE' | 'SUSPENDED';
 
@@ -53,17 +54,81 @@ interface DriverState {
   hasHydrated: boolean;
   error: string | null;
   devOtp: string | null;
-  register: (ownerName: string, phone: string) => Promise<boolean>;
+  register: (input: DriverRegisterInput) => Promise<boolean>;
   requestLoginOtp: (phone: string) => Promise<boolean>;
   verifyOtp: (phone: string, otp: string) => Promise<boolean>;
   logout: () => void;
+  setDriver: (driver: DriverUser) => void;
   setOnlineStatus: (isOnline: boolean) => void;
   setStatus: (status: 'OFFLINE' | 'ONLINE' | 'BUSY') => void;
   setActiveDelivery: (delivery: ActiveDelivery | null) => void;
   clearError: () => void;
 }
 
+export interface DriverRegisterInput {
+  ownerName: string;
+  phone: string;
+  vehicleType?: DriverUser['vehicleType'];
+  vehiclePlate?: string;
+  vehicleModel?: string;
+  bankName?: string;
+  bankAccount?: string;
+}
+
 const DEV_OTP = '1234';
+
+const REGISTER_DRIVER_MUTATION = `
+  mutation RegisterDriver($input: RegisterDriverInput!) {
+    registerDriver(input: $input) {
+      success
+      message
+      phone
+    }
+  }
+`;
+
+const LOGIN_DRIVER_MUTATION = `
+  mutation LoginDriver($phone: String!) {
+    loginDriver(phone: $phone) {
+      success
+      message
+      phone
+    }
+  }
+`;
+
+const VERIFY_DRIVER_OTP_MUTATION = `
+  mutation VerifyDriverOTP($phone: String!, $otp: String!) {
+    verifyDriverOTP(phone: $phone, otp: $otp) {
+      success
+      message
+      driverId
+      token
+    }
+  }
+`;
+
+const DRIVER_QUERY = `
+  query Driver($id: ID!) {
+    driver(id: $id) {
+      id
+      firstName
+      lastName
+      phone
+      vehicleType
+      vehiclePlate
+      vehicleModel
+      status
+      isOnline
+      rating
+      totalDeliveries
+      todayEarnings
+      totalEarnings
+      bankName
+      bankAccount
+    }
+  }
+`;
 
 const MOCK_DRIVERS: Record<string, DriverUser> = {
   '88001122': {
@@ -133,6 +198,15 @@ function saveDriverToRegistry(driver: DriverUser) {
   }
 }
 
+function isNetworkError(error: unknown) {
+  return error instanceof TypeError || String(error).toLowerCase().includes('failed to fetch');
+}
+
+async function loadDriverFromApi(id: string): Promise<DriverUser | null> {
+  const data = await vendureShopFetch<{ driver: DriverUser | null }>(DRIVER_QUERY, { id });
+  return data.driver;
+}
+
 function splitName(ownerName: string) {
   const parts = ownerName.trim().split(/\s+/);
   return {
@@ -163,85 +237,159 @@ export const useDriverStore = create<DriverState>()(
       error: null,
       devOtp: null,
 
-      register: async (ownerName, phoneInput) => {
+      register: async (input) => {
         set({ isLoading: true, error: null });
-        await new Promise((resolve) => setTimeout(resolve, 500));
 
-        const phone = normalizePhone(phoneInput);
-        if (ownerName.trim().length < 2 || phone.length !== 8) {
+        const phone = normalizePhone(input.phone);
+        if (input.ownerName.trim().length < 2 || phone.length !== 8) {
           set({ isLoading: false, error: 'Мэдээллээ зөв оруулна уу.' });
           return false;
         }
 
-        const registry = getDriverRegistry();
-        if (registry[phone]) {
-          set({ isLoading: false, error: 'Энэ дугаар бүртгэлтэй байна.' });
-          return false;
-        }
+        try {
+          const data = await vendureShopFetch<{
+            registerDriver: { success: boolean; message: string; phone?: string | null };
+          }>(REGISTER_DRIVER_MUTATION, {
+            input: {
+              ...input,
+              phone,
+              ownerName: input.ownerName.trim(),
+            },
+          });
 
-        const { firstName, lastName } = splitName(ownerName);
-        const driver: DriverUser = {
-          id: `drv-${Date.now()}`,
-          firstName,
-          lastName,
-          phone,
-          vehicleType: 'MOTORCYCLE',
-          vehiclePlate: '',
-          vehicleModel: '',
-          status: 'PENDING_VERIFICATION',
-          isOnline: false,
-          rating: 5,
-          totalDeliveries: 0,
-          todayEarnings: 0,
-          totalEarnings: 0,
-        };
-        saveDriverToRegistry(driver);
-        console.log(`[Driver OTP] ${phone}: ${DEV_OTP}`);
-        set({ isLoading: false, devOtp: DEV_OTP });
-        return true;
+          if (!data.registerDriver.success) {
+            set({ isLoading: false, error: data.registerDriver.message, devOtp: null });
+            return false;
+          }
+
+          set({ isLoading: false, devOtp: null });
+          return true;
+        } catch (err) {
+          if (!(process.env.NODE_ENV === 'development' && isNetworkError(err))) {
+            set({ isLoading: false, error: err instanceof Error ? err.message : 'Бүртгэл илгээхэд алдаа гарлаа' });
+            return false;
+          }
+
+          const registry = getDriverRegistry();
+          if (registry[phone]) {
+            set({ isLoading: false, error: 'Энэ дугаар бүртгэлтэй байна.' });
+            return false;
+          }
+
+          const { firstName, lastName } = splitName(input.ownerName);
+          const driver: DriverUser = {
+            id: `drv-${Date.now()}`,
+            firstName,
+            lastName,
+            phone,
+            vehicleType: input.vehicleType || 'MOTORCYCLE',
+            vehiclePlate: input.vehiclePlate || '',
+            vehicleModel: input.vehicleModel || '',
+            bankName: input.bankName,
+            bankAccount: input.bankAccount,
+            status: 'PENDING_VERIFICATION',
+            isOnline: false,
+            rating: 5,
+            totalDeliveries: 0,
+            todayEarnings: 0,
+            totalEarnings: 0,
+          };
+          saveDriverToRegistry(driver);
+          console.log(`[Driver OTP] ${phone}: ${DEV_OTP}`);
+          set({ isLoading: false, devOtp: DEV_OTP });
+          return true;
+        }
       },
 
       requestLoginOtp: async (phoneInput) => {
         set({ isLoading: true, error: null });
-        await new Promise((resolve) => setTimeout(resolve, 500));
         const phone = normalizePhone(phoneInput);
-        const found = getDriverRegistry()[phone];
-        if (!found) {
-          set({ isLoading: false, error: 'Энэ дугаартай жолооч бүртгэлгүй байна.' });
+        try {
+          const data = await vendureShopFetch<{
+            loginDriver: { success: boolean; message: string; phone?: string | null };
+          }>(LOGIN_DRIVER_MUTATION, { phone });
+
+          if (!data.loginDriver.success) {
+            set({ isLoading: false, error: data.loginDriver.message, devOtp: null });
+            return false;
+          }
+
+          set({ isLoading: false, devOtp: null });
+          return true;
+        } catch (err) {
+          if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
+            const found = getDriverRegistry()[phone];
+            if (!found) {
+              set({ isLoading: false, error: 'Энэ дугаартай жолооч бүртгэлгүй байна.' });
+              return false;
+            }
+            if (found.status === 'SUSPENDED') {
+              set({ isLoading: false, error: 'Таны данс түр хаагдсан байна. Тусламж: 7700-XXXX' });
+              return false;
+            }
+            console.log(`[Driver Login OTP] ${phone}: ${DEV_OTP}`);
+            set({ isLoading: false, devOtp: DEV_OTP });
+            return true;
+          }
+
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'Код илгээхэд алдаа гарлаа' });
           return false;
         }
-        if (found.status === 'SUSPENDED') {
-          set({ isLoading: false, error: 'Таны данс түр хаагдсан байна. Тусламж: 7700-XXXX' });
-          return false;
-        }
-        console.log(`[Driver Login OTP] ${phone}: ${DEV_OTP}`);
-        set({ isLoading: false, devOtp: DEV_OTP });
-        return true;
       },
 
       verifyOtp: async (phoneInput, otp) => {
         set({ isLoading: true, error: null });
-        await new Promise((resolve) => setTimeout(resolve, 450));
         const phone = normalizePhone(phoneInput);
-        const found = getDriverRegistry()[phone];
-        if (!found || otp !== DEV_OTP) {
-          set({ isLoading: false, error: 'Код буруу байна. Дахин оролдоно уу.' });
-          return false;
+        try {
+          const data = await vendureShopFetch<{
+            verifyDriverOTP: { success: boolean; message: string; driverId?: string | null };
+          }>(VERIFY_DRIVER_OTP_MUTATION, { phone, otp });
+
+          if (!data.verifyDriverOTP.success || !data.verifyDriverOTP.driverId) {
+            set({ isLoading: false, error: data.verifyDriverOTP.message });
+            return false;
+          }
+
+          const driver = await loadDriverFromApi(data.verifyDriverOTP.driverId);
+          if (!driver) {
+            set({ isLoading: false, error: 'Жолоочийн мэдээлэл олдсонгүй' });
+            return false;
+          }
+
+          setDriverCookies(driver);
+          set({ driver, isOnline: driver.isOnline, isLoading: false, devOtp: null });
+          return true;
+        } catch (err) {
+          if (!(process.env.NODE_ENV === 'development' && isNetworkError(err))) {
+            set({ isLoading: false, error: err instanceof Error ? err.message : 'Код шалгахад алдаа гарлаа' });
+            return false;
+          }
+
+          const found = getDriverRegistry()[phone];
+          if (!found || otp !== DEV_OTP) {
+            set({ isLoading: false, error: 'Код буруу байна. Дахин оролдоно уу.' });
+            return false;
+          }
+          const nextDriver: DriverUser = {
+            ...found,
+            status: found.status === 'PENDING_VERIFICATION' ? 'PENDING_APPROVAL' : found.status,
+            isOnline: false,
+          };
+          saveDriverToRegistry(nextDriver);
+          setDriverCookies(nextDriver);
+          set({ driver: nextDriver, isOnline: false, isLoading: false, devOtp: null });
+          return true;
         }
-        const nextDriver: DriverUser = {
-          ...found,
-          status: found.status === 'PENDING_VERIFICATION' ? 'PENDING_APPROVAL' : found.status,
-          isOnline: false,
-        };
-        saveDriverToRegistry(nextDriver);
-        setDriverCookies(nextDriver);
-        set({ driver: nextDriver, isOnline: false, isLoading: false, devOtp: null });
-        return true;
       },
 
       logout: () => {
         setDriverCookies(null);
         set({ driver: null, activeDelivery: null, isOnline: false });
+      },
+
+      setDriver: (driver) => {
+        setDriverCookies(driver);
+        set({ driver, isOnline: driver.isOnline });
       },
 
       setOnlineStatus: (isOnline) =>

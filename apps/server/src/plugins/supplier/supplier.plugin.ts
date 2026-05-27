@@ -4,6 +4,7 @@ import gql from 'graphql-tag';
 import { Supplier } from './supplier.entity';
 import { SupplierResolver } from './supplier.resolver';
 import { SupplierService } from './supplier.service';
+import { EmailOtpService } from '../../services/email-otp.service';
 
 const SUPPLIER_SCHEMA_EXTENSION = gql`
   type SupplierList {
@@ -63,6 +64,10 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     ownerName: String!
     email: String!
     phone: String
+    businessName: String
+    registrationNumber: String
+    district: String
+    address: String
   }
 
   input VerifySupplierOTPInput {
@@ -138,7 +143,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
 
 @VendurePlugin({
   imports: [PluginCommonModule, TypeOrmModule.forFeature([Supplier])],
-  providers: [SupplierResolver, SupplierService],
+  providers: [SupplierResolver, SupplierService, EmailOtpService],
   entities: [Supplier as any],
   shopApiExtensions: {
     schema: SUPPLIER_SCHEMA_EXTENSION,

@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Clock, Phone } from 'lucide-react';
+import { useSupplierStore } from '@/lib/supplier-store';
+import { vendureShopFetch } from '@/lib/vendure';
 
 type PendingInfo = {
   supplierId?: string;
@@ -16,10 +19,42 @@ type PendingInfo = {
 };
 
 export default function SupplierPendingPage() {
+  const router = useRouter();
+  const { supplier, setSupplier } = useSupplierStore();
   const [info, setInfo] = useState<PendingInfo>({});
+
+  async function refreshStatus() {
+    if (!supplier) {
+      window.location.reload();
+      return;
+    }
+    const data = await vendureShopFetch<{ supplier: typeof supplier | null }>(`
+      query Supplier($id: ID!) {
+        supplier(id: $id) {
+          id businessName slug logo ownerName phone email district
+          status commissionRate rating reviewCount productCount
+        }
+      }
+    `, { id: supplier.id });
+    if (!data.supplier) return;
+    setSupplier(data.supplier);
+    if (data.supplier.status === 'ACTIVE') router.replace('/supplier/dashboard');
+    if (data.supplier.status === 'SUSPENDED' || data.supplier.status === 'REJECTED') router.replace('/supplier/login');
+  }
 
   useEffect(() => {
     const load = () => {
+      if (supplier) {
+        setInfo({
+          supplierId: supplier.id,
+          businessName: supplier.businessName,
+          ownerName: supplier.ownerName,
+          phone: supplier.phone,
+          email: supplier.email,
+          district: supplier.district,
+        });
+        return;
+      }
       try {
         setInfo(JSON.parse(localStorage.getItem('diy-supplier-pending') || '{}'));
       } catch {
@@ -29,7 +64,7 @@ export default function SupplierPendingPage() {
     load();
     const timer = window.setInterval(load, 30000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [supplier]);
 
   return (
     <div className="min-h-screen bg-dark px-4 py-10">
@@ -73,6 +108,12 @@ export default function SupplierPendingPage() {
           <Link href="/" className="mt-4 inline-flex rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white">
             Нүүр хуудас руу буцах
           </Link>
+          <button
+            onClick={() => void refreshStatus()}
+            className="ml-3 mt-4 inline-flex rounded-xl border border-[var(--glass-border)] px-4 py-2.5 text-sm font-bold text-foreground-muted hover:text-foreground"
+          >
+            Статус шинэчлэх
+          </button>
         </div>
       </div>
     </div>

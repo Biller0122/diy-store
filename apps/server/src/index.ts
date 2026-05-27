@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { bootstrap, runMigrations } from '@vendure/core';
 import { config } from './vendure-config';
 import { startRealtimeServer } from './plugins/realtime.plugin';

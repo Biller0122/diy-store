@@ -1,13 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
+import { EmailOtpService } from '../../services/email-otp.service';
 import { Supplier, SupplierStatus } from './supplier.entity';
 
 export interface RegisterSupplierInput {
   ownerName: string;
   email: string;
   phone?: string;
+  businessName?: string;
+  registrationNumber?: string;
+  district?: string;
+  address?: string;
 }
 
 export interface VerifySupplierOtpInput {
@@ -20,13 +25,17 @@ export class SupplierService {
   constructor(
     @InjectRepository(Supplier)
     private readonly supplierRepo: Repository<Supplier>,
+    @Optional()
+    private readonly emailOtpService?: EmailOtpService,
   ) {}
 
   async registerSupplier(input: RegisterSupplierInput): Promise<Supplier> {
     const ownerName = input.ownerName.trim();
     const email = this.normalizeEmail(input.email);
     const phone = input.phone ? this.normalizePhone(input.phone) : '';
+    const businessName = input.businessName?.trim() || ownerName;
     if (ownerName.length < 2) throw new Error('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
+    if (businessName.length < 2) throw new Error('Байгууллагын нэр 2-оос дээш тэмдэгттэй байх ёстой');
     if (!this.isValidEmail(email)) throw new Error('И-мэйл хаяг буруу байна');
     if (phone && !/^[6789]\d{7}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
     if (await this.getSupplierByEmail(email)) throw new Error('Энэ и-мэйл хаяг бүртгэлтэй байна');
@@ -36,9 +45,12 @@ export class SupplierService {
     const supplier = this.supplierRepo.create({
       ownerName,
       phone,
-      businessName: ownerName,
-      slug: await this.createUniqueSlug(ownerName),
+      businessName,
+      slug: await this.createUniqueSlug(businessName),
       email,
+      registrationNumber: input.registrationNumber?.trim() || null,
+      district: input.district?.trim() || null,
+      address: input.address?.trim() || null,
       status: SupplierStatus.PENDING_VERIFICATION,
       otpCode,
       otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
@@ -53,6 +65,7 @@ export class SupplierService {
 
     const saved = await this.supplierRepo.save(supplier);
     console.log(`[Supplier Email OTP] ${email}: ${otpCode}`);
+    await this.emailOtpService?.sendSupplierOtp(email, otpCode, 'register');
     console.log('[Supplier] NEW REGISTRATION:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
     return saved;
   }
@@ -69,6 +82,7 @@ export class SupplierService {
     supplier.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
     const saved = await this.supplierRepo.save(supplier);
     console.log(`[Supplier Login Email OTP] ${email}: ${saved.otpCode}`);
+    await this.emailOtpService?.sendSupplierOtp(email, saved.otpCode, 'login');
     return saved;
   }
 

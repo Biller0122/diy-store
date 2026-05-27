@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { m } from 'framer-motion';
 import OTPInput from '@/components/auth/OTPInput';
 import { useDriverStore } from '@/lib/driver-store';
@@ -12,11 +13,17 @@ function formatPhone(value: string) {
 }
 
 export default function DriverRegisterPage() {
-  const { register, verifyOtp, isLoading, error, devOtp, clearError, logout } = useDriverStore();
+  const router = useRouter();
+  const { register, verifyOtp, isLoading, error, devOtp, clearError } = useDriverStore();
   const [step, setStep] = useState<'form' | 'otp' | 'success'>('form');
   const [ownerName, setOwnerName] = useState('');
   const [phone, setPhone] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<{ ownerName?: string; phone?: string }>({});
+  const [vehicleType, setVehicleType] = useState<'MOTORCYCLE' | 'CAR' | 'VAN' | 'TRUCK'>('MOTORCYCLE');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ ownerName?: string; phone?: string; vehiclePlate?: string; vehicleModel?: string }>({});
 
   async function submitInfo(event: React.FormEvent) {
     event.preventDefault();
@@ -24,17 +31,26 @@ export default function DriverRegisterPage() {
     const nextErrors: typeof fieldErrors = {};
     if (ownerName.trim().length < 2) nextErrors.ownerName = 'Овог нэрээ 2-оос дээш тэмдэгтээр оруулна уу.';
     if (!/^[6789]\d{7}$/.test(phone.replace(/\D/g, ''))) nextErrors.phone = 'Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой.';
+    if (vehiclePlate.trim().length < 3) nextErrors.vehiclePlate = 'Улсын дугаараа оруулна уу.';
+    if (vehicleModel.trim().length < 2) nextErrors.vehicleModel = 'Тээврийн хэрэгслийн загвараа оруулна уу.';
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    const ok = await register(ownerName, phone);
+    const ok = await register({
+      ownerName,
+      phone,
+      vehicleType,
+      vehiclePlate: vehiclePlate.trim(),
+      vehicleModel: vehicleModel.trim(),
+      bankName: bankName.trim(),
+      bankAccount: bankAccount.trim(),
+    });
     if (ok) setStep('otp');
   }
 
   async function completeOtp(otp: string) {
     const ok = await verifyOtp(phone, otp);
     if (ok) {
-      logout();
-      setStep('success');
+      router.push('/driver/pending');
     }
   }
 
@@ -97,6 +113,69 @@ export default function DriverRegisterPage() {
                   />
                   {fieldErrors.phone && <p className="mt-2 text-xs text-error">{fieldErrors.phone}</p>}
                   {error && <p className="mt-2 text-xs text-error">{error}</p>}
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-foreground-muted">Тээврийн хэрэгсэл</label>
+                  <select
+                    value={vehicleType}
+                    onChange={(event) => setVehicleType(event.target.value as typeof vehicleType)}
+                    className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-foreground outline-none transition focus:border-brand"
+                  >
+                    <option value="MOTORCYCLE">Мотоцикл</option>
+                    <option value="CAR">Машин</option>
+                    <option value="VAN">Фургон</option>
+                    <option value="TRUCK">Ачааны машин</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-foreground-muted">Улсын дугаар</label>
+                    <input
+                      value={vehiclePlate}
+                      onChange={(event) => setVehiclePlate(event.target.value.toUpperCase())}
+                      placeholder="1234 УБА"
+                      className={`w-full rounded-2xl border bg-white/[0.04] px-4 py-4 text-foreground outline-none transition focus:border-brand ${
+                        fieldErrors.vehiclePlate ? 'border-error/70' : 'border-white/10'
+                      }`}
+                    />
+                    {fieldErrors.vehiclePlate && <p className="mt-2 text-xs text-error">{fieldErrors.vehiclePlate}</p>}
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-foreground-muted">Загвар</label>
+                    <input
+                      value={vehicleModel}
+                      onChange={(event) => setVehicleModel(event.target.value)}
+                      placeholder="Toyota Prius"
+                      className={`w-full rounded-2xl border bg-white/[0.04] px-4 py-4 text-foreground outline-none transition focus:border-brand ${
+                        fieldErrors.vehicleModel ? 'border-error/70' : 'border-white/10'
+                      }`}
+                    />
+                    {fieldErrors.vehicleModel && <p className="mt-2 text-xs text-error">{fieldErrors.vehicleModel}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-foreground-muted">Банк</label>
+                    <input
+                      value={bankName}
+                      onChange={(event) => setBankName(event.target.value)}
+                      placeholder="Хаан банк"
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-foreground outline-none transition focus:border-brand"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-foreground-muted">Данс</label>
+                    <input
+                      value={bankAccount}
+                      onChange={(event) => setBankAccount(event.target.value.replace(/\D/g, ''))}
+                      placeholder="5000000000"
+                      inputMode="numeric"
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-foreground outline-none transition focus:border-brand"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 py-2 text-center text-xs text-foreground-muted">

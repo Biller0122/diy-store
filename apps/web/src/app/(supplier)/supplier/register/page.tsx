@@ -7,6 +7,7 @@ import { m } from 'framer-motion';
 import { Check, Loader2, Store } from 'lucide-react';
 import OTPInput from '@/components/auth/OTPInput';
 import { getSupplierRegistry, saveSupplierToRegistry, type SupplierUser } from '@/lib/supplier-store';
+import { vendureShopFetch } from '@/lib/vendure';
 
 const DEV_OTP = '1234';
 
@@ -14,17 +15,8 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
-async function gqlFetch<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  const res = await fetch(process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) throw new Error('NETWORK');
-  const json = await res.json();
-  if (json.errors?.length) throw new Error(json.errors[0]?.message || 'SERVER');
-  return json.data as T;
+function isNetworkError(error: unknown) {
+  return error instanceof TypeError || String(error).toLowerCase().includes('failed to fetch');
 }
 
 const REGISTER_GQL = `
@@ -52,6 +44,11 @@ export default function SupplierRegisterPage() {
   const router = useRouter();
   const [step, setStep] = useState<'info' | 'otp' | 'success'>('info');
   const [ownerName, setOwnerName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [district, setDistrict] = useState('');
+  const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [otpError, setOtpError] = useState('');
   const [error, setError] = useState('');
@@ -68,26 +65,44 @@ export default function SupplierRegisterPage() {
       setError('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
       return;
     }
+    if (businessName.trim().length < 2) {
+      setError('Байгууллагын нэр 2-оос дээш тэмдэгттэй байх ёстой');
+      return;
+    }
+    if (!/^[6789]\d{7}$/.test(phone.replace(/\D/g, ''))) {
+      setError('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setError('И-мэйл хаяг буруу байна');
       return;
     }
     setLoading(true);
     try {
-      const data = await gqlFetch<{ registerSupplier: { success: boolean; message: string } }>(
+      const data = await vendureShopFetch<{ registerSupplier: { success: boolean; message: string } }>(
         REGISTER_GQL,
-        { input: { ownerName: ownerName.trim(), email: cleanEmail } },
+        {
+          input: {
+            ownerName: ownerName.trim(),
+            businessName: businessName.trim(),
+            phone: phone.replace(/\D/g, ''),
+            registrationNumber: registrationNumber.trim(),
+            district: district.trim(),
+            address: address.trim(),
+            email: cleanEmail,
+          },
+        },
       );
       if (!data.registerSupplier.success) {
         setError(data.registerSupplier.message || 'Алдаа гарлаа');
         return;
       }
-      setDevOtp(DEV_OTP);
+      setDevOtp('');
       setStep('otp');
       setCountdown(60);
-    } catch {
+    } catch (err) {
       // Dev fallback: create supplier locally if server unavailable
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
         const reg = getSupplierRegistry();
         if (reg[cleanEmail]) {
           setError('Энэ и-мэйл бүртгэлтэй байна. Нэвтэрч орно уу.');
@@ -96,11 +111,12 @@ export default function SupplierRegisterPage() {
         }
         const newSupplier: SupplierUser = {
           id: `sup-${Date.now()}`,
-          businessName: ownerName.trim(),
+          businessName: businessName.trim(),
           slug: cleanEmail.replace(/[^a-z0-9]+/g, '-'),
           ownerName: ownerName.trim(),
-          phone: '',
+          phone: phone.replace(/\D/g, ''),
           email: cleanEmail,
+          district: district.trim(),
           status: 'PENDING',
           commissionRate: 12,
           rating: 0,
@@ -113,7 +129,7 @@ export default function SupplierRegisterPage() {
         setStep('otp');
         setCountdown(60);
       } else {
-        setError('Интернэт холболт шалгана уу');
+        setError(err instanceof Error ? err.message : 'И-мэйл илгээхэд алдаа гарлаа');
       }
     } finally {
       setLoading(false);
@@ -124,15 +140,25 @@ export default function SupplierRegisterPage() {
     setOtpError('');
     setLoading(true);
     try {
-      const data = await gqlFetch<{ verifySupplierOTP: { success: boolean; message: string } }>(
+      const data = await vendureShopFetch<{ verifySupplierOTP: { success: boolean; message: string; supplierId?: string | null } }>(
         VERIFY_GQL,
         { input: { email: cleanEmail, otp } },
       );
       if (!data.verifySupplierOTP.success) throw new Error(data.verifySupplierOTP.message);
+      localStorage.setItem('diy-supplier-pending', JSON.stringify({
+        supplierId: data.verifySupplierOTP.supplierId ?? undefined,
+        ownerName: ownerName.trim(),
+        businessName: businessName.trim(),
+        phone: phone.replace(/\D/g, ''),
+        registrationNumber: registrationNumber.trim(),
+        district: district.trim(),
+        address: address.trim(),
+        email: cleanEmail,
+      }));
       setStep('success'); // Don't set cookies — supplier needs admin approval first
-    } catch {
+    } catch (err) {
       // Dev fallback: verify OTP locally
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
         if (otp !== DEV_OTP) {
           const left = Math.max(attempts - 1, 0);
           setAttempts(left);
@@ -151,19 +177,18 @@ export default function SupplierRegisterPage() {
       } else {
         const left = Math.max(attempts - 1, 0);
         setAttempts(left);
-        setOtpError(`Код буруу байна. ${left} оролдлого үлдлээ`);
+        setOtpError(err instanceof Error ? err.message : `Код буруу байна. ${left} оролдлого үлдлээ`);
       }
     } finally {
       setLoading(false);
     }
   }
 
-  function resend() {
+  async function resend() {
     if (countdown > 0) return;
     setOtpError('');
     setAttempts(3);
-    setDevOtp(DEV_OTP);
-    setCountdown(60);
+    await sendOtp();
   }
 
   useEffect(() => {
@@ -188,10 +213,10 @@ export default function SupplierRegisterPage() {
             Манай баг 24 цагийн дотор утсаар холбогдох болно.
           </p>
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/supplier/pending')}
             className="mt-6 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white"
           >
-            Нүүр хуудас руу буцах
+            Статус харах
           </button>
         </div>
       </div>
@@ -225,6 +250,15 @@ export default function SupplierRegisterPage() {
               />
             </label>
             <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">Байгууллагын нэр*</span>
+              <input
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="Барилга Маркет ХХК"
+                className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-brand/60"
+              />
+            </label>
+            <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">И-мэйл хаяг*</span>
               <input
                 value={email}
@@ -232,6 +266,46 @@ export default function SupplierRegisterPage() {
                 placeholder="supplier@example.com"
                 type="email"
                 className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-brand/60"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">Утас*</span>
+                <input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="99112233"
+                  inputMode="numeric"
+                  className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-brand/60"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">Регистр</span>
+                <input
+                  value={registrationNumber}
+                  onChange={(e) => setRegistrationNumber(e.target.value)}
+                  placeholder="1234567"
+                  className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-brand/60"
+                />
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">Дүүрэг</span>
+              <input
+                value={district}
+                onChange={(e) => setDistrict(e.target.value)}
+                placeholder="Баянзүрх"
+                className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-brand/60"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">Хаяг</span>
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Дэлгүүрийн хаяг"
+                rows={3}
+                className="w-full resize-none rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-brand/60"
               />
             </label>
             {error && <p className="rounded-xl bg-error/10 px-3 py-2 text-sm text-error">{error}</p>}

@@ -51,7 +51,7 @@ export function proxy(request: NextRequest) {
       return redirectTo(request, '/supplier/login');
     }
     const supplierStatus = request.cookies.get('diy-supplier-status')?.value;
-    if (supplierStatus === 'PENDING' || supplierStatus === 'PENDING_APPROVAL') {
+    if (supplierStatus === 'PENDING' || supplierStatus === 'PENDING_APPROVAL' || supplierStatus === 'PENDING_VERIFICATION') {
       return NextResponse.redirect(new URL('/supplier/pending', request.url));
     }
     if (supplierStatus === 'SUSPENDED' || supplierStatus === 'REJECTED') {

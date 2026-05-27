@@ -2,8 +2,9 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { vendureShopFetch } from './vendure';
 
-export type SupplierStatus = 'PENDING' | 'PENDING_APPROVAL' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED';
+export type SupplierStatus = 'PENDING_VERIFICATION' | 'PENDING' | 'PENDING_APPROVAL' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED';
 
 export interface SupplierUser {
   id: string;
@@ -35,6 +36,47 @@ interface SupplierState {
 
 const DEV_OTP = '1234';
 const SUPPLIER_REGISTRY_KEY = 'diy-supplier-registry';
+
+const LOGIN_SUPPLIER_MUTATION = `
+  mutation LoginSupplier($email: String!) {
+    loginSupplier(email: $email) {
+      success
+      message
+      email
+    }
+  }
+`;
+
+const VERIFY_SUPPLIER_OTP_MUTATION = `
+  mutation VerifySupplierOTP($input: VerifySupplierOTPInput!) {
+    verifySupplierOTP(input: $input) {
+      success
+      message
+      supplierId
+      token
+    }
+  }
+`;
+
+const SUPPLIER_QUERY = `
+  query Supplier($id: ID!) {
+    supplier(id: $id) {
+      id
+      businessName
+      slug
+      logo
+      ownerName
+      phone
+      email
+      district
+      status
+      commissionRate
+      rating
+      reviewCount
+      productCount
+    }
+  }
+`;
 
 // Built-in mock suppliers for development/testing
 const BUILT_IN_SUPPLIERS: Record<string, SupplierUser> = {
@@ -131,6 +173,15 @@ function findSupplierByEmail(email: string) {
   return Object.values(getSupplierRegistry()).find((supplier) => normalizeSupplierEmail(supplier.email) === cleanEmail);
 }
 
+function isNetworkError(error: unknown) {
+  return error instanceof TypeError || String(error).toLowerCase().includes('failed to fetch');
+}
+
+async function loadSupplierFromApi(id: string): Promise<SupplierUser | null> {
+  const data = await vendureShopFetch<{ supplier: SupplierUser | null }>(SUPPLIER_QUERY, { id });
+  return data.supplier;
+}
+
 export function setSupplierCookies(supplier: SupplierUser | null) {
   if (typeof document === 'undefined') return;
   if (!supplier) {
@@ -153,35 +204,79 @@ export const useSupplierStore = create<SupplierState>()(
 
       requestLoginOtp: async (emailInput) => {
         set({ isLoading: true, error: null });
-        await new Promise((r) => setTimeout(r, 500));
         const email = normalizeSupplierEmail(emailInput);
-        const found = findSupplierByEmail(email);
-        if (!found) {
-          set({ isLoading: false, error: 'Энэ и-мэйлтэй нийлүүлэгч бүртгэлгүй байна.' });
+        try {
+          const data = await vendureShopFetch<{
+            loginSupplier: { success: boolean; message: string; email?: string | null };
+          }>(LOGIN_SUPPLIER_MUTATION, { email });
+
+          if (!data.loginSupplier.success) {
+            set({ isLoading: false, error: data.loginSupplier.message, devOtp: null });
+            return false;
+          }
+
+          set({ isLoading: false, devOtp: null });
+          return true;
+        } catch (err) {
+          if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
+            const found = findSupplierByEmail(email);
+            if (!found) {
+              set({ isLoading: false, error: 'Энэ и-мэйлтэй нийлүүлэгч бүртгэлгүй байна.' });
+              return false;
+            }
+            if (found.status === 'SUSPENDED') {
+              set({ isLoading: false, error: 'Таны данс түр хаагдсан байна. Тусламж: 7700-8899' });
+              return false;
+            }
+            console.log(`[Supplier Email OTP] ${email}: ${DEV_OTP}`);
+            set({ isLoading: false, devOtp: DEV_OTP });
+            return true;
+          }
+
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'И-мэйл илгээхэд алдаа гарлаа' });
           return false;
         }
-        if (found.status === 'SUSPENDED') {
-          set({ isLoading: false, error: 'Таны данс түр хаагдсан байна. Тусламж: 7700-8899' });
-          return false;
-        }
-        console.log(`[Supplier Email OTP] ${email}: ${DEV_OTP}`);
-        set({ isLoading: false, devOtp: DEV_OTP });
-        return true;
       },
 
       verifyLoginOtp: async (emailInput, otp) => {
         set({ isLoading: true, error: null });
-        await new Promise((r) => setTimeout(r, 400));
         const email = normalizeSupplierEmail(emailInput);
-        const found = findSupplierByEmail(email);
-        if (!found || otp !== DEV_OTP) {
-          set({ isLoading: false, error: 'Код буруу байна. Дахин оролдоно уу.' });
+        try {
+          const data = await vendureShopFetch<{
+            verifySupplierOTP: { success: boolean; message: string; supplierId?: string | null };
+          }>(VERIFY_SUPPLIER_OTP_MUTATION, { input: { email, otp } });
+
+          if (!data.verifySupplierOTP.success || !data.verifySupplierOTP.supplierId) {
+            set({ isLoading: false, error: data.verifySupplierOTP.message });
+            return { success: false };
+          }
+
+          const supplier = await loadSupplierFromApi(data.verifySupplierOTP.supplierId);
+          if (!supplier) {
+            set({ isLoading: false, error: 'Нийлүүлэгчийн мэдээлэл олдсонгүй' });
+            return { success: false };
+          }
+
+          setSupplierCookies(supplier);
+          set({ supplier, isLoading: false, devOtp: null });
+          const isPending = supplier.status === 'PENDING' || supplier.status === 'PENDING_APPROVAL' || supplier.status === 'PENDING_VERIFICATION';
+          return { success: true, redirectTo: isPending ? '/supplier/pending' : '/supplier/dashboard' };
+        } catch (err) {
+          if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
+            const found = findSupplierByEmail(email);
+            if (!found || otp !== DEV_OTP) {
+              set({ isLoading: false, error: 'Код буруу байна. Дахин оролдоно уу.' });
+              return { success: false };
+            }
+            setSupplierCookies(found);
+            set({ supplier: found, isLoading: false, devOtp: null });
+            const isPending = found.status === 'PENDING' || found.status === 'PENDING_APPROVAL' || found.status === 'PENDING_VERIFICATION';
+            return { success: true, redirectTo: isPending ? '/supplier/pending' : '/supplier/dashboard' };
+          }
+
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'Код шалгахад алдаа гарлаа' });
           return { success: false };
         }
-        setSupplierCookies(found);
-        set({ supplier: found, isLoading: false, devOtp: null });
-        const isPending = found.status === 'PENDING' || found.status === 'PENDING_APPROVAL';
-        return { success: true, redirectTo: isPending ? '/supplier/pending' : '/supplier/dashboard' };
       },
 
       logout: () => {

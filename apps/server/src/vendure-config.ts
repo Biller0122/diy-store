@@ -7,11 +7,14 @@ import {
 import { AssetServerPlugin } from '@vendure/asset-server-plugin';
 import { AdminUiPlugin } from '@vendure/admin-ui-plugin';
 import { defaultEmailHandlers, EmailPlugin } from '@vendure/email-plugin';
+import { config as loadEnv } from 'dotenv';
 import path from 'path';
 import { qpayPaymentHandler, monpayPaymentHandler } from './plugins/payment';
 import { ReviewPlugin } from './plugins/review/review.plugin';
 import { SupplierPlugin } from './plugins/supplier/supplier.plugin';
 import { DriverPlugin } from './plugins/driver/driver.plugin';
+
+loadEnv({ path: path.join(__dirname, '../../../.env') });
 
 const useSqliteDevDb = process.env.DB_TYPE === 'sqlite' || process.env.DB_TYPE === 'better-sqlite3';
 

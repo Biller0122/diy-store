@@ -4,6 +4,16 @@ import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { Driver, DriverStatus, VehicleType } from './driver.entity';
 
+export interface RegisterDriverInput {
+  ownerName: string;
+  phone: string;
+  vehicleType?: VehicleType;
+  vehiclePlate?: string;
+  vehicleModel?: string;
+  bankName?: string;
+  bankAccount?: string;
+}
+
 @Injectable()
 export class DriverService {
   constructor(
@@ -11,9 +21,9 @@ export class DriverService {
     private readonly driverRepo: Repository<Driver>,
   ) {}
 
-  async registerDriver(ownerName: string, phoneInput: string) {
-    const name = ownerName.trim();
-    const phone = this.normalizePhone(phoneInput);
+  async registerDriver(input: RegisterDriverInput) {
+    const name = input.ownerName.trim();
+    const phone = this.normalizePhone(input.phone);
     if (name.length < 2) throw new Error('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
     if (!/^\d{8}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой байх ёстой');
     if (await this.driverRepo.findOne({ where: { phone } })) throw new Error('Энэ дугаар бүртгэлтэй байна');
@@ -23,7 +33,11 @@ export class DriverService {
       firstName,
       lastName: rest.join(' ') || '',
       phone,
-      vehicleType: VehicleType.MOTORCYCLE,
+      vehicleType: input.vehicleType || VehicleType.MOTORCYCLE,
+      vehiclePlate: input.vehiclePlate?.trim() || null,
+      vehicleModel: input.vehicleModel?.trim() || null,
+      bankName: input.bankName?.trim() || null,
+      bankAccount: input.bankAccount?.trim() || null,
       status: DriverStatus.PENDING_VERIFICATION,
       isOnline: false,
       rating: 5,
@@ -109,6 +123,16 @@ export class DriverService {
     }
     await this.driverRepo.update(driverId, { isOnline });
     return this.getDriverById(driverId);
+  }
+
+  async updateDriverStatus(id: string, status: DriverStatus): Promise<Driver> {
+    const driver = await this.getDriverById(id);
+    if (!driver) throw new Error('Жолооч олдсонгүй');
+    driver.status = status;
+    if (status !== DriverStatus.ACTIVE) {
+      driver.isOnline = false;
+    }
+    return this.driverRepo.save(driver);
   }
 
   async getAvailableDrivers(lat: number, lng: number, radiusKm: number) {

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { m } from 'framer-motion';
 import { Clock, CheckCircle2, Phone } from 'lucide-react';
 import { useDriverStore } from '@/lib/driver-store';
+import { vendureShopFetch } from '@/lib/vendure';
 
 const STEPS = [
   { label: 'Бүртгэл илгээсэн', done: true },
@@ -16,7 +17,27 @@ const STEPS = [
 
 export default function DriverPendingPage() {
   const router = useRouter();
-  const { driver, logout } = useDriverStore();
+  const { driver, logout, setDriver } = useDriverStore();
+
+  async function refreshStatus() {
+    if (!driver) {
+      window.location.reload();
+      return;
+    }
+    const data = await vendureShopFetch<{ driver: typeof driver | null }>(`
+      query Driver($id: ID!) {
+        driver(id: $id) {
+          id firstName lastName phone vehicleType vehiclePlate vehicleModel
+          status isOnline rating totalDeliveries todayEarnings totalEarnings
+          bankName bankAccount
+        }
+      }
+    `, { id: driver.id });
+    if (!data.driver) return;
+    setDriver(data.driver);
+    if (data.driver.status === 'ACTIVE') router.replace('/driver/dashboard');
+    if (data.driver.status === 'SUSPENDED') router.replace('/driver/login');
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-dark px-4 py-12">
@@ -73,7 +94,7 @@ export default function DriverPendingPage() {
 
         <div className="mt-6 flex flex-col gap-3">
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => void refreshStatus()}
             className="w-full py-3 rounded-xl bg-brand text-white text-sm font-bold hover:bg-brand-hover transition-colors"
           >
             Статус шинэчлэх

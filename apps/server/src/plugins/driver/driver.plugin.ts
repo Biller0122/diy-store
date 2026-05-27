@@ -41,6 +41,16 @@ const DRIVER_SCHEMA_EXTENSION = gql`
     token: String
   }
 
+  input RegisterDriverInput {
+    ownerName: String!
+    phone: String!
+    vehicleType: String
+    vehiclePlate: String
+    vehicleModel: String
+    bankName: String
+    bankAccount: String
+  }
+
   extend type Query {
     drivers(status: String): [Driver!]!
     driver(id: ID!): Driver
@@ -49,12 +59,13 @@ const DRIVER_SCHEMA_EXTENSION = gql`
   }
 
   extend type Mutation {
-    registerDriver(ownerName: String!, phone: String!): DriverAuthResult!
+    registerDriver(input: RegisterDriverInput!): DriverAuthResult!
     loginDriver(phone: String!): DriverAuthResult!
     loginDriverByPassword(email: String!, password: String!): DriverOTPResult!
     verifyDriverOTP(phone: String!, otp: String!): DriverOTPResult!
     updateDriverLocation(id: ID!, lat: Float!, lng: Float!): Driver
     setOnlineStatus(id: ID!, isOnline: Boolean!): Driver
+    updateDriverStatus(id: ID!, status: String!): Driver
   }
 `;
 
