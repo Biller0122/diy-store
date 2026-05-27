@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useDriverStore } from '../lib/store';
@@ -28,6 +29,7 @@ const C = {
 };
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { login, isLoading, error, clearError } = useDriverStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,7 +40,10 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     clearError();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await login(email.trim(), password);
+    const success = await login(email.trim(), password);
+    if (success) {
+      router.replace('/(tabs)');
+    }
   };
 
   return (
