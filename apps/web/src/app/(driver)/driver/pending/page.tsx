@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { m } from 'framer-motion';
 import { Clock, CheckCircle2, Phone } from 'lucide-react';
 import { useDriverStore } from '@/lib/driver-store';
@@ -14,6 +15,7 @@ const STEPS = [
 ];
 
 export default function DriverPendingPage() {
+  const router = useRouter();
   const { driver, logout } = useDriverStore();
 
   return (
@@ -77,7 +79,7 @@ export default function DriverPendingPage() {
             Статус шинэчлэх
           </button>
           <button
-            onClick={() => { logout(); window.location.href = '/driver/login'; }}
+            onClick={() => { logout(); router.push('/driver/login'); }}
             className="w-full py-3 rounded-xl border border-[var(--glass-border)] text-foreground-muted text-sm font-semibold hover:text-foreground transition-colors"
           >
             Гарах

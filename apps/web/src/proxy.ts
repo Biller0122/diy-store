@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 function redirectTo(request: NextRequest, path: string, withRedirect = true) {
-  const url = new URL(path, request.url);
+  // Use the forwarded host from the reverse proxy (Caddy) to avoid embedding
+  // the internal container hostname in redirect Location headers.
+  const host =
+    request.headers.get('x-forwarded-host') ||
+    request.headers.get('host') ||
+    request.nextUrl.host;
+  const proto = request.headers.get('x-forwarded-proto') || request.nextUrl.protocol.replace(':', '');
+  const url = new URL(path, `${proto}://${host}`);
   if (withRedirect && path !== '/') {
     url.searchParams.set('redirect', request.nextUrl.pathname);
   }

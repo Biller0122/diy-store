@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import OTPInput from '@/components/auth/OTPInput';
 import { useDriverStore } from '@/lib/driver-store';
 
@@ -10,12 +11,8 @@ function formatPhone(value: string) {
   return digits.length > 4 ? `${digits.slice(0, 4)} ${digits.slice(4)}` : digits;
 }
 
-function rememberDriverSession() {
-  document.cookie = `diy-driver=1; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax`;
-  document.cookie = `diy-driver-status=ACTIVE; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax`;
-}
-
 export default function DriverLoginPage() {
+  const router = useRouter();
   const { requestLoginOtp, verifyOtp, isLoading, error, devOtp, clearError } = useDriverStore();
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('');
@@ -37,8 +34,10 @@ export default function DriverLoginPage() {
   async function completeOtp(otp: string) {
     const ok = await verifyOtp(phone, otp);
     if (ok) {
-      rememberDriverSession();
-      window.location.assign('/api/driver/session?next=/driver/dashboard');
+      // verifyOtp already sets cookies via setDriverCookies(); use client-side
+      // navigation so the redirect never touches a server URL that could leak
+      // the internal container hostname.
+      router.push('/driver/dashboard');
     }
   }
 

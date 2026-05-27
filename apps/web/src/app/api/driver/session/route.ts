@@ -14,10 +14,22 @@ function setDriverCookies(response: NextResponse) {
   return response;
 }
 
+function getPublicOrigin(request: Request): string {
+  // Prefer forwarded headers set by the reverse proxy (Caddy) over the raw
+  // request URL, which may contain the internal container hostname.
+  const host =
+    request.headers.get('x-forwarded-host') ||
+    request.headers.get('host') ||
+    new URL(request.url).host;
+  const proto = request.headers.get('x-forwarded-proto') || 'http';
+  return `${proto}://${host}`;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const next = url.searchParams.get('next') || '/driver/dashboard';
-  return setDriverCookies(NextResponse.redirect(new URL(next, request.url)));
+  const origin = getPublicOrigin(request);
+  return setDriverCookies(NextResponse.redirect(new URL(next, origin)));
 }
 
 export async function POST() {
