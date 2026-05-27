@@ -68,6 +68,28 @@ const ERROR_MAP: Record<string, string> = {
   NATIVE_AUTH_STRATEGY_ERROR: 'Нэвтрэх боломжгүй байна',
 };
 
+const DEMO_DRIVER_EMAIL = 'starbiller@gmail.com';
+const DEMO_DRIVER_PASSWORD = 'Odbayar22';
+
+const DEMO_DRIVER: Driver = {
+  id: 'demo-driver-001',
+  firstName: 'Одбаяр',
+  lastName: 'Жолооч',
+  emailAddress: DEMO_DRIVER_EMAIL,
+  phone: '99112233',
+  vehicleType: 'MOTORCYCLE',
+  vehiclePlate: '7777УБА',
+  vehicleModel: 'Honda PCX150',
+  rating: 4.8,
+  totalDeliveries: 143,
+  todayEarnings: 45000,
+  totalEarnings: 3200000,
+};
+
+function isDemoDriverLogin(email: string, password: string) {
+  return email.toLowerCase() === DEMO_DRIVER_EMAIL && password === DEMO_DRIVER_PASSWORD;
+}
+
 function buildDriver(customer: {
   id: string;
   firstName: string;
@@ -115,6 +137,12 @@ export const useDriverStore = create<DriverStore>()(
 
       login: async (email, password) => {
         set({ isLoading: true, error: null });
+
+        if (isDemoDriverLogin(email.trim(), password)) {
+          set({ driver: DEMO_DRIVER, isLoading: false, error: null });
+          return true;
+        }
+
         try {
           const data = await shopFetch<{ login: Record<string, unknown> }>(LOGIN_MUTATION, {
             username: email,
