@@ -131,45 +131,63 @@ const DRIVER_QUERY = `
   }
 `;
 
+// Offline fallback — used only when server (localhost:3001) is unreachable
+// IDs match DB auto-increment from fresh SQLite: 1, 2, 3
 const MOCK_DRIVERS: Record<string, DriverUser> = {
-  '88001122': {
-    id: 'drv-001',
-    firstName: 'Анхбаяр',
-    lastName: 'Дамдин',
-    phone: '88001122',
+  '88112233': {
+    id: '1',
+    firstName: 'Нарантуяа',
+    lastName: 'Болд',
+    phone: '88112233',
     vehicleType: 'MOTORCYCLE',
-    vehiclePlate: '2345-УБА',
-    vehicleModel: 'Honda CB150',
+    vehiclePlate: '1234-УБА',
+    vehicleModel: 'Honda CB150R',
     status: 'ACTIVE',
     isOnline: false,
-    rating: 4.9,
-    totalDeliveries: 1243,
-    todayEarnings: 2450000,
-    totalEarnings: 854000000,
-    bankName: 'Хаан банк',
-    bankAccount: '5030123456',
-  },
-  // Test account (spec: phone 77009988, status ACTIVE)
-  '77009988': {
-    id: 'drv-t1',
-    firstName: 'Тест',
-    lastName: 'Жолооч',
-    phone: '77009988',
-    vehicleType: 'CAR',
-    vehiclePlate: '9988-УБА',
-    vehicleModel: 'Toyota Prius',
-    status: 'ACTIVE',
-    isOnline: false,
-    rating: 4.7,
-    totalDeliveries: 256,
+    rating: 5,
+    totalDeliveries: 0,
     todayEarnings: 0,
-    totalEarnings: 180000000,
+    totalEarnings: 0,
+    bankName: 'Хаан банк',
+    bankAccount: '5030001122',
+  },
+  '88224466': {
+    id: '2',
+    firstName: 'Ганболд',
+    lastName: 'Мөнхбат',
+    phone: '88224466',
+    vehicleType: 'CAR',
+    vehiclePlate: '5678-УВА',
+    vehicleModel: 'Toyota Prius 2020',
+    status: 'ACTIVE',
+    isOnline: false,
+    rating: 5,
+    totalDeliveries: 0,
+    todayEarnings: 0,
+    totalEarnings: 0,
     bankName: 'Хас банк',
-    bankAccount: '5011223344',
+    bankAccount: '5012244660',
+  },
+  '88336699': {
+    id: '3',
+    firstName: 'Мөнхцэцэг',
+    lastName: 'Дорж',
+    phone: '88336699',
+    vehicleType: 'VAN',
+    vehiclePlate: '9012-УВА',
+    vehicleModel: 'Hyundai H1',
+    status: 'ACTIVE',
+    isOnline: false,
+    rating: 5,
+    totalDeliveries: 0,
+    todayEarnings: 0,
+    totalEarnings: 0,
+    bankName: 'Голомт банк',
+    bankAccount: '1300336699',
   },
 };
 
-const DRIVER_REGISTRY_KEY = 'diy-driver-registry';
+const DRIVER_REGISTRY_KEY = 'diy-driver-registry-v2';
 
 function normalizePhone(phone: string) {
   return phone.replace(/\D/g, '').slice(-8);
@@ -407,7 +425,7 @@ export const useDriverStore = create<DriverState>()(
       clearError: () => set({ error: null }),
     }),
     {
-      name: 'diy-driver-auth',
+      name: 'diy-driver-auth-v2',
       partialize: (state) => ({
         driver: state.driver,
         isOnline: state.isOnline,

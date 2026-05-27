@@ -43,11 +43,11 @@ export function generateOrderNumber(): string {
   return `DIY-${year}-${String(orderCounter).padStart(5, '0')}`;
 }
 
-// Mock online drivers around UB
+// Mock online drivers around UB — IDs match fresh SQLite auto-increment (1,2,3)
 const MOCK_DRIVERS: OnlineDriver[] = [
-  { id: 'drv-001', firstName: 'Анхбаяр', lastName: 'Дамдин', phone: '88001122', vehicleType: 'MOTORCYCLE', vehiclePlate: '2345-УБА', rating: 4.9, lat: 47.9180, lng: 106.9900 },
-  { id: 'drv-002', firstName: 'Болд', lastName: 'Ганбаяр', phone: '99112233', vehicleType: 'CAR', vehiclePlate: '3456-УВА', rating: 4.7, lat: 47.9100, lng: 106.9200 },
-  { id: 'drv-003', firstName: 'Сарнай', lastName: 'Батсүх', phone: '88223344', vehicleType: 'MOTORCYCLE', vehiclePlate: '1234-УБА', rating: 4.8, lat: 47.9300, lng: 106.9100 },
+  { id: '1', firstName: 'Нарантуяа', lastName: 'Болд', phone: '88112233', vehicleType: 'MOTORCYCLE', vehiclePlate: '1234-УБА', rating: 4.9, lat: 47.9185, lng: 106.9170 },
+  { id: '2', firstName: 'Ганболд', lastName: 'Мөнхбат', phone: '88224466', vehicleType: 'CAR', vehiclePlate: '5678-УВА', rating: 4.7, lat: 47.9200, lng: 106.9300 },
+  { id: '3', firstName: 'Мөнхцэцэг', lastName: 'Дорж', phone: '88336699', vehicleType: 'VAN', vehiclePlate: '9012-УВА', rating: 4.8, lat: 47.9150, lng: 106.9050 },
 ];
 
 function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineDriver[] {

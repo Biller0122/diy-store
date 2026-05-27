@@ -18,8 +18,10 @@ export class DeliveryResolver {
 
   @Query()
   async activeDeliveriesForDriver(@Args('driverId') driverId: string) {
+    const { In } = await import('typeorm');
     return this.deliveryRepo.find({
-      where: { driverId, status: DeliveryStatus.IN_PROGRESS },
+      where: { driverId, status: In([DeliveryStatus.ACCEPTED, DeliveryStatus.IN_PROGRESS]) as any },
+      order: { createdAt: 'DESC' },
     });
   }
 

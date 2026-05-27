@@ -78,62 +78,33 @@ const SUPPLIER_QUERY = `
   }
 `;
 
-// Built-in mock suppliers for development/testing
+// Offline fallback — used only when server (localhost:3001) is unreachable
+// Emails match registered suppliers in DB
 const BUILT_IN_SUPPLIERS: Record<string, SupplierUser> = {
-  // Test account (spec: phone 88001122, status ACTIVE)
-  '88001122': {
-    id: 'sup-t1',
-    businessName: 'Ганцоо барилгын материал',
-    slug: 'gantso-bariltgiin-material',
-    ownerName: 'Ганцоо Батбаяр',
-    phone: '88001122',
-    email: 'info@gantso.mn',
-    district: 'Баянзүрх',
-    status: 'ACTIVE',
-    commissionRate: 8,
-    rating: 4.8,
-    reviewCount: 312,
-    productCount: 145,
-  },
-  '99001122': {
-    id: 'sup-001',
-    businessName: 'БудагМаркет ХХК',
-    slug: 'budag-market',
-    ownerName: 'Дорж Баатар',
-    phone: '99001122',
-    email: 'info@budagmarket.mn',
+  'info@mongolbariltga.mn': {
+    id: '1',
+    businessName: 'МонголБарилга ХХК',
+    slug: 'mongolbariltga-khkh',
+    ownerName: 'Болд Ганбаяр',
+    phone: '99112244',
+    email: 'info@mongolbariltga.mn',
     district: 'Баянзүрх',
     status: 'ACTIVE',
     commissionRate: 10,
-    rating: 4.7,
-    reviewCount: 234,
-    productCount: 210,
+    rating: 0,
+    reviewCount: 0,
+    productCount: 0,
   },
-  '99003344': {
-    id: 'sup-002',
-    businessName: 'Тоног Хэрэгсэл ХХК',
-    slug: 'tonog-kheregseel',
-    ownerName: 'Болд Энхбаяр',
-    phone: '99003344',
-    email: 'info@tonog.mn',
+  'info@tulgatonog.mn': {
+    id: '2',
+    businessName: 'ТулгаТоног ХХК',
+    slug: 'tulgatonog-khkh',
+    ownerName: 'Мөнхбаяр Энхбат',
+    phone: '99223355',
+    email: 'info@tulgatonog.mn',
     district: 'Сүхбаатар',
     status: 'ACTIVE',
-    commissionRate: 8,
-    rating: 4.5,
-    reviewCount: 89,
-    productCount: 256,
-  },
-  // Pending test account
-  '99004455': {
-    id: 'sup-p1',
-    businessName: 'Шинэ нийлүүлэгч',
-    slug: 'shine-niilueulech',
-    ownerName: 'Тест Хэрэглэгч',
-    phone: '99004455',
-    email: 'pending@test.mn',
-    district: 'Хан-Уул',
-    status: 'PENDING',
-    commissionRate: 12,
+    commissionRate: 10,
     rating: 0,
     reviewCount: 0,
     productCount: 0,

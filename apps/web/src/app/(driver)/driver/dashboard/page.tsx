@@ -6,13 +6,7 @@ import { ArrowRight, Navigation, Star, Wallet } from 'lucide-react';
 import DeliveryRequestPopup from '@/components/driver/DeliveryRequestPopup';
 import { useDriverStore, VEHICLE_LABEL, type ActiveDelivery } from '@/lib/driver-store';
 
-const RECENT_DELIVERIES = [
-  { id: 'D-1092', address: 'Чингэлтэй, 3-р хороо', amount: 850000, time: '12:40' },
-  { id: 'D-1091', address: 'Баянзүрх, 10-р хороо', amount: 650000, time: '11:15' },
-  { id: 'D-1090', address: 'Хан-Уул, 15-р хороо', amount: 920000, time: '09:50' },
-  { id: 'D-1089', address: 'Сүхбаатар, 8-р хороо', amount: 700000, time: 'Өчигдөр' },
-  { id: 'D-1088', address: 'Баянгол, 6-р хороо', amount: 780000, time: 'Өчигдөр' },
-];
+const RECENT_DELIVERIES: { id: string; address: string; amount: number; time: string }[] = [];
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:3002';
 
