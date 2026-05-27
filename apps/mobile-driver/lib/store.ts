@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { shopFetch, LOGIN_MUTATION, ACTIVE_CUSTOMER_QUERY, LOGOUT_MUTATION } from './api';
+import {
+  DRIVER_PROFILE_QUERY,
+  LOGIN_DRIVER_BY_PASSWORD_MUTATION,
+  LOGIN_DRIVER_MUTATION,
+  LOGOUT_MUTATION,
+  REGISTER_DRIVER_MUTATION,
+  SET_ONLINE_STATUS_MUTATION,
+  VERIFY_DRIVER_OTP_MUTATION,
+  shopFetch,
+} from './api';
 
 export interface Driver {
   id: string;
@@ -10,8 +19,10 @@ export interface Driver {
   emailAddress: string;
   phone: string;
   vehicleType: 'MOTORCYCLE' | 'CAR' | 'VAN';
-  vehiclePlate: string;
-  vehicleModel: string;
+  vehiclePlate: string | null;
+  vehicleModel: string | null;
+  status?: string;
+  isOnline?: boolean;
   rating: number;
   totalDeliveries: number;
   todayEarnings: number;
@@ -55,7 +66,7 @@ interface DriverStore {
 
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  toggleOnline: () => void;
+  toggleOnline: () => Promise<void>;
   acceptDelivery: (request: DeliveryRequest) => void;
   rejectDelivery: () => void;
   completeDelivery: () => void;
@@ -70,24 +81,27 @@ const ERROR_MAP: Record<string, string> = {
 
 const DEMO_DRIVER_EMAIL = 'starbiller@gmail.com';
 const DEMO_DRIVER_PASSWORD = 'Odbayar22';
-
-const DEMO_DRIVER: Driver = {
-  id: 'demo-driver-001',
-  firstName: 'Одбаяр',
-  lastName: 'Жолооч',
-  emailAddress: DEMO_DRIVER_EMAIL,
-  phone: '99112233',
-  vehicleType: 'MOTORCYCLE',
-  vehiclePlate: '7777УБА',
-  vehicleModel: 'Honda PCX150',
-  rating: 4.8,
-  totalDeliveries: 143,
-  todayEarnings: 45000,
-  totalEarnings: 3200000,
-};
+const DEMO_DRIVER_PHONE = '99112233';
+const DEV_OTP = '1234';
 
 function isDemoDriverLogin(email: string, password: string) {
   return email.toLowerCase() === DEMO_DRIVER_EMAIL && password === DEMO_DRIVER_PASSWORD;
+}
+
+type DriverProfileResponse = {
+  getDriverProfile: Omit<Driver, 'emailAddress'> & {
+    emailAddress?: string;
+    vehicleType: Driver['vehicleType'];
+  };
+};
+
+function normalizeDbDriver(driver: DriverProfileResponse['getDriverProfile']): Driver {
+  return {
+    ...driver,
+    emailAddress: driver.emailAddress ?? DEMO_DRIVER_EMAIL,
+    vehiclePlate: driver.vehiclePlate ?? 'Бүртгээгүй',
+    vehicleModel: driver.vehicleModel ?? 'Бүртгээгүй',
+  };
 }
 
 function buildDriver(customer: {
@@ -139,37 +153,29 @@ export const useDriverStore = create<DriverStore>()(
         set({ isLoading: true, error: null });
 
         if (isDemoDriverLogin(email.trim(), password)) {
-          set({ driver: DEMO_DRIVER, isLoading: false, error: null });
-          return true;
-        }
+          try {
+            const auth = await shopFetch<{
+              loginDriverByPassword: { success: boolean; message: string; driverId: string | null; token: string | null };
+            }>(LOGIN_DRIVER_BY_PASSWORD_MUTATION, { email: email.trim(), password });
+            if (!auth.loginDriverByPassword.success || !auth.loginDriverByPassword.driverId) {
+              set({ isLoading: false, error: auth.loginDriverByPassword.message });
+              return false;
+            }
 
-        try {
-          const data = await shopFetch<{ login: Record<string, unknown> }>(LOGIN_MUTATION, {
-            username: email,
-            password,
-          });
-          const result = data.login;
-          if (!result.id) {
-            const code = result.errorCode as string | undefined;
-            const msg = (code && ERROR_MAP[code]) ?? (result.message as string) ?? 'Нэвтрэхэд алдаа гарлаа';
-            set({ isLoading: false, error: msg });
+            const profile = await shopFetch<DriverProfileResponse>(DRIVER_PROFILE_QUERY, {
+              id: auth.loginDriverByPassword.driverId,
+            });
+            set({ driver: normalizeDbDriver(profile.getDriverProfile), isOnline: profile.getDriverProfile.isOnline ?? false, isLoading: false, error: null });
+            return true;
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Сүлжээний алдаа';
+            set({ isLoading: false, error: message });
             return false;
           }
-
-          const me = await shopFetch<{ activeCustomer: { id: string; firstName: string; lastName: string; emailAddress: string; phoneNumber?: string } | null }>(
-            ACTIVE_CUSTOMER_QUERY,
-          );
-          if (!me.activeCustomer) {
-            set({ isLoading: false, error: 'Хэрэглэгчийн мэдээлэл олдсонгүй' });
-            return false;
-          }
-          set({ driver: buildDriver(me.activeCustomer), isLoading: false });
-          return true;
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Сүлжээний алдаа';
-          set({ isLoading: false, error: message });
-          return false;
         }
+
+        set({ isLoading: false, error: 'Жолоочийн эрхээр нэвтрэх бүртгэл олдсонгүй' });
+        return false;
       },
 
       logout: () => {
@@ -181,10 +187,25 @@ export const useDriverStore = create<DriverStore>()(
         set({ driver: null, isOnline: false, activeDelivery: null, pendingRequest: null, error: null });
       },
 
-      toggleOnline: () => {
-        const { isOnline } = get();
+      toggleOnline: async () => {
+        const { isOnline, driver } = get();
+        if (!driver) return;
         const newOnline = !isOnline;
-        set({ isOnline: newOnline });
+        set({ isOnline: newOnline, error: null });
+
+        try {
+          const updated = await shopFetch<{ setOnlineStatus: { isOnline: boolean } | null }>(
+            SET_ONLINE_STATUS_MUTATION,
+            { id: driver.id, isOnline: newOnline },
+          );
+          if (updated.setOnlineStatus) {
+            set({ isOnline: updated.setOnlineStatus.isOnline });
+          }
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Онлайн төлөв шинэчлэхэд алдаа гарлаа';
+          set({ isOnline, error: message });
+          return;
+        }
 
         if (newOnline) {
           if (pendingRequestTimer) clearTimeout(pendingRequestTimer);

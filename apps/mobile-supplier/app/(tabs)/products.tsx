@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SupplierProduct } from '@/lib/types';
+import { ADMIN_PRODUCTS_QUERY, adminFetch } from '@/lib/api';
 
 const C = {
   bg: '#08080E',
@@ -128,6 +129,22 @@ export default function ProductsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState<SupplierProduct[]>(MOCK_PRODUCTS);
+
+  useEffect(() => {
+    let mounted = true;
+    adminFetch<{ products: { items: SupplierProduct[] } }>(ADMIN_PRODUCTS_QUERY, { skip: 0, take: 50 })
+      .then((data) => {
+        if (mounted && data.products.items.length > 0) {
+          setProducts(data.products.items);
+        }
+      })
+      .catch(() => {
+        // Keep bundled fallback data when admin API auth is unavailable.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const filtered = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),

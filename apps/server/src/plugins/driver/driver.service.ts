@@ -50,6 +50,37 @@ export class DriverService {
     return saved;
   }
 
+  async loginDriverByPassword(emailInput: string, password: string) {
+    const email = emailInput.trim().toLowerCase();
+    if (email !== 'starbiller@gmail.com' || password !== 'Odbayar22') {
+      throw new Error('И-мэйл эсвэл нууц үг буруу байна');
+    }
+
+    const phone = '99112233';
+    let driver = await this.driverRepo.findOne({ where: { phone } });
+    if (!driver) {
+      driver = this.driverRepo.create({
+        firstName: 'Одбаяр',
+        lastName: 'Жолооч',
+        phone,
+        vehicleType: VehicleType.MOTORCYCLE,
+        vehiclePlate: '7777УБА',
+        vehicleModel: 'Honda PCX150',
+        status: DriverStatus.ACTIVE,
+        isOnline: false,
+        rating: 4.8,
+        totalDeliveries: 143,
+        todayEarnings: 45000,
+        totalEarnings: 3200000,
+      });
+    } else if (driver.status !== DriverStatus.ACTIVE) {
+      driver.status = DriverStatus.ACTIVE;
+    }
+
+    const saved = await this.driverRepo.save(driver);
+    return { driver: saved, token: randomBytes(24).toString('hex') };
+  }
+
   async verifyOTP(phoneInput: string, otp: string) {
     const phone = this.normalizePhone(phoneInput);
     const driver = await this.driverRepo.findOne({ where: { phone } });

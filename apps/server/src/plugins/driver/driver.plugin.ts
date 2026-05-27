@@ -51,6 +51,7 @@ const DRIVER_SCHEMA_EXTENSION = gql`
   extend type Mutation {
     registerDriver(ownerName: String!, phone: String!): DriverAuthResult!
     loginDriver(phone: String!): DriverAuthResult!
+    loginDriverByPassword(email: String!, password: String!): DriverOTPResult!
     verifyDriverOTP(phone: String!, otp: String!): DriverOTPResult!
     updateDriverLocation(id: ID!, lat: Float!, lng: Float!): Driver
     setOnlineStatus(id: ID!, isOnline: Boolean!): Driver

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
+import { COLLECTIONS_QUERY, PRODUCTS_QUERY, shopFetch } from '@/lib/api';
 
 const MOCK_SUPPLIERS = [
   { id: '1', name: 'Зочин Буд', rating: 4.8, time: '20-30 мин', slug: 'zochin-bud' },
@@ -37,6 +39,23 @@ const MOCK_PRODUCTS = [
   { id: '4', name: 'Цемент М400 50кг', price: 42000, slug: 'cement-m400' },
 ];
 
+const SUPPLIERS_QUERY = `
+  query Suppliers {
+    suppliers(take: 8, skip: 0) {
+      items {
+        id
+        businessName
+        slug
+        rating
+      }
+    }
+  }
+`;
+
+type HomeSupplier = { id: string; name: string; rating: number; time: string; slug: string };
+type HomeCategory = { id: string; icon: string; label: string };
+type HomeProduct = { id: string; name: string; price: number; slug: string };
+
 const TRUST_ITEMS = [
   { icon: '⚡', label: 'Хурдан хүргэлт' },
   { icon: '✅', label: 'Баталгаат чанар' },
@@ -59,6 +78,70 @@ function StarRating({ rating }: { rating: number }) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const [suppliers, setSuppliers] = useState<HomeSupplier[]>(MOCK_SUPPLIERS);
+  const [categories, setCategories] = useState<HomeCategory[]>(MOCK_CATEGORIES);
+  const [products, setProducts] = useState<HomeProduct[]>(MOCK_PRODUCTS);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadHomeData() {
+      try {
+        const [supplierData, collectionData, productData] = await Promise.all([
+          shopFetch<{ suppliers: { items: Array<{ id: string; businessName: string; slug: string; rating: number }> } }>(
+            SUPPLIERS_QUERY,
+          ),
+          shopFetch<{ collections: { items: Array<{ id: string; name: string; slug: string }> } }>(
+            COLLECTIONS_QUERY,
+            { options: { take: 8 } },
+          ),
+          shopFetch<{
+            products: {
+              items: Array<{
+                id: string;
+                name: string;
+                slug: string;
+                variants: Array<{ priceWithTax: number }>;
+              }>;
+            };
+          }>(PRODUCTS_QUERY, { options: { take: 8 } }),
+        ]);
+
+        if (!mounted) return;
+        setSuppliers(
+          supplierData.suppliers.items.map((supplier) => ({
+            id: supplier.id,
+            name: supplier.businessName,
+            slug: supplier.slug,
+            rating: supplier.rating || 5,
+            time: '20-40 мин',
+          })),
+        );
+        setCategories(
+          collectionData.collections.items.map((collection, index) => ({
+            id: collection.id,
+            icon: MOCK_CATEGORIES[index % MOCK_CATEGORIES.length]?.icon ?? '🛠️',
+            label: collection.name,
+          })),
+        );
+        setProducts(
+          productData.products.items.map((product) => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            price: product.variants[0]?.priceWithTax ?? 0,
+          })),
+        );
+      } catch {
+        // Keep bundled fallback data when API is unreachable.
+      }
+    }
+
+    loadHomeData();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -93,7 +176,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
         <FlatList
-          data={MOCK_SUPPLIERS}
+          data={suppliers}
           keyExtractor={(item) => item.id}
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -123,7 +206,7 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>Ангилал</Text>
         </View>
         <View style={styles.categoryGrid}>
-          {MOCK_CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <TouchableOpacity key={cat.id} style={styles.categoryCard} activeOpacity={0.75}>
               <Text style={styles.categoryIcon}>{cat.icon}</Text>
               <Text style={styles.categoryLabel}>{cat.label}</Text>
@@ -139,7 +222,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
         <FlatList
-          data={MOCK_PRODUCTS}
+          data={products}
           keyExtractor={(item) => item.id}
           horizontal
           showsHorizontalScrollIndicator={false}

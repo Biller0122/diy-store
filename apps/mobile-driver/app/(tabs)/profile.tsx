@@ -127,9 +127,9 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Тээврийн хэрэгсэл</Text>
           <View style={styles.card}>
-            <InfoRow icon="car-outline" label="Загвар" value={driver.vehicleModel} />
+            <InfoRow icon="car-outline" label="Загвар" value={driver.vehicleModel ?? 'Бүртгээгүй'} />
             <View style={styles.rowDivider} />
-            <InfoRow icon="document-text-outline" label="Улсын дугаар" value={driver.vehiclePlate} />
+            <InfoRow icon="document-text-outline" label="Улсын дугаар" value={driver.vehiclePlate ?? 'Бүртгээгүй'} />
             <View style={styles.rowDivider} />
             <InfoRow
               icon="bicycle-outline"

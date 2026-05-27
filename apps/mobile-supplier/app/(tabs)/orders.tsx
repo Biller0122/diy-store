@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SupplierOrder, TabFilter } from '@/lib/types';
+import { ADMIN_ORDERS_QUERY, adminFetch } from '@/lib/api';
 
 const C = {
   bg: '#08080E',
@@ -226,13 +227,37 @@ function timeAgo(dateStr: string): string {
 
 export default function OrdersScreen() {
   const [activeTab, setActiveTab] = useState<TabFilter>('pending');
+  const [liveOrders, setLiveOrders] = useState<SupplierOrder[] | null>(null);
 
-  const orders =
+  useEffect(() => {
+    let mounted = true;
+    adminFetch<{ orders: { items: SupplierOrder[] } }>(ADMIN_ORDERS_QUERY, { state: null })
+      .then((data) => {
+        if (mounted) setLiveOrders(data.orders.items);
+      })
+      .catch(() => {
+        // Keep bundled fallback data when admin API auth is unavailable.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const fallbackOrders =
     activeTab === 'pending'
       ? PENDING_ORDERS
       : activeTab === 'active'
       ? ACTIVE_ORDERS
       : DONE_ORDERS;
+  const orders = liveOrders
+    ? liveOrders.filter((order) =>
+        activeTab === 'pending'
+          ? order.state === 'PaymentAuthorized' || order.state === 'PaymentSettled'
+          : activeTab === 'active'
+          ? order.state === 'PartiallyShipped' || order.state === 'Shipped' || order.state === 'PartiallyDelivered'
+          : order.state === 'Delivered' || order.state === 'Cancelled',
+      )
+    : fallbackOrders;
 
   const handleAccept = async (order: SupplierOrder) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);

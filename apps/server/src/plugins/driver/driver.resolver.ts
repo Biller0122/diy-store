@@ -59,6 +59,16 @@ export class DriverResolver {
   }
 
   @Mutation()
+  async loginDriverByPassword(@Args('email') email: string, @Args('password') password: string) {
+    try {
+      const { driver, token } = await this.driverService.loginDriverByPassword(email, password);
+      return { success: true, message: 'Амжилттай', driverId: String(driver.id), token };
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Нэвтрэхэд алдаа гарлаа', driverId: null, token: null };
+    }
+  }
+
+  @Mutation()
   async verifyDriverOTP(@Args('phone') phone: string, @Args('otp') otp: string) {
     try {
       const { driver, token } = await this.driverService.verifyOTP(phone, otp);
