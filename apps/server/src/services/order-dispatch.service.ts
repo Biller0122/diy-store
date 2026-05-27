@@ -1,5 +1,5 @@
 import { haversineDistance } from './delivery-fee.service';
-import { emitToDriver, emitToOrder } from '../plugins/realtime.plugin';
+import { emitToDriver, emitToOrder, getOnlineDrivers } from '../plugins/realtime.plugin';
 import {
   sendDriverNewOrderNotification,
   sendCustomerDriverAssignedNotification,
@@ -51,6 +51,34 @@ const MOCK_DRIVERS: OnlineDriver[] = [
 ];
 
 function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineDriver[] {
+  // Prefer actually-connected drivers (clicked "Онлайн болох" in browser)
+  const online = getOnlineDrivers();
+  if (online.size > 0) {
+    const realOnline: OnlineDriver[] = [];
+    for (const [driverId, info] of online) {
+      // Try to enrich with MOCK_DRIVERS data; fall back to minimal info
+      const mock = MOCK_DRIVERS.find((d) => d.id === driverId);
+      realOnline.push(mock
+        ? { ...mock, lat: info.lat, lng: info.lng }
+        : { id: driverId, firstName: 'Жолооч', lastName: '', phone: '', vehicleType: 'CAR', vehiclePlate: '', rating: 5, lat: info.lat, lng: info.lng },
+      );
+    }
+    const inRadius = realOnline
+      .map((d) => ({ driver: d, dist: haversineDistance(lat, lng, d.lat, d.lng) }))
+      .filter(({ dist }) => dist <= radiusKm)
+      .sort((a, b) => a.dist - b.dist)
+      .map(({ driver }) => driver);
+
+    // If any real online driver is in range, use them
+    if (inRadius.length > 0) return inRadius;
+    // If online drivers exist but out of range, still pick closest online driver
+    const closest = realOnline
+      .map((d) => ({ driver: d, dist: haversineDistance(lat, lng, d.lat, d.lng) }))
+      .sort((a, b) => a.dist - b.dist);
+    if (closest.length > 0) return [closest[0].driver];
+  }
+
+  // Fallback to MOCK_DRIVERS when no real drivers are online
   return MOCK_DRIVERS
     .map((d) => ({ driver: d, dist: haversineDistance(lat, lng, d.lat, d.lng) }))
     .filter(({ dist }) => dist <= radiusKm)
