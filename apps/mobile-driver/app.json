@@ -7,37 +7,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "ios": {
-      "supportsTablet": false,
-      "bundleIdentifier": "mn.diy.driver"
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png"
-      },
-      "package": "mn.diy.driver",
-      "config": {
-        "googleMaps": {
-          "apiKey": ""
-        }
-      }
-    },
-    "web": {
-      "favicon": "./assets/favicon.png",
-      "bundler": "metro"
-    },
-    "plugins": [
-      "expo-router",
-      [
-        "react-native-maps",
-        {
-          "googleMapsApiKey": ""
-        }
-      ]
-    ],
-    "experiments": {
-      "typedRoutes": true
-    }
+    "splash": { "backgroundColor": "#08080E" },
+    "ios": { "supportsTablet": false, "bundleIdentifier": "mn.diy.driver" },
+    "android": { "package": "mn.diy.driver", "adaptiveIcon": { "backgroundColor": "#08080E" } },
+    "web": { "favicon": "./assets/favicon.png", "bundler": "metro" },
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": true }
   }
 }

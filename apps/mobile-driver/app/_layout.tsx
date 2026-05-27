@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useDriverStore } from '../lib/store';
 
 function AuthGuard() {
-  const { driver } = useDriverStore();
+  const driver = useDriverStore((s) => s.driver);
   const segments = useSegments();
   const router = useRouter();
 
@@ -22,13 +23,13 @@ function AuthGuard() {
 
 export default function RootLayout() {
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
       <AuthGuard />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0f0f1a' } }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#08080E' } }}>
         <Stack.Screen name="login" />
         <Stack.Screen name="(tabs)" />
       </Stack>
-    </>
+    </GestureHandlerRootView>
   );
 }

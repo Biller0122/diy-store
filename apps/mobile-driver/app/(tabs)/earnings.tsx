@@ -1,68 +1,157 @@
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useDriverStore } from '../../lib/store';
 
 const C = {
-  bg: '#0f0f1a',
-  card: '#1a1a2e',
-  brand: '#f59e0b',
-  green: '#22c55e',
-  border: '#2a2a40',
-  text: '#f0f0f5',
-  muted: '#8888aa',
+  bg: '#08080E',
+  card: '#0F0F1A',
+  surface: '#161625',
+  primary: '#FF4500',
+  success: '#00D4AA',
+  warning: '#FFB547',
+  border: 'rgba(255,255,255,0.06)',
+  text: '#F5F5FF',
+  textSub: '#8888AA',
+  textTertiary: '#55556A',
 };
 
-const MOCK_HISTORY = [
-  { id: '1', date: 'Өнөөдөр 14:32', address: 'Баянзүрх → Хан-Уул', fee: 8500, km: 6.2 },
-  { id: '2', date: 'Өнөөдөр 11:15', address: 'СБД → Баянгол', fee: 5000, km: 3.8 },
-  { id: '3', date: 'Өчигдөр 18:44', address: 'Чингэлтэй → Сүхбаатар', fee: 4200, km: 2.9 },
-  { id: '4', date: 'Өчигдөр 15:20', address: 'Баянзүрх → СБД', fee: 7800, km: 5.5 },
-  { id: '5', date: 'Өчигдөр 10:05', address: 'Налайх → Баянзүрх', fee: 18000, km: 18.1 },
+type Period = 'today' | 'week' | 'month';
+
+const PERIOD_LABELS: Record<Period, string> = {
+  today: 'Өнөөдөр',
+  week: '7 хоног',
+  month: 'Сар',
+};
+
+const WEEK_DATA = [
+  { day: 'Да', earnings: 32000, count: 4 },
+  { day: 'Мя', earnings: 45000, count: 6 },
+  { day: 'Лх', earnings: 28000, count: 3 },
+  { day: 'Пү', earnings: 56000, count: 7 },
+  { day: 'Ба', earnings: 41000, count: 5 },
+  { day: 'Бя', earnings: 78000, count: 10 },
+  { day: 'Ня', earnings: 45000, count: 6 },
 ];
 
-function Row({ item }: { item: typeof MOCK_HISTORY[0] }) {
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowLeft}>
-        <Text style={styles.rowEmoji}>📦</Text>
-        <View>
-          <Text style={styles.rowAddress}>{item.address}</Text>
-          <Text style={styles.rowDate}>{item.date} · {item.km} км</Text>
-        </View>
-      </View>
-      <Text style={styles.rowFee}>+₮{item.fee.toLocaleString()}</Text>
-    </View>
-  );
-}
+const MOCK_HISTORY = [
+  { id: '1', date: 'Өнөөдөр 14:32', address: 'Баянзүрх → Хан-Уул', fee: 8500, km: 6.2, status: 'Дууссан' },
+  { id: '2', date: 'Өнөөдөр 11:15', address: 'СБД → Баянгол', fee: 5000, km: 3.8, status: 'Дууссан' },
+  { id: '3', date: 'Өчигдөр 18:44', address: 'Чингэлтэй → Сүхбаатар', fee: 4200, km: 2.9, status: 'Дууссан' },
+  { id: '4', date: 'Өчигдөр 15:20', address: 'Баянзүрх → СБД', fee: 7800, km: 5.5, status: 'Дууссан' },
+  { id: '5', date: 'Өчигдөр 10:05', address: 'Налайх → Баянзүрх', fee: 18000, km: 18.1, status: 'Дууссан' },
+];
+
+const PERIOD_STATS: Record<Period, { deliveries: number; earnings: number }> = {
+  today: { deliveries: 6, earnings: 45000 },
+  week: { deliveries: 41, earnings: 325000 },
+  month: { deliveries: 143, earnings: 1120000 },
+};
+
+const maxEarnings = Math.max(...WEEK_DATA.map((d) => d.earnings));
 
 export default function EarningsScreen() {
-  const { driver } = useDriverStore();
+  const driver = useDriverStore((s) => s.driver);
+  const [period, setPeriod] = useState<Period>('today');
+
   if (!driver) return null;
+
+  const stats = PERIOD_STATS[period];
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Орлого</Text>
 
-        {/* Summary cards */}
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Өнөөдөр</Text>
-            <Text style={styles.summaryValue}>₮{driver.todayEarnings.toLocaleString()}</Text>
+        {/* Period selector */}
+        <View style={styles.periodRow}>
+          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+            <TouchableOpacity
+              key={p}
+              style={[styles.periodPill, period === p && styles.periodPillActive]}
+              onPress={() => setPeriod(p)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.periodText, period === p && styles.periodTextActive]}>
+                {PERIOD_LABELS[p]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Big stats cards */}
+        <View style={styles.bigStatsRow}>
+          <View style={styles.bigCard}>
+            <Ionicons name="bicycle-outline" size={20} color={C.textSub} />
+            <Text style={styles.bigValue}>{stats.deliveries}</Text>
+            <Text style={styles.bigLabel}>Хүргэлт</Text>
           </View>
-          <View style={[styles.summaryCard, { flex: 1.4 }]}>
-            <Text style={styles.summaryLabel}>Нийт орлого</Text>
-            <Text style={[styles.summaryValue, { color: C.brand }]}>
-              ₮{driver.totalEarnings.toLocaleString()}
+          <View style={[styles.bigCard, styles.bigCardPrimary]}>
+            <Ionicons name="wallet-outline" size={20} color={C.primary} />
+            <Text style={[styles.bigValue, { color: C.primary }]}>
+              ₮{stats.earnings.toLocaleString()}
             </Text>
+            <Text style={styles.bigLabel}>Нийт орлого</Text>
+          </View>
+        </View>
+
+        {/* Bar chart */}
+        <View style={styles.chartCard}>
+          <Text style={styles.chartTitle}>7 хоногийн орлого</Text>
+          <View style={styles.chartBars}>
+            {WEEK_DATA.map((item) => {
+              const heightPct = maxEarnings > 0 ? (item.earnings / maxEarnings) * 100 : 0;
+              return (
+                <View key={item.day} style={styles.barWrapper}>
+                  <View style={styles.barContainer}>
+                    <View
+                      style={[
+                        styles.bar,
+                        { height: `${heightPct}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.barLabel}>{item.day}</Text>
+                </View>
+              );
+            })}
           </View>
         </View>
 
         {/* History */}
+        <Text style={styles.historyTitle}>Хүргэлтийн түүх</Text>
         <View style={styles.historyCard}>
-          <Text style={styles.historyTitle}>Сүүлийн хүргэлтүүд</Text>
-          {MOCK_HISTORY.map((item) => (
-            <Row key={item.id} item={item} />
+          {MOCK_HISTORY.map((item, idx) => (
+            <View
+              key={item.id}
+              style={[
+                styles.historyItem,
+                idx < MOCK_HISTORY.length - 1 && styles.historyItemBorder,
+              ]}
+            >
+              <View style={styles.historyLeft}>
+                <View style={styles.historyIcon}>
+                  <Ionicons name="checkmark-circle" size={18} color={C.success} />
+                </View>
+                <View>
+                  <Text style={styles.historyAddress}>{item.address}</Text>
+                  <Text style={styles.historyMeta}>{item.date} · {item.km} км</Text>
+                </View>
+              </View>
+              <View style={styles.historyRight}>
+                <Text style={styles.historyFee}>+₮{item.fee.toLocaleString()}</Text>
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusText}>{item.status}</Text>
+                </View>
+              </View>
+            </View>
           ))}
         </View>
       </ScrollView>
@@ -75,37 +164,166 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 32 },
   heading: { fontSize: 26, fontWeight: '900', color: C.text, marginBottom: 20 },
 
-  summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  summaryCard: {
+  periodRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  periodPill: {
+    flex: 1,
+    paddingVertical: 10,
+    backgroundColor: C.card,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  periodPillActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+  periodText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.textSub,
+  },
+  periodTextActive: {
+    color: '#fff',
+  },
+
+  bigStatsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  bigCard: {
     flex: 1,
     backgroundColor: C.card,
     borderRadius: 20,
-    padding: 16,
+    padding: 18,
+    alignItems: 'center',
+    gap: 6,
     borderWidth: 1,
     borderColor: C.border,
   },
-  summaryLabel: { fontSize: 11, color: C.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  summaryValue: { fontSize: 22, fontWeight: '900', color: C.green, marginTop: 6 },
+  bigCardPrimary: {
+    borderColor: 'rgba(255,69,0,0.2)',
+    backgroundColor: 'rgba(255,69,0,0.05)',
+  },
+  bigValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: C.text,
+  },
+  bigLabel: {
+    fontSize: 12,
+    color: C.textSub,
+  },
 
-  historyCard: {
+  chartCard: {
     backgroundColor: C.card,
     borderRadius: 20,
     padding: 16,
+    marginBottom: 24,
     borderWidth: 1,
     borderColor: C.border,
   },
-  historyTitle: { fontSize: 13, fontWeight: '800', color: C.text, marginBottom: 16 },
-  row: {
+  chartTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.textSub,
+    marginBottom: 16,
+  },
+  chartBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 100,
+    gap: 6,
+  },
+  barWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    height: '100%',
+  },
+  barContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+    marginBottom: 4,
+  },
+  bar: {
+    width: '100%',
+    backgroundColor: C.primary,
+    borderRadius: 4,
+    minHeight: 4,
+  },
+  barLabel: {
+    fontSize: 10,
+    color: C.textSub,
+    fontWeight: '600',
+  },
+
+  historyTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.text,
+    marginBottom: 12,
+  },
+  historyCard: {
+    backgroundColor: C.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
+  },
+  historyItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    padding: 14,
+  },
+  historyItemBorder: {
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  rowEmoji: { fontSize: 22 },
-  rowAddress: { fontSize: 13, fontWeight: '600', color: C.text },
-  rowDate: { fontSize: 11, color: C.muted, marginTop: 2 },
-  rowFee: { fontSize: 15, fontWeight: '800', color: C.green },
+  historyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  historyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,212,170,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyAddress: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.text,
+  },
+  historyMeta: {
+    fontSize: 11,
+    color: C.textSub,
+    marginTop: 2,
+  },
+  historyRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  historyFee: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.success,
+  },
+  statusBadge: {
+    backgroundColor: 'rgba(0,212,170,0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  statusText: {
+    fontSize: 10,
+    color: C.success,
+    fontWeight: '700',
+  },
 });

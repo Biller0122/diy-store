@@ -1,17 +1,13 @@
-const API_URL = 'http://52.77.245.218';
-const SHOP_API = `${API_URL}/shop-api`;
+const SHOP_API = 'http://52.77.245.218/shop-api';
 
 export async function shopFetch<T>(
   query: string,
   variables?: Record<string, unknown>,
-  token?: string | null,
 ): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
   const res = await fetch(SHOP_API, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ query, variables }),
   });
   const json = await res.json();
@@ -21,20 +17,23 @@ export async function shopFetch<T>(
 
 export const LOGIN_MUTATION = `
   mutation Login($username: String!, $password: String!) {
-    login(username: $username, password: $password, rememberMe: true) {
+    login(username: $username, password: $password) {
       ... on CurrentUser { id identifier }
-      ... on InvalidCredentialsError { errorCode message }
-      ... on NativeAuthStrategyError { errorCode message }
+      ... on ErrorResult { errorCode message }
     }
   }
 `;
 
 export const ACTIVE_CUSTOMER_QUERY = `
-  query ActiveCustomer {
+  query {
     activeCustomer {
       id firstName lastName emailAddress phoneNumber
     }
   }
 `;
 
-export const LOGOUT_MUTATION = `mutation Logout { logout { success } }`;
+export const LOGOUT_MUTATION = `
+  mutation {
+    logout { success }
+  }
+`;

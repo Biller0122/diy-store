@@ -1,107 +1,194 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch } from 'react-native';
+import { useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Animated,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { useDriverStore } from '../../lib/store';
+import OrderRequestModal from '../../components/OrderRequestModal';
 
 const C = {
-  bg: '#0f0f1a',
-  card: '#1a1a2e',
-  brand: '#f59e0b',
-  green: '#22c55e',
-  border: '#2a2a40',
-  text: '#f0f0f5',
-  muted: '#8888aa',
+  bg: '#08080E',
+  card: '#0F0F1A',
+  surface: '#161625',
+  primary: '#FF4500',
+  primaryGlow: 'rgba(255,69,0,0.15)',
+  success: '#00D4AA',
+  warning: '#FFB547',
+  border: 'rgba(255,255,255,0.06)',
+  text: '#F5F5FF',
+  textSub: '#8888AA',
+  textTertiary: '#55556A',
 };
 
-function StatCard({ emoji, label, value }: { emoji: string; label: string; value: string }) {
+const MOCK_RECENT = [
+  { id: '1', address: 'Баянзүрх → Хан-Уул', fee: 8500, time: '14:32', done: true },
+  { id: '2', address: 'СБД → Баянгол', fee: 5000, time: '11:15', done: true },
+  { id: '3', address: 'Чингэлтэй → Сүхбаатар', fee: 4200, time: '09:05', done: true },
+];
+
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.statCard}>
-      <Text style={styles.statEmoji}>{emoji}</Text>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
-function formatMnt(amount: number) {
-  return `₮${(amount / 1000).toFixed(0)}к`;
-}
-
 export default function DashboardScreen() {
-  const { driver, isOnline, toggleOnline, logout } = useDriverStore();
+  const { driver, isOnline, toggleOnline, activeDelivery, pendingRequest, acceptDelivery, rejectDelivery } = useDriverStore();
+
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (isOnline) {
+      pulseLoop.current = Animated.loop(
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(pulseAnim, {
+              toValue: 1.15,
+              duration: 750,
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 750,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.timing(pulseOpacity, {
+              toValue: 0,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseOpacity, {
+              toValue: 1,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+      );
+      pulseLoop.current.start();
+    } else {
+      pulseLoop.current?.stop();
+      pulseAnim.setValue(1);
+      pulseOpacity.setValue(1);
+    }
+    return () => pulseLoop.current?.stop();
+  }, [isOnline]);
 
   if (!driver) return null;
 
+  const handleToggle = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    toggleOnline();
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Сайн байна уу,</Text>
             <Text style={styles.name}>{driver.firstName} {driver.lastName}</Text>
           </View>
-          <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>Гарах</Text>
-          </TouchableOpacity>
+          <View style={styles.ratingBadge}>
+            <Ionicons name="star" size={14} color="#FFB547" />
+            <Text style={styles.ratingText}>{driver.rating}</Text>
+          </View>
         </View>
 
         {/* Online toggle */}
-        <View style={[styles.card, styles.onlineCard, isOnline && styles.onlineCardActive]}>
-          <View style={styles.onlineLeft}>
-            <View style={[styles.dot, { backgroundColor: isOnline ? C.green : '#666' }]} />
-            <View>
-              <Text style={styles.onlineLabel}>
-                {isOnline ? 'Идэвхтэй' : 'Идэвхгүй'}
-              </Text>
-              <Text style={styles.onlineSub}>
-                {isOnline ? 'Хүргэлт авах боломжтой' : 'Хүргэлт аваагүй байна'}
-              </Text>
-            </View>
+        <View style={styles.onlineSection}>
+          <View style={styles.pulseContainer}>
+            {isOnline && (
+              <Animated.View
+                style={[
+                  styles.pulseRing,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: pulseOpacity,
+                  },
+                ]}
+              />
+            )}
+            <TouchableOpacity
+              style={[styles.toggleBtn, isOnline && styles.toggleBtnOnline]}
+              onPress={handleToggle}
+              activeOpacity={0.85}
+            >
+              <Ionicons
+                name={isOnline ? 'flash' : 'power-outline'}
+                size={40}
+                color={isOnline ? '#fff' : C.textTertiary}
+              />
+            </TouchableOpacity>
           </View>
-          <Switch
-            value={isOnline}
-            onValueChange={toggleOnline}
-            trackColor={{ false: '#333', true: '#22c55e40' }}
-            thumbColor={isOnline ? C.green : '#555'}
-            ios_backgroundColor="#333"
-          />
-        </View>
-
-        {/* Vehicle info */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Тээврийн хэрэгсэл</Text>
-          <View style={styles.vehicleRow}>
-            <Text style={styles.vehicleIcon}>🏍️</Text>
-            <View>
-              <Text style={styles.vehicleModel}>{driver.vehicleModel}</Text>
-              <Text style={styles.vehiclePlate}>{driver.vehiclePlate}</Text>
-            </View>
-            <View style={styles.ratingBadge}>
-              <Text style={styles.ratingText}>⭐ {driver.rating.toFixed(1)}</Text>
-            </View>
-          </View>
+          <Text style={[styles.toggleLabel, isOnline && styles.toggleLabelOnline]}>
+            {isOnline ? 'Онлайн' : 'Офлайн'}
+          </Text>
+          <Text style={styles.toggleSub}>
+            {isOnline ? 'Хүргэлт авах боломжтой' : 'Товчийг дарж идэвхжүүлнэ үү'}
+          </Text>
         </View>
 
         {/* Stats */}
-        <Text style={styles.sectionHeading}>Статистик</Text>
-        <View style={styles.statsGrid}>
-          <StatCard emoji="📦" label="Нийт хүргэлт" value={String(driver.totalDeliveries)} />
-          <StatCard emoji="💰" label="Өнөөдрийн орлого" value={formatMnt(driver.todayEarnings)} />
-          <StatCard emoji="🏆" label="Нийт орлого" value={formatMnt(driver.totalEarnings)} />
-          <StatCard emoji="⭐" label="Үнэлгээ" value={driver.rating.toFixed(1)} />
+        <View style={styles.statsRow}>
+          <StatCard label="Хүргэлт" value={String(driver.totalDeliveries)} />
+          <StatCard label="Орлого" value={`₮${driver.todayEarnings.toLocaleString()}`} />
+          <StatCard label="Үнэлгээ" value={`${driver.rating}⭐`} />
         </View>
 
-        {/* Active delivery hint */}
-        {isOnline && (
-          <View style={[styles.card, styles.waitCard]}>
-            <Text style={styles.waitEmoji}>🔍</Text>
-            <Text style={styles.waitTitle}>Хүргэлт хүлээж байна...</Text>
-            <Text style={styles.waitSub}>Таны ойролцоох захиалга ирэхийг хүлээж байна</Text>
-          </View>
-        )}
+        {/* Recent deliveries */}
+        <Text style={styles.sectionTitle}>Сүүлийн хүргэлтүүд</Text>
 
+        {activeDelivery ? (
+          <View style={styles.deliveryItem}>
+            <View style={[styles.deliveryDot, { backgroundColor: C.warning }]} />
+            <View style={styles.deliveryInfo}>
+              <Text style={styles.deliveryAddress}>{activeDelivery.pickupAddress} → {activeDelivery.dropoffAddress}</Text>
+              <Text style={styles.deliverySub}>Идэвхтэй · {activeDelivery.status}</Text>
+            </View>
+            <Text style={styles.deliveryFee}>₮{activeDelivery.fee.toLocaleString()}</Text>
+          </View>
+        ) : (
+          MOCK_RECENT.map((item) => (
+            <View key={item.id} style={styles.deliveryItem}>
+              <View style={[styles.deliveryDot, { backgroundColor: C.success }]} />
+              <View style={styles.deliveryInfo}>
+                <Text style={styles.deliveryAddress}>{item.address}</Text>
+                <Text style={styles.deliverySub}>{item.time} · Дууссан</Text>
+              </View>
+              <Text style={styles.deliveryFee}>₮{item.fee.toLocaleString()}</Text>
+            </View>
+          ))
+        )}
       </ScrollView>
+
+      {pendingRequest && (
+        <OrderRequestModal
+          visible={!!pendingRequest}
+          request={pendingRequest}
+          onAccept={() => acceptDelivery(pendingRequest)}
+          onReject={rejectDelivery}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -111,54 +198,134 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 32 },
 
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  greeting: { fontSize: 13, color: C.muted },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  greeting: { fontSize: 13, color: C.textSub },
   name: { fontSize: 22, fontWeight: '900', color: C.text, marginTop: 2 },
-  logoutBtn: { padding: 8, borderRadius: 10, backgroundColor: '#2a2a40' },
-  logoutText: { color: C.muted, fontSize: 13 },
-
-  card: {
-    backgroundColor: C.card,
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,181,71,0.12)',
     borderRadius: 20,
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  ratingText: { color: '#FFB547', fontWeight: '800', fontSize: 14 },
+
+  onlineSection: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  pulseContainer: {
+    width: 120,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: C.border,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: C.success,
+  },
+  toggleBtn: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: C.surface,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleBtnOnline: {
+    backgroundColor: C.success,
+    borderColor: C.success,
+  },
+  toggleLabel: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: C.textSub,
+  },
+  toggleLabelOnline: {
+    color: C.success,
+  },
+  toggleSub: {
+    fontSize: 13,
+    color: C.textTertiary,
+    marginTop: 4,
   },
 
-  onlineCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  onlineCardActive: { borderColor: '#22c55e40', backgroundColor: '#0f2a1a' },
-  onlineLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  onlineLabel: { fontSize: 16, fontWeight: '800', color: C.text },
-  onlineSub: { fontSize: 12, color: C.muted, marginTop: 2 },
-
-  sectionTitle: { fontSize: 11, color: C.muted, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
-  vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  vehicleIcon: { fontSize: 32 },
-  vehicleModel: { fontSize: 15, fontWeight: '700', color: C.text },
-  vehiclePlate: { fontSize: 13, color: C.muted, marginTop: 2 },
-  ratingBadge: { marginLeft: 'auto', backgroundColor: '#f59e0b20', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  ratingText: { color: C.brand, fontWeight: '700', fontSize: 14 },
-
-  sectionHeading: { fontSize: 15, fontWeight: '800', color: C.text, marginBottom: 12, marginTop: 4 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 28,
+  },
   statCard: {
     flex: 1,
-    minWidth: '45%',
     backgroundColor: C.card,
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: C.border,
   },
-  statEmoji: { fontSize: 24, marginBottom: 6 },
-  statValue: { fontSize: 20, fontWeight: '900', color: C.text },
-  statLabel: { fontSize: 11, color: C.muted, marginTop: 4, textAlign: 'center' },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: C.primary,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: C.textSub,
+    textAlign: 'center',
+  },
 
-  waitCard: { alignItems: 'center', paddingVertical: 28, borderStyle: 'dashed' },
-  waitEmoji: { fontSize: 36, marginBottom: 10 },
-  waitTitle: { fontSize: 16, fontWeight: '800', color: C.text },
-  waitSub: { fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center' },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.text,
+    marginBottom: 12,
+  },
+  deliveryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  deliveryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  deliveryInfo: { flex: 1 },
+  deliveryAddress: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.text,
+  },
+  deliverySub: {
+    fontSize: 11,
+    color: C.textSub,
+    marginTop: 2,
+  },
+  deliveryFee: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.success,
+  },
 });

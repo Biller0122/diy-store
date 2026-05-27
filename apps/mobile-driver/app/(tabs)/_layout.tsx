@@ -1,8 +1,24 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
-function Icon({ emoji, size = 22 }: { emoji: string; size?: number }) {
-  return <Text style={{ fontSize: size }}>{emoji}</Text>;
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+
+function TabIcon({
+  name,
+  focused,
+  size = 24,
+}: {
+  name: IoniconsName;
+  focused: boolean;
+  size?: number;
+}) {
+  return (
+    <Ionicons
+      name={name}
+      size={size}
+      color={focused ? '#FF4500' : '#55556A'}
+    />
+  );
 }
 
 export default function TabsLayout() {
@@ -11,14 +27,13 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#1a1a2e',
-          borderTopColor: '#2a2a40',
+          backgroundColor: 'rgba(8,8,14,0.97)',
+          borderTopColor: 'rgba(255,255,255,0.06)',
           borderTopWidth: 1,
-          height: 64,
-          paddingBottom: 8,
+          height: 84,
         },
-        tabBarActiveTintColor: '#f59e0b',
-        tabBarInactiveTintColor: '#666688',
+        tabBarActiveTintColor: '#FF4500',
+        tabBarInactiveTintColor: '#55556A',
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
     >
@@ -27,7 +42,7 @@ export default function TabsLayout() {
         options={{
           title: 'Самбар',
           tabBarIcon: ({ focused }) => (
-            <Icon emoji="🏠" size={focused ? 24 : 22} />
+            <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} />
           ),
         }}
       />
@@ -36,7 +51,7 @@ export default function TabsLayout() {
         options={{
           title: 'Хүргэлт',
           tabBarIcon: ({ focused }) => (
-            <Icon emoji="📦" size={focused ? 24 : 22} />
+            <TabIcon name={focused ? 'bicycle' : 'bicycle-outline'} focused={focused} />
           ),
         }}
       />
@@ -45,7 +60,16 @@ export default function TabsLayout() {
         options={{
           title: 'Орлого',
           tabBarIcon: ({ focused }) => (
-            <Icon emoji="💰" size={focused ? 24 : 22} />
+            <TabIcon name={focused ? 'wallet' : 'wallet-outline'} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Профайл',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'person' : 'person-outline'} focused={focused} />
           ),
         }}
       />
