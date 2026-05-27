@@ -8,6 +8,18 @@ const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control',    value: 'on' },
 ];
 
+function localVendureUrl(envValue: string | undefined, fallback: string) {
+  if (process.env.NODE_ENV !== 'production' && envValue?.startsWith('http://server:')) {
+    return envValue.replace('http://server:', 'http://localhost:');
+  }
+  return envValue || fallback;
+}
+
+const shopApiUrl = localVendureUrl(process.env.INTERNAL_VENDURE_SHOP_API, 'http://localhost:3001/shop-api');
+const adminApiUrl = localVendureUrl(process.env.INTERNAL_VENDURE_ADMIN_API, 'http://localhost:3001/admin-api');
+const assetsUrl = localVendureUrl(process.env.INTERNAL_VENDURE_ASSETS, 'http://localhost:3001/assets/:path*');
+const mailboxUrl = localVendureUrl(process.env.INTERNAL_VENDURE_MAILBOX, 'http://localhost:3001/mailbox/:path*');
+
 const nextConfig: NextConfig = {
   compress: true,
   output: 'standalone',
@@ -28,10 +40,10 @@ const nextConfig: NextConfig = {
 
   async rewrites() {
     return [
-      { source: '/shop-api',           destination: 'http://server:3001/shop-api' },
-      { source: '/admin-api',          destination: 'http://server:3001/admin-api' },
-      { source: '/assets/:path*',      destination: 'http://server:3001/assets/:path*' },
-      { source: '/mailbox/:path*',     destination: 'http://server:3001/mailbox/:path*' },
+      { source: '/shop-api',           destination: shopApiUrl },
+      { source: '/admin-api',          destination: adminApiUrl },
+      { source: '/assets/:path*',      destination: assetsUrl },
+      { source: '/mailbox/:path*',     destination: mailboxUrl },
     ];
   },
 

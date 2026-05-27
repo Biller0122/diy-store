@@ -51,6 +51,15 @@ const ADMIN_LOGIN = `
 
 const ADMIN_LOGOUT = `mutation Logout { logout { success } }`;
 
+async function createAdminSession() {
+  await fetch('/api/admin/session', { method: 'POST' });
+}
+
+function clearAdminSession() {
+  void fetch('/api/admin/session', { method: 'DELETE' });
+  document.cookie = 'diy-admin=; path=/; max-age=0';
+}
+
 export const useAdminStore = create<AdminState>()(
   persist(
     (set) => ({
@@ -73,7 +82,7 @@ export const useAdminStore = create<AdminState>()(
               role: 'SuperAdmin',
             };
             set({ admin: mockAdmin, isLoading: false });
-            document.cookie = 'diy-admin=1; path=/admin; max-age=86400; SameSite=Lax';
+            await createAdminSession();
             return true;
           }
 
@@ -88,7 +97,7 @@ export const useAdminStore = create<AdminState>()(
               role: 'Admin',
             };
             set({ admin, isLoading: false });
-            document.cookie = 'diy-admin=1; path=/admin; max-age=86400; SameSite=Lax';
+            await createAdminSession();
             return true;
           }
           set({ isLoading: false, error: result.message ?? 'Нэвтрэхэд алдаа гарлаа' });
@@ -98,7 +107,7 @@ export const useAdminStore = create<AdminState>()(
           if (process.env.NODE_ENV === 'development') {
             const mockAdmin: AdminUser = { id: 'admin-1', identifier: username, firstName: 'Систем', lastName: 'Админ', role: 'SuperAdmin' };
             set({ admin: mockAdmin, isLoading: false });
-            document.cookie = 'diy-admin=1; path=/admin; max-age=86400; SameSite=Lax';
+            await createAdminSession();
             return true;
           }
           set({ isLoading: false, error: 'Сүлжээний алдаа — дараа оролдоно уу' });
@@ -108,7 +117,7 @@ export const useAdminStore = create<AdminState>()(
 
       logout: () => {
         set({ admin: null, token: null });
-        document.cookie = 'diy-admin=; path=/admin; max-age=0';
+        clearAdminSession();
         try { adminFetch(ADMIN_LOGOUT); } catch { /* ignore */ }
       },
 

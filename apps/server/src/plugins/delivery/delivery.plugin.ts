@@ -14,11 +14,45 @@ const DELIVERY_SCHEMA_EXTENSION = `
     status: String!
   }
 
+  input PickupStopInput {
+    supplierId: String!
+    supplierName: String!
+    address: String!
+    lat: Float!
+    lng: Float!
+    status: String
+  }
+
+  type DeliveryOrderItem {
+    supplierId: String!
+    supplierName: String!
+    name: String!
+    sku: String
+    qty: Int!
+    price: Int!
+  }
+
+  input DeliveryOrderItemInput {
+    supplierId: String!
+    supplierName: String!
+    name: String!
+    sku: String
+    qty: Int!
+    price: Int!
+  }
+
   type DeliveryRequest {
     id: ID!
     orderId: String!
+    orderNumber: String!
     customerId: String!
+    customerName: String!
+    customerPhone: String!
     pickupStops: [PickupStop!]!
+    orderItems: [DeliveryOrderItem!]!
+    orderTotal: Int!
+    paymentMethod: String
+    supplierStatus: String!
     dropoffAddress: String!
     dropoffLat: Float!
     dropoffLng: Float!
@@ -45,6 +79,12 @@ const DELIVERY_SCHEMA_EXTENSION = `
     createDeliveryRequest(
       orderId: String!
       customerId: String!
+      customerName: String!
+      customerPhone: String!
+      pickupStops: [PickupStopInput!]
+      orderItems: [DeliveryOrderItemInput!]
+      orderTotal: Int
+      paymentMethod: String
       dropoffAddress: String!
       dropoffLat: Float!
       dropoffLng: Float!

@@ -15,6 +15,7 @@ import {
 } from '@/lib/cart-store';
 import { useDeliveryFee } from '@/hooks/useDeliveryFee';
 import { trackViewCart, trackRemoveFromCart } from '@/lib/analytics/ga4';
+import { useCustomerAddressStore } from '@/lib/customer-address-store';
 
 const UB_DISTRICTS = [
   'Баянзүрх','Сүхбаатар','Хан-Уул','Баянгол',
@@ -279,9 +280,23 @@ function OrderSummary({
 export default function CartPage() {
   const [hydrated, setHydrated] = useState(false);
   const { items, removeItem, updateQty, updateMode, customerAddress, setCustomerAddress, updateDeliveryFee, deliveryFee, feeBreakdown, promo } = useCartStore();
+  const addresses = useCustomerAddressStore((state) => state.addresses);
   const router = useRouter();
 
   useEffect(() => setHydrated(true), []);
+
+  useEffect(() => {
+    if (!hydrated || customerAddress) return;
+    const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
+    if (!defaultAddress) return;
+    setCustomerAddress({
+      province: 'Улаанбаатар',
+      district: `${defaultAddress.district} дүүрэг`,
+      khoroo: defaultAddress.street,
+      address: [defaultAddress.building, defaultAddress.apartment].filter(Boolean).join(', '),
+      note: defaultAddress.label,
+    });
+  }, [addresses, customerAddress, hydrated, setCustomerAddress]);
 
   const groups = getSupplierGroups(items);
   const sub = calcSubtotal(items);

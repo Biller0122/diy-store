@@ -1,9 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, ChevronRight, Clock, CheckCircle2, Truck } from 'lucide-react';
+import { vendureShopFetch } from '@/lib/vendure';
 
-const MOCK_ORDERS = [
+type SupplierOrder = {
+  id: string;
+  customer: string;
+  phone: string;
+  address: string;
+  items: { name: string; qty: number; price: number }[];
+  total: number;
+  status: string;
+  createdAt: string;
+};
+
+const MOCK_ORDERS: SupplierOrder[] = [
   { id: 'ORD-2025-001', customer: 'Дорж Баатар', phone: '+97699112233', address: 'Баянзүрх, 5-р хороо', items: [{ name: 'Dulux 4L', qty: 2, price: 5990000 }], total: 11980000, status: 'PENDING', createdAt: '2025-05-26 09:12' },
   { id: 'ORD-2025-002', customer: 'Ганаа Нямдорж', phone: '+97699445566', address: 'Сүхбаатар, 8-р хороо', items: [{ name: 'Caparol 10L', qty: 1, price: 18990000 }, { name: 'Knauf праймер', qty: 2, price: 3990000 }], total: 26970000, status: 'ACCEPTED_BY_SUPPLIER', createdAt: '2025-05-26 08:44' },
   { id: 'ORD-2025-003', customer: 'Болд Энхбаяр', phone: '+97699778899', address: 'Хан-Уул, 14-р хороо', items: [{ name: 'Marshall 2.5L', qty: 3, price: 4990000 }], total: 14970000, status: 'DRIVER_ASSIGNED', createdAt: '2025-05-26 08:10' },
@@ -12,7 +24,26 @@ const MOCK_ORDERS = [
   { id: 'ORD-2025-006', customer: 'Мөнхбат С.', phone: '+97699667788', address: 'Баянзүрх, 10-р хороо', items: [{ name: 'Caparol 10L', qty: 2, price: 18990000 }], total: 37980000, status: 'DELIVERED', createdAt: '2025-05-25 14:10' },
 ];
 
-const STATUS_STEPS = ['PENDING', 'ACCEPTED_BY_SUPPLIER', 'DRIVER_ASSIGNED', 'ON_THE_WAY', 'DELIVERED'];
+const DELIVERY_ORDERS_QUERY = `
+  query SupplierDeliveryOrders {
+    availableDeliveries {
+      id
+      orderId
+      customerName
+      customerPhone
+      dropoffAddress
+      orderTotal
+      supplierStatus
+      status
+      createdAt
+      orderItems {
+        name
+        qty
+        price
+      }
+    }
+  }
+`;
 
 const STATUS_META: Record<string, { label: string; cls: string; icon: React.ElementType }> = {
   PENDING:              { label: 'Шинэ',           cls: 'bg-brand/15 text-brand',         icon: Clock },
@@ -34,8 +65,52 @@ export default function SupplierOrdersPage() {
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [orders, setOrders] = useState<SupplierOrder[]>(MOCK_ORDERS);
+  const [error, setError] = useState('');
 
-  const filtered = MOCK_ORDERS.filter((o) => {
+  useEffect(() => {
+    let mounted = true;
+    async function loadOrders() {
+      try {
+        const data = await vendureShopFetch<{
+          availableDeliveries: {
+            id: string;
+            orderId: string;
+            customerName: string;
+            customerPhone: string;
+            dropoffAddress: string;
+            orderTotal: number;
+            supplierStatus: string;
+            status: string;
+            createdAt: string;
+            orderItems: { name: string; qty: number; price: number }[];
+          }[];
+        }>(DELIVERY_ORDERS_QUERY);
+        if (!mounted) return;
+        setOrders(data.availableDeliveries.map((order) => ({
+          id: order.orderId,
+          customer: order.customerName || 'Хэрэглэгч',
+          phone: order.customerPhone,
+          address: order.dropoffAddress,
+          items: order.orderItems,
+          total: order.orderTotal,
+          status: order.supplierStatus === 'ACCEPTED' ? 'ACCEPTED_BY_SUPPLIER' : 'PENDING',
+          createdAt: new Date(order.createdAt).toLocaleString('mn-MN'),
+        })));
+        setError('');
+      } catch (err) {
+        if (mounted) setError(err instanceof Error ? err.message : 'Захиалга татахад алдаа гарлаа');
+      }
+    }
+    void loadOrders();
+    const interval = window.setInterval(loadOrders, 30_000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const filtered = orders.filter((o) => {
     if (tab !== 'all' && o.status !== tab) return false;
     if (search && !o.customer.toLowerCase().includes(search.toLowerCase()) && !o.id.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -51,14 +126,20 @@ export default function SupplierOrdersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-foreground">Захиалгууд</h2>
-          <p className="text-sm text-foreground-muted mt-0.5">{MOCK_ORDERS.length} нийт захиалга</p>
+          <p className="text-sm text-foreground-muted mt-0.5">{orders.length} нийт захиалга</p>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-xl bg-error/10 px-4 py-3 text-sm text-error">
+          {error}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1.5 flex-wrap">
         {TABS.map((t) => {
-          const count = t.key === 'all' ? MOCK_ORDERS.length : MOCK_ORDERS.filter((o) => o.status === t.key).length;
+          const count = t.key === 'all' ? orders.length : orders.filter((o) => o.status === t.key).length;
           return (
             <button
               key={t.key}

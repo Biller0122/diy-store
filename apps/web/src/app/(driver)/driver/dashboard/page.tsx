@@ -20,34 +20,59 @@ export default function DriverDashboardPage() {
   const { driver, isOnline, activeDelivery, setOnlineStatus, setActiveDelivery } = useDriverStore();
   const [showRequest, setShowRequest] = useState(false);
   const [pendingRequest, setPendingRequest] = useState<ActiveDelivery | undefined>(undefined);
-  const socketRef = useRef<import('socket.io-client').Socket | null>(null);
-  const joinedRef = useRef(false);
 
-  // Connect to socket and listen for delivery requests
+  const socketRef = useRef<import('socket.io-client').Socket | null>(null);
+  // Refs to avoid stale closures inside socket event handlers
+  const isOnlineRef = useRef(isOnline);
+  const activeDeliveryRef = useRef(activeDelivery);
+  const driverIdRef = useRef(driver?.id);
+  const fallbackShownRef = useRef(false);
+
+  useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
+  useEffect(() => { activeDeliveryRef.current = activeDelivery; }, [activeDelivery]);
+  useEffect(() => { driverIdRef.current = driver?.id; }, [driver?.id]);
+
+  // Connect socket once on mount — persist through online/offline toggles
   useEffect(() => {
-    if (!driver) return;
-    let socket = socketRef.current;
+    let isMounted = true;
 
     async function connect() {
       const { io } = await import('socket.io-client');
-      socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+      const socket = io(SOCKET_URL, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+      });
+      if (!isMounted) { socket.disconnect(); return; }
       socketRef.current = socket;
 
       socket.on('connect', () => {
-        if (isOnline && driver && !joinedRef.current) {
-          socket!.emit('driver:join', driver.id);
-          joinedRef.current = true;
+        console.log('[socket] connected', socket.id);
+        // Re-join driver room after reconnect
+        const driverId = driverIdRef.current;
+        if (driverId && isOnlineRef.current) {
+          socket.emit('driver:join', driverId);
+          socket.emit('driver:online', driverId);
         }
       });
 
+      socket.on('disconnect', () => {
+        console.log('[socket] disconnected');
+      });
+
       socket.on('delivery:request', (payload: {
+        driverId: string;
         orderId: string;
         orderNumber: string;
         fee: number;
         pickupStops: Array<{ supplierId: string; name: string; district: string }>;
         dropoff: { district: string; khoroo?: string };
       }) => {
-        if (!isOnline || activeDelivery) return;
+        // Always use refs for current values — never the closed-over ones
+        if (!isOnlineRef.current || activeDeliveryRef.current) return;
+
+        console.log('[socket] delivery:request received', payload.orderNumber);
 
         const request: ActiveDelivery = {
           id: `req-${payload.orderId}`,
@@ -72,6 +97,7 @@ export default function DriverDashboardPage() {
           })),
         };
 
+        fallbackShownRef.current = true; // suppress mock fallback
         setPendingRequest(request);
         setShowRequest(true);
       });
@@ -80,13 +106,13 @@ export default function DriverDashboardPage() {
     void connect();
 
     return () => {
+      isMounted = false;
       socketRef.current?.disconnect();
       socketRef.current = null;
-      joinedRef.current = false;
     };
-  }, [driver?.id]);
+  }, []); // connect once, never reconnect on prop changes
 
-  // Join / leave driver room when online status changes
+  // Join/leave driver room when online status changes (after socket is established)
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket || !driver) return;
@@ -94,21 +120,18 @@ export default function DriverDashboardPage() {
     if (isOnline) {
       socket.emit('driver:join', driver.id);
       socket.emit('driver:online', driver.id);
-      joinedRef.current = true;
     } else {
       socket.emit('driver:offline', driver.id);
-      joinedRef.current = false;
     }
   }, [isOnline, driver?.id]);
 
-  // Fallback: show mock request after 10s if no real request arrives (dev mode)
-  const fallbackShownRef = useRef(false);
+  // Dev fallback: show mock popup if no real request arrives within 10s of going online
   useEffect(() => {
     if (!isOnline || activeDelivery || fallbackShownRef.current) return;
     const timer = window.setTimeout(() => {
-      if (!showRequest) {
+      if (!showRequest && !activeDelivery && !fallbackShownRef.current) {
         fallbackShownRef.current = true;
-        setPendingRequest(undefined); // use MOCK fallback in popup
+        setPendingRequest(undefined); // use MOCK_DELIVERY_REQUEST inside popup
         setShowRequest(true);
       }
     }, 10000);
@@ -118,7 +141,7 @@ export default function DriverDashboardPage() {
   const rejectRequest = useCallback(() => {
     setShowRequest(false);
     setPendingRequest(undefined);
-    fallbackShownRef.current = false;
+    fallbackShownRef.current = false; // allow another fallback after rejection
   }, []);
 
   return (
@@ -217,7 +240,6 @@ export default function DriverDashboardPage() {
           setActiveDelivery(delivery);
           setShowRequest(false);
           setPendingRequest(undefined);
-          fallbackShownRef.current = false;
         }}
       />
     </div>

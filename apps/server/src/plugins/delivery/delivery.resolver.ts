@@ -1,8 +1,8 @@
 import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
-import { Transaction } from '@vendure/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { DeliveryRequest, DeliveryStatus } from './delivery-request.entity';
+import { DeliveryOrderItem, DeliveryRequest, DeliveryStatus, PickupStop } from './delivery-request.entity';
+import { generateOrderNumber, dispatchOrder } from '../../services/order-dispatch.service';
 
 @Resolver()
 export class DeliveryResolver {
@@ -31,32 +31,73 @@ export class DeliveryResolver {
     });
   }
 
-  @Transaction()
   @Mutation()
   async createDeliveryRequest(
     @Args('orderId') orderId: string,
     @Args('customerId') customerId: string,
+    @Args('customerName') customerName: string,
+    @Args('customerPhone') customerPhone: string,
     @Args('dropoffAddress') dropoffAddress: string,
     @Args('dropoffLat') dropoffLat: number,
     @Args('dropoffLng') dropoffLng: number,
+    @Args('pickupStops', { nullable: true }) pickupStops: PickupStop[] = [],
+    @Args('orderItems', { nullable: true }) orderItems: DeliveryOrderItem[] = [],
+    @Args('orderTotal', { nullable: true }) orderTotal = 0,
+    @Args('paymentMethod', { nullable: true }) paymentMethod?: string,
   ) {
+    const orderNumber = generateOrderNumber();
+
+    const pickupLat = pickupStops[0]?.lat ?? 47.9185;
+    const pickupLng = pickupStops[0]?.lng ?? 106.917;
+
     const request = this.deliveryRepo.create({
       orderId,
+      orderNumber,
       customerId,
+      customerName,
+      customerPhone,
       dropoffAddress,
       dropoffLat,
       dropoffLng,
+      pickupStops: pickupStops.map((stop) => ({ ...stop, status: stop.status ?? 'PENDING' })),
+      orderItems,
+      orderTotal,
+      paymentMethod,
+      supplierStatus: 'PENDING',
       status: DeliveryStatus.SEARCHING,
-      pickupStops: [],
       distance: 0,
       estimatedDuration: 30,
-      proposedFee: 500000, // ₮5,000
+      proposedFee: 500000,
       finalFee: 0,
     });
-    return this.deliveryRepo.save(request);
+
+    const saved = await this.deliveryRepo.save(request);
+
+    // Fire-and-forget: dispatch to nearest driver via WebSocket
+    const dispatchPickupStops = pickupStops.map((s) => ({
+      supplierId: s.supplierId,
+      name: s.supplierName,
+      district: s.address,
+    }));
+
+    void dispatchOrder(String(saved.id), pickupLat, pickupLng, customerId, dispatchPickupStops)
+      .then(async (result) => {
+        if (result.status === 'ACCEPTED' && result.driver) {
+          await this.deliveryRepo.update(saved.id, {
+            driverId: result.driver.id,
+            status: DeliveryStatus.ACCEPTED,
+          });
+        } else if (result.status === 'TIMEOUT') {
+          await this.deliveryRepo.update(saved.id, { status: DeliveryStatus.CANCELLED });
+        }
+      })
+      .catch((err) => {
+        console.error('[delivery] dispatch error:', err);
+      });
+
+    return saved;
   }
 
-  @Transaction()
   @Mutation()
   async acceptDelivery(
     @Args('deliveryId') deliveryId: string,
@@ -64,12 +105,11 @@ export class DeliveryResolver {
   ) {
     await this.deliveryRepo.update(deliveryId, {
       driverId,
-      status: DeliveryStatus.ACCEPTED,
+      status: DeliveryStatus.IN_PROGRESS,
     });
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
-  @Transaction()
   @Mutation()
   async updateDeliveryStatus(
     @Args('deliveryId') deliveryId: string,
@@ -79,7 +119,6 @@ export class DeliveryResolver {
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
-  @Transaction()
   @Mutation()
   async updateDeliveryLocation(
     @Args('deliveryId') deliveryId: string,

@@ -1,25 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-
-interface Address {
-  id: string;
-  label: string;
-  fullName: string;
-  phone: string;
-  district: string;
-  street: string;
-  building: string;
-  apartment: string;
-  isDefault: boolean;
-}
+import { useCustomerAddressStore, type CustomerAddress } from '@/lib/customer-address-store';
 
 const UB_DISTRICTS = [
   'Баянгол', 'Баянзүрх', 'Чингэлтэй', 'Хан-Уул',
   'Сүхбаатар', 'Налайх', 'Багануур', 'Багахангай', 'Сонгинохайрхан',
 ];
 
-const EMPTY_FORM: Omit<Address, 'id' | 'isDefault'> = {
+const EMPTY_FORM: Omit<CustomerAddress, 'id' | 'isDefault'> = {
   label: '',
   fullName: '',
   phone: '',
@@ -30,7 +19,7 @@ const EMPTY_FORM: Omit<Address, 'id' | 'isDefault'> = {
 };
 
 export default function AddressesPage() {
-  const [addresses, setAddresses] = useState<Address[]>([]);
+  const { addresses, addAddress, updateAddress, deleteAddress, setDefault } = useCustomerAddressStore();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -53,7 +42,7 @@ export default function AddressesPage() {
     setShowForm(true);
   };
 
-  const openEdit = (addr: Address) => {
+  const openEdit = (addr: CustomerAddress) => {
     setEditId(addr.id);
     setForm({
       label: addr.label,
@@ -71,32 +60,11 @@ export default function AddressesPage() {
   const handleSave = () => {
     if (!validate()) return;
     if (editId) {
-      setAddresses((prev) =>
-        prev.map((a) => (a.id === editId ? { ...a, ...form } : a)),
-      );
+      updateAddress(editId, form);
     } else {
-      const newAddr: Address = {
-        id: Date.now().toString(),
-        ...form,
-        isDefault: addresses.length === 0,
-      };
-      setAddresses((prev) => [...prev, newAddr]);
+      addAddress(form);
     }
     setShowForm(false);
-  };
-
-  const handleDelete = (id: string) => {
-    setAddresses((prev) => {
-      const filtered = prev.filter((a) => a.id !== id);
-      if (filtered.length > 0 && !filtered.some((a) => a.isDefault)) {
-        filtered[0].isDefault = true;
-      }
-      return filtered;
-    });
-  };
-
-  const setDefault = (id: string) => {
-    setAddresses((prev) => prev.map((a) => ({ ...a, isDefault: a.id === id })));
   };
 
   const field = (key: keyof typeof form, label: string, required = false) => (
@@ -174,7 +142,7 @@ export default function AddressesPage() {
                   Засах
                 </button>
                 <button
-                  onClick={() => handleDelete(addr.id)}
+                  onClick={() => deleteAddress(addr.id)}
                   className="text-xs text-error hover:underline"
                 >
                   Устгах

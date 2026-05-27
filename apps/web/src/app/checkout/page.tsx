@@ -5,8 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, m } from 'framer-motion';
 import { CheckCircle, Package, MapPin, Clock } from 'lucide-react';
-import { useCartStore, calcSubtotal, calcDiscount, calcDeliveryFee } from '@/lib/cart-store';
+import { useCartStore, calcSubtotal, calcDiscount, calcDeliveryFee, getSupplierGroups } from '@/lib/cart-store';
 import { useOrderStore } from '@/lib/order-store';
+import { vendureShopFetch } from '@/lib/vendure';
+import { useAuthStore } from '@/lib/auth-store';
+import { useCustomerAddressStore } from '@/lib/customer-address-store';
 import { QPayModal } from '@/components/payment/QPayModal';
 import { MonPayModal } from '@/components/payment/MonPayModal';
 import { trackBeginCheckout, trackAddPaymentInfo } from '@/lib/analytics/ga4';
@@ -40,10 +43,46 @@ function fmt(minor: number) {
   return `₮${Math.round(minor / 100).toLocaleString('mn-MN')}`;
 }
 
-function randOrderNo() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return 'DIY-' + Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+function fallbackOrderNo() {
+  const year = new Date().getFullYear();
+  const seq = String(Math.floor(Math.random() * 99999) + 1).padStart(5, '0');
+  return `DIY-${year}-${seq}`;
 }
+
+const CREATE_DELIVERY_REQUEST = `
+  mutation CreateDeliveryRequest(
+    $orderId: String!
+    $customerId: String!
+    $customerName: String!
+    $customerPhone: String!
+    $pickupStops: [PickupStopInput!]
+    $orderItems: [DeliveryOrderItemInput!]
+    $orderTotal: Int
+    $paymentMethod: String
+    $dropoffAddress: String!
+    $dropoffLat: Float!
+    $dropoffLng: Float!
+  ) {
+    createDeliveryRequest(
+      orderId: $orderId
+      customerId: $customerId
+      customerName: $customerName
+      customerPhone: $customerPhone
+      pickupStops: $pickupStops
+      orderItems: $orderItems
+      orderTotal: $orderTotal
+      paymentMethod: $paymentMethod
+      dropoffAddress: $dropoffAddress
+      dropoffLat: $dropoffLat
+      dropoffLng: $dropoffLng
+    ) {
+      id
+      orderId
+      orderNumber
+      status
+    }
+  }
+`;
 
 // ─── Step bar ─────────────────────────────────────────────────
 
@@ -416,10 +455,35 @@ export default function CheckoutPage() {
   const [orderNo, setOrderNo] = useState('');
   const [showQPay, setShowQPay] = useState(false);
   const [showMonPay, setShowMonPay] = useState(false);
-  const { items, promo, deliveryFee, clearCart } = useCartStore();
+  const { items, promo, deliveryFee, customerAddress, clearCart } = useCartStore();
   const { addOrder } = useOrderStore();
+  const { customer, fetchActiveCustomer } = useAuthStore();
+  const addresses = useCustomerAddressStore((state) => state.addresses);
 
   useEffect(() => setHydrated(true), []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void fetchActiveCustomer();
+  }, [fetchActiveCustomer, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
+    setContact((current) => ({
+      ...current,
+      name: current.name || [customer?.firstName, customer?.lastName].filter(Boolean).join(' '),
+      phone: current.phone || customer?.phoneNumber || defaultAddress?.phone || '',
+      email: current.email || customer?.emailAddress || '',
+      district: current.district || customerAddress?.district || (defaultAddress?.district ? `${defaultAddress.district} дүүрэг` : ''),
+      khoroo: current.khoroo || customerAddress?.khoroo || '',
+      address: current.address || customerAddress?.address || [defaultAddress?.street, defaultAddress?.building, defaultAddress?.apartment]
+        .filter(Boolean)
+        .join(', '),
+      doorCode: current.doorCode || customerAddress?.doorCode || '',
+      note: current.note || customerAddress?.note || '',
+    }));
+  }, [addresses, customer, customerAddress, hydrated]);
 
   const sub      = calcSubtotal(items);
   const hasDelivery = items.some((i) => i.mode === 'delivery');
@@ -458,30 +522,95 @@ export default function CheckoutPage() {
     });
   }
 
+  async function publishDeliveryRequest(sessionId: string): Promise<string> {
+    const groups = getSupplierGroups(items);
+    const fallbackStop = {
+      supplierId: 'diy-store',
+      supplierName: 'DIY Store',
+      address: 'Улаанбаатар',
+      lat: 47.9185,
+      lng: 106.917,
+      status: 'PENDING',
+    };
+    const pickupStops = groups.length > 0
+      ? groups.map((group, index) => ({
+          supplierId: group.supplierId,
+          supplierName: group.supplierName,
+          address: group.supplierDistrict || 'Улаанбаатар',
+          lat: group.supplierLat ?? 47.9185 + index * 0.004,
+          lng: group.supplierLng ?? 106.917 + index * 0.004,
+          status: 'PENDING',
+        }))
+      : [fallbackStop];
+
+    try {
+      const data = await vendureShopFetch<{
+        createDeliveryRequest: { id: string; orderId: string; orderNumber: string; status: string };
+      }>(CREATE_DELIVERY_REQUEST, {
+        orderId: sessionId,
+        customerId: customer?.id || contact.phone.replace(/\D/g, '') || 'guest',
+        customerName: contact.name.trim(),
+        customerPhone: contact.phone.replace(/\D/g, ''),
+        pickupStops,
+        orderItems: items.map((item) => ({
+          supplierId: item.supplierId ?? 'diy-store',
+          supplierName: item.supplierName ?? 'DIY Store',
+          name: item.name,
+          sku: item.sku,
+          qty: item.qty,
+          price: item.price,
+        })),
+        orderTotal: total,
+        paymentMethod: payment.method ?? 'qpay',
+        dropoffAddress: contact.deliveryType === 'delivery'
+          ? `${contact.province}, ${contact.district}, ${contact.address}`
+          : STORES.find((store) => store.id === contact.storeId)?.address ?? 'Салбараас авах',
+        dropoffLat: 47.9189,
+        dropoffLng: 106.9176,
+      });
+      // Use the server-generated DIY-YYYY-XXXXX order number
+      return data.createDeliveryRequest.orderNumber || fallbackOrderNo();
+    } catch (err) {
+      console.error('Delivery request publish failed', err);
+      return fallbackOrderNo();
+    }
+  }
+
   function handlePaymentConfirm() {
-    const no = randOrderNo();
-    setOrderNo(no);
-    createOrder(no);
+    const sessionId = `session-${Date.now()}`;
 
     const methodLabel = payment.method === 'qpay' ? 'QPay' : payment.method === 'monpay' ? 'MonPay' : 'Card';
     trackAddPaymentInfo(methodLabel as 'QPay' | 'MonPay' | 'Card');
 
     if (payment.method === 'qpay') {
       setShowQPay(true);
+      // Store sessionId for later use
+      setOrderNo(sessionId);
     } else if (payment.method === 'monpay') {
       setShowMonPay(true);
+      setOrderNo(sessionId);
     } else if (payment.method === 'card') {
+      setOrderNo(sessionId);
+      const fallback = fallbackOrderNo();
+      createOrder(fallback);
       clearCart();
-      router.push(`/checkout/mock-psp?session=MOCK-CARD-${no}&order=${no}&amount=${Math.round(total / 100)}`);
+      router.push(`/checkout/mock-psp?session=MOCK-CARD-${sessionId}&order=${fallback}&amount=${Math.round(total / 100)}`);
     }
   }
 
   function handlePaymentSuccess() {
+    const sessionId = orderNo || `session-${Date.now()}`;
     clearCart();
-    setStep(3);
-    window.scrollTo(0, 0);
     setShowQPay(false);
     setShowMonPay(false);
+
+    // Publish delivery request and navigate to tracking with real order number
+    publishDeliveryRequest(sessionId).then((realOrderNo) => {
+      createOrder(realOrderNo);
+      setOrderNo(realOrderNo);
+      setStep(3);
+      window.scrollTo(0, 0);
+    });
   }
 
   if (!hydrated) {

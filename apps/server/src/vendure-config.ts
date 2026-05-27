@@ -13,6 +13,7 @@ import { qpayPaymentHandler, monpayPaymentHandler } from './plugins/payment';
 import { ReviewPlugin } from './plugins/review/review.plugin';
 import { SupplierPlugin } from './plugins/supplier/supplier.plugin';
 import { DriverPlugin } from './plugins/driver/driver.plugin';
+import { DeliveryPlugin } from './plugins/delivery/delivery.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
 
@@ -91,6 +92,7 @@ export const config: VendureConfig = {
     ReviewPlugin,
     SupplierPlugin,
     DriverPlugin,
+    DeliveryPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),

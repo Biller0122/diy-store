@@ -19,6 +19,15 @@ export interface PickupStop {
   status: 'PENDING' | 'ARRIVED' | 'PICKED_UP';
 }
 
+export interface DeliveryOrderItem {
+  supplierId: string;
+  supplierName: string;
+  name: string;
+  sku?: string;
+  qty: number;
+  price: number;
+}
+
 @Entity()
 export class DeliveryRequest extends VendureEntity {
   constructor(input?: DeepPartial<DeliveryRequest>) {
@@ -28,11 +37,32 @@ export class DeliveryRequest extends VendureEntity {
   @Column()
   orderId: string;
 
+  @Column({ default: '' })
+  orderNumber: string;
+
   @Column()
   customerId: string;
 
-  @Column({ type: 'jsonb', default: [] })
+  @Column({ default: '' })
+  customerName: string;
+
+  @Column({ default: '' })
+  customerPhone: string;
+
+  @Column({ type: 'simple-json', default: '[]' })
   pickupStops: PickupStop[];
+
+  @Column({ type: 'simple-json', default: '[]' })
+  orderItems: DeliveryOrderItem[];
+
+  @Column({ default: 0 })
+  orderTotal: number;
+
+  @Column({ nullable: true })
+  paymentMethod: string;
+
+  @Column({ type: 'varchar', default: 'PENDING' })
+  supplierStatus: 'PENDING' | 'ACCEPTED' | 'REJECTED';
 
   @Column({ type: 'text' })
   dropoffAddress: string;

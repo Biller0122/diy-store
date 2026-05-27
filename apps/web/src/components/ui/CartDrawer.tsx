@@ -72,7 +72,7 @@ export function CartDrawer() {
                 <AnimatePresence mode="popLayout">
                   {items.map((item) => (
                     <m.div
-                      key={item.variantId}
+                      key={item.id}
                       layout
                       initial={{ opacity: 0, x: 40 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -104,14 +104,14 @@ export function CartDrawer() {
                         <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => item.qty > 1 ? updateQty(item.variantId, item.qty - 1) : removeItem(item.variantId)}
+                              onClick={() => item.qty > 1 ? updateQty(item.id, item.qty - 1) : removeItem(item.id)}
                               className="w-6 h-6 rounded-lg glass flex items-center justify-center text-foreground-muted hover:text-foreground transition-colors"
                             >
                               <Minus size={10} />
                             </button>
                             <span className="text-sm font-mono w-6 text-center">{item.qty}</span>
                             <button
-                              onClick={() => updateQty(item.variantId, item.qty + 1)}
+                              onClick={() => updateQty(item.id, item.qty + 1)}
                               className="w-6 h-6 rounded-lg glass flex items-center justify-center text-foreground-muted hover:text-foreground transition-colors"
                             >
                               <Plus size={10} />
@@ -125,7 +125,7 @@ export function CartDrawer() {
 
                       {/* Delete */}
                       <button
-                        onClick={() => removeItem(item.variantId)}
+                        onClick={() => removeItem(item.id)}
                         className="text-foreground-muted hover:text-error transition-colors self-start mt-0.5"
                       >
                         <Trash2 size={14} />

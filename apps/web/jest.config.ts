@@ -3,6 +3,8 @@ export default {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  modulePathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/out/'],
+  watchPathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/out/'],
   moduleNameMapper: {
     '^react$': '<rootDir>/node_modules/react',
     '^react/jsx-runtime$': '<rootDir>/node_modules/react/jsx-runtime',
