@@ -20,7 +20,6 @@ export default function DriverDashboardPage() {
   const isOnlineRef = useRef(isOnline);
   const activeDeliveryRef = useRef(activeDelivery);
   const driverIdRef = useRef(driver?.id);
-  const fallbackShownRef = useRef(false);
 
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
   useEffect(() => { activeDeliveryRef.current = activeDelivery; }, [activeDelivery]);
@@ -91,7 +90,6 @@ export default function DriverDashboardPage() {
           })),
         };
 
-        fallbackShownRef.current = true; // suppress mock fallback
         setPendingRequest(request);
         setShowRequest(true);
       });
@@ -119,23 +117,10 @@ export default function DriverDashboardPage() {
     }
   }, [isOnline, driver?.id]);
 
-  // Dev fallback: show mock popup if no real request arrives within 10s of going online
-  useEffect(() => {
-    if (!isOnline || activeDelivery || fallbackShownRef.current) return;
-    const timer = window.setTimeout(() => {
-      if (!showRequest && !activeDelivery && !fallbackShownRef.current) {
-        fallbackShownRef.current = true;
-        setPendingRequest(undefined); // use MOCK_DELIVERY_REQUEST inside popup
-        setShowRequest(true);
-      }
-    }, 10000);
-    return () => window.clearTimeout(timer);
-  }, [isOnline, activeDelivery, showRequest]);
 
   const rejectRequest = useCallback(() => {
     setShowRequest(false);
     setPendingRequest(undefined);
-    fallbackShownRef.current = false; // allow another fallback after rejection
   }, []);
 
   return (
