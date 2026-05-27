@@ -112,7 +112,7 @@ export default function SupplierLoginPage() {
               {countdown > 0 ? `Дахин код авах (${countdown})` : 'Дахин код авах'}
             </button>
             {devOtp && (
-              <p className="text-center text-[10px] text-foreground-muted">dev OTP: {devOtp}</p>
+              <p className="text-center text-[10px] text-foreground-muted">Туршилтын OTP: {devOtp}</p>
             )}
           </div>
         )}
