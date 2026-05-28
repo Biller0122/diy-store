@@ -2,6 +2,7 @@ import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import gql from 'graphql-tag';
 import { Supplier } from './supplier.entity';
+import { SupplierProduct } from './supplier-product.entity';
 import { SupplierResolver } from './supplier.resolver';
 import { SupplierService } from './supplier.service';
 import { EmailOtpService } from '../../services/email-otp.service';
@@ -16,6 +17,92 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     status: String!
     reason: String
     at: String!
+  }
+
+  type SupplierProductList {
+    items: [SupplierProduct!]!
+    total: Int!
+  }
+
+  type SupplierProduct {
+    id: ID!
+    supplierId: String!
+    name: String!
+    slug: String!
+    description: String
+    category: String
+    image: String
+    price: Int!
+    originalPrice: Int
+    stock: Int!
+    enabled: Boolean!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  input SupplierProductInput {
+    supplierId: String!
+    name: String!
+    slug: String
+    description: String
+    category: String
+    image: String
+    price: Int!
+    originalPrice: Int
+    stock: Int!
+    enabled: Boolean
+  }
+
+  input SupplierProductUpdateInput {
+    name: String
+    slug: String
+    description: String
+    category: String
+    image: String
+    price: Int
+    originalPrice: Int
+    stock: Int
+    enabled: Boolean
+  }
+
+  type SupplierOrderAddress {
+    streetLine1: String
+    city: String
+  }
+
+  type SupplierOrderProduct {
+    name: String!
+  }
+
+  type SupplierOrderProductVariant {
+    name: String!
+    product: SupplierOrderProduct!
+  }
+
+  type SupplierOrderLine {
+    quantity: Int!
+    productVariant: SupplierOrderProductVariant!
+  }
+
+  type SupplierOrder {
+    id: ID!
+    code: String!
+    state: String!
+    total: Int!
+    createdAt: DateTime!
+    shippingAddress: SupplierOrderAddress
+    lines: [SupplierOrderLine!]!
+  }
+
+  type SupplierOrderList {
+    items: [SupplierOrder!]!
+    total: Int!
+  }
+
+  type SupplierOrderActionResult {
+    success: Boolean!
+    message: String!
+    order: SupplierOrder
   }
 
   type Supplier {
@@ -129,6 +216,8 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     getAllSuppliers: SupplierList!
     supplier(id: ID!): Supplier
     supplierBySlug(slug: String!): Supplier
+    supplierProducts(supplierId: String): SupplierProductList!
+    supplierOrders(take: Int, skip: Int): SupplierOrderList!
   }
 
   extend type Mutation {
@@ -137,14 +226,17 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     registerSupplier(input: RegisterSupplierInput!): SupplierRegistrationResult!
     loginSupplier(email: String!): SupplierRegistrationResult!
     verifySupplierOTP(input: VerifySupplierOTPInput!): SupplierOTPResult!
+    createSupplierProduct(input: SupplierProductInput!): SupplierProduct!
+    updateSupplierProduct(id: ID!, input: SupplierProductUpdateInput!): SupplierProduct!
+    supplierOrderAction(orderId: ID!, action: String!): SupplierOrderActionResult!
     updateSupplierStatus(id: ID!, status: String!, reason: String): Supplier!
   }
 `;
 
 @VendurePlugin({
-  imports: [PluginCommonModule, TypeOrmModule.forFeature([Supplier])],
+  imports: [PluginCommonModule, TypeOrmModule.forFeature([Supplier, SupplierProduct])],
   providers: [SupplierResolver, SupplierService, EmailOtpService],
-  entities: [Supplier as any],
+  entities: [Supplier as any, SupplierProduct as any],
   shopApiExtensions: {
     schema: SUPPLIER_SCHEMA_EXTENSION,
     resolvers: [SupplierResolver],

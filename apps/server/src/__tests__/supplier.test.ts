@@ -1,10 +1,12 @@
 import { Supplier, SupplierStatus } from '../plugins/supplier/supplier.entity';
+import { SupplierProduct } from '../plugins/supplier/supplier-product.entity';
 import { SupplierService } from '../plugins/supplier/supplier.service';
 import { createMockRepository } from './test-repo';
 
 function createService() {
   const repo = createMockRepository<Supplier>();
-  return { repo, supplierService: new SupplierService(repo as never) };
+  const productRepo = createMockRepository<SupplierProduct>();
+  return { repo, productRepo, supplierService: new SupplierService(repo as never, productRepo as never) };
 }
 
 describe('SupplierService', () => {
@@ -48,6 +50,39 @@ describe('SupplierService', () => {
       await supplierService.updateSupplierStatus(String(supplier.id), SupplierStatus.SUSPENDED);
       const updated = await supplierService.getSupplierById(String(supplier.id));
       expect(updated?.status).toBe(SupplierStatus.SUSPENDED);
+    });
+  });
+
+  describe('supplier products', () => {
+    test('creates product for supplier', async () => {
+      const { supplierService } = createService();
+      const supplier = await supplierService.registerSupplier({ ownerName: 'Батболд', email: 'supplier@example.com' });
+      const product = await supplierService.createSupplierProduct({
+        supplierId: String(supplier.id),
+        name: 'Цахилгаан дрилл',
+        price: 120000,
+        stock: 7,
+        image: 'data:image/png;base64,test',
+      });
+
+      expect(product.name).toBe('Цахилгаан дрилл');
+      expect(product.stock).toBe(7);
+      expect(product.supplierId).toBe(String(supplier.id));
+    });
+
+    test('lists products from same database repository', async () => {
+      const { supplierService } = createService();
+      const supplier = await supplierService.registerSupplier({ ownerName: 'Батболд', email: 'supplier@example.com' });
+      await supplierService.createSupplierProduct({
+        supplierId: String(supplier.id),
+        name: 'Будгийн сойз',
+        price: 15000,
+        stock: 3,
+      });
+
+      const result = await supplierService.getSupplierProducts(String(supplier.id));
+      expect(result.total).toBe(1);
+      expect(result.items[0].name).toBe('Будгийн сойз');
     });
   });
 });

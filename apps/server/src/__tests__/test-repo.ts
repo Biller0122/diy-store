@@ -30,6 +30,9 @@ export function createMockRepository<T extends EntityWithId>() {
     async findAndCount() {
       return [[...items], items.length] as [T[], number];
     },
+    async count({ where }: { where?: Partial<T> } = {}) {
+      return where ? items.filter((item) => matchesWhere(item, where)).length : items.length;
+    },
     async update(idValue: string | number, patch: Partial<T>) {
       const entity = items.find((item) => String(item.id) === String(idValue));
       if (entity) Object.assign(entity, patch);

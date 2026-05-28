@@ -22,10 +22,19 @@ export interface SupplierOrder {
 
 export interface SupplierProduct {
   id: string;
+  supplierId?: string;
   name: string;
   slug: string;
+  description?: string | null;
+  category?: string | null;
+  image?: string | null;
   enabled: boolean;
-  variants: Array<{ id: string; price: number; stockLevel: string; stockOnHand?: number }>;
+  price: number;
+  originalPrice?: number | null;
+  stock: number;
+  createdAt?: string;
+  updatedAt?: string;
+  variants?: Array<{ id: string; price: number; stockLevel: string; stockOnHand?: number }>;
 }
 
 export type TabFilter = 'pending' | 'active' | 'done';

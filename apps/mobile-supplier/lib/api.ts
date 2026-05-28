@@ -115,32 +115,63 @@ export const SUPPLIER_QUERY = `
   }
 `;
 
-export const ADMIN_PRODUCTS_QUERY = `
-  query AdminProducts($skip: Int!, $take: Int!) {
-    products(options: { skip: $skip, take: $take }) {
+export const SUPPLIER_PRODUCTS_QUERY = `
+  query SupplierProducts($supplierId: String) {
+    supplierProducts(supplierId: $supplierId) {
       items {
         id
+        supplierId
         name
         slug
+        description
+        category
+        image
         enabled
-        variants {
-          id
-          price
-          stockLevel
-        }
+        price
+        originalPrice
+        stock
+        createdAt
+        updatedAt
       }
-      totalItems
+      total
     }
   }
 `;
 
-export const ADMIN_ORDERS_QUERY = `
-  query AdminOrders($state: String) {
-    orders(options: {
-      filter: { state: { eq: $state } },
-      take: 20,
-      sort: { createdAt: DESC }
-    }) {
+export const CREATE_SUPPLIER_PRODUCT_MUTATION = `
+  mutation CreateSupplierProduct($input: SupplierProductInput!) {
+    createSupplierProduct(input: $input) {
+      id
+      supplierId
+      name
+      slug
+      description
+      category
+      image
+      enabled
+      price
+      originalPrice
+      stock
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const UPDATE_SUPPLIER_PRODUCT_MUTATION = `
+  mutation UpdateSupplierProduct($id: ID!, $input: SupplierProductUpdateInput!) {
+    updateSupplierProduct(id: $id, input: $input) {
+      id
+      enabled
+      stock
+      price
+    }
+  }
+`;
+
+export const SUPPLIER_ORDERS_QUERY = `
+  query SupplierOrders($skip: Int, $take: Int) {
+    supplierOrders(skip: $skip, take: $take) {
       items {
         id
         code
@@ -161,25 +192,36 @@ export const ADMIN_ORDERS_QUERY = `
           city
         }
       }
-      totalItems
+      total
     }
   }
 `;
 
-export const UPDATE_PRODUCT_MUTATION = `
-  mutation UpdateProduct($id: ID!, $enabled: Boolean!) {
-    updateProduct(input: { id: $id, enabled: $enabled }) {
-      id
-      enabled
-    }
-  }
-`;
-
-export const UPDATE_STOCK_MUTATION = `
-  mutation UpdateProductVariants($input: [UpdateProductVariantInput!]!) {
-    updateProductVariants(input: $input) {
-      id
-      stockOnHand
+export const SUPPLIER_ORDER_ACTION_MUTATION = `
+  mutation SupplierOrderAction($orderId: ID!, $action: String!) {
+    supplierOrderAction(orderId: $orderId, action: $action) {
+      success
+      message
+      order {
+        id
+        code
+        state
+        total
+        createdAt
+        shippingAddress {
+          streetLine1
+          city
+        }
+        lines {
+          quantity
+          productVariant {
+            name
+            product {
+              name
+            }
+          }
+        }
+      }
     }
   }
 `;

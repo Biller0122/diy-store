@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SupplierOrder, TabFilter } from '@/lib/types';
-import { ADMIN_ORDERS_QUERY, adminFetch } from '@/lib/api';
+import { SUPPLIER_ORDERS_QUERY, SUPPLIER_ORDER_ACTION_MUTATION, shopFetch } from '@/lib/api';
 
 const C = {
   bg: '#08080E',
@@ -228,15 +229,24 @@ function timeAgo(dateStr: string): string {
 export default function OrdersScreen() {
   const [activeTab, setActiveTab] = useState<TabFilter>('pending');
   const [liveOrders, setLiveOrders] = useState<SupplierOrder[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [syncError, setSyncError] = useState('');
 
   useEffect(() => {
     let mounted = true;
-    adminFetch<{ orders: { items: SupplierOrder[] } }>(ADMIN_ORDERS_QUERY, { state: null })
+    setLoading(true);
+    shopFetch<{ supplierOrders: { items: SupplierOrder[] } }>(SUPPLIER_ORDERS_QUERY, { skip: 0, take: 50 })
       .then((data) => {
-        if (mounted) setLiveOrders(data.orders.items);
+        if (mounted) {
+          setLiveOrders(data.supplierOrders.items);
+          setSyncError('');
+        }
       })
-      .catch(() => {
-        // Keep bundled fallback data when admin API auth is unavailable.
+      .catch((err) => {
+        if (mounted) setSyncError(err instanceof Error ? err.message : 'Захиалга татахад алдаа гарлаа');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
       });
     return () => {
       mounted = false;
@@ -261,17 +271,34 @@ export default function OrdersScreen() {
 
   const handleAccept = async (order: SupplierOrder) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert('Батлагдлаа', `Захиалга #${order.code} амжилттай батлагдлаа!`);
+    await runOrderAction(order, 'ACCEPT', 'Батлагдлаа');
   };
 
   const handleReject = async (order: SupplierOrder) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert('Цуцлагдлаа', `Захиалга #${order.code} цуцлагдлаа.`);
+    await runOrderAction(order, 'REJECT', 'Цуцлагдлаа');
   };
 
   const handleShip = async (order: SupplierOrder) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('Бэлэн боллоо', `Захиалга #${order.code} хүргэлтэнд бэлэн!`);
+    await runOrderAction(order, 'SHIP', 'Бэлэн боллоо');
+  };
+
+  const runOrderAction = async (order: SupplierOrder, action: 'ACCEPT' | 'REJECT' | 'SHIP', title: string) => {
+    try {
+      const data = await shopFetch<{
+        supplierOrderAction: { success: boolean; message: string; order?: SupplierOrder | null };
+      }>(SUPPLIER_ORDER_ACTION_MUTATION, { orderId: order.id, action });
+      if (!data.supplierOrderAction.success || !data.supplierOrderAction.order) {
+        Alert.alert('Алдаа', data.supplierOrderAction.message);
+        return;
+      }
+      const updated = data.supplierOrderAction.order;
+      setLiveOrders((prev) => (prev ?? fallbackOrders).map((item) => (item.id === updated.id ? updated : item)));
+      Alert.alert(title, `Захиалга #${order.code} шинэчлэгдлээ.`);
+    } catch (err) {
+      Alert.alert('Алдаа', err instanceof Error ? err.message : 'Захиалга шинэчлэхэд алдаа гарлаа');
+    }
   };
 
   const isPending = (o: SupplierOrder) =>
@@ -285,9 +312,11 @@ export default function OrdersScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Захиалгууд</Text>
         <View style={styles.countBadge}>
-          <Text style={styles.countText}>{orders.length}</Text>
+          {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.countText}>{orders.length}</Text>}
         </View>
       </View>
+
+      {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
 
       {/* Filter tabs */}
       <View style={styles.tabBar}>
@@ -402,6 +431,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  syncError: {
+    color: C.red,
+    fontSize: 12,
+    marginHorizontal: 20,
+    marginBottom: 6,
   },
   tabBar: {
     flexDirection: 'row',

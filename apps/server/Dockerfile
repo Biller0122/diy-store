@@ -2,13 +2,13 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json apps/server/package.json
-COPY apps/web/package.json apps/web/package.json
-COPY apps/cms/package.json apps/cms/package.json
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --workspace @diy-store/server --legacy-peer-deps
 
 FROM deps AS builder
 WORKDIR /app
 COPY . .
+ENV NODE_OPTIONS=--max-old-space-size=1024
 RUN npm run build --workspace @diy-store/server
 
 FROM node:20-alpine AS runner

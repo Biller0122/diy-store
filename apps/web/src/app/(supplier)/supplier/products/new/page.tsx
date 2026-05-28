@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ImagePlus, Package, Save } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
+import { vendureShopFetch } from '@/lib/vendure';
 
 type FormState = {
   name: string;
@@ -46,6 +47,16 @@ const INITIAL_FORM: FormState = {
   inStock: true,
 };
 
+const CREATE_SUPPLIER_PRODUCT_MUTATION = `
+  mutation CreateSupplierProduct($input: SupplierProductInput!) {
+    createSupplierProduct(input: $input) {
+      id
+      name
+      slug
+    }
+  }
+`;
+
 function makeSlug(value: string) {
   return value
     .toLowerCase()
@@ -66,6 +77,7 @@ export default function NewSupplierProductPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const storageKey = useMemo(() => `diy-supplier-products:${supplier?.id ?? 'guest'}`, [supplier?.id]);
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -120,9 +132,13 @@ export default function NewSupplierProductPage() {
     return Object.keys(next).length === 0;
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!validate()) return;
+    if (!supplier?.id) {
+      setErrors((prev) => ({ ...prev, submit: 'Нэвтрэлтийн мэдээлэл олдсонгүй' }));
+      return;
+    }
 
     const product: SupplierProduct = {
       id: `local-${Date.now()}`,
@@ -138,9 +154,34 @@ export default function NewSupplierProductPage() {
       inStock: form.inStock && Number(form.stock) > 0,
     };
 
-    const current = JSON.parse(localStorage.getItem(storageKey) || '[]') as SupplierProduct[];
-    localStorage.setItem(storageKey, JSON.stringify([product, ...current]));
-    router.push('/supplier/products');
+    setSaving(true);
+    try {
+      await vendureShopFetch(CREATE_SUPPLIER_PRODUCT_MUTATION, {
+        input: {
+          supplierId: supplier.id,
+          name: product.name,
+          slug: product.slug,
+          image: product.image,
+          price: product.price,
+          originalPrice: product.originalPrice,
+          stock: Number(form.stock),
+          category: form.category.trim(),
+          description: form.description.trim(),
+          enabled: product.inStock,
+        },
+      });
+      router.push('/supplier/products');
+    } catch (err) {
+      const current = JSON.parse(localStorage.getItem(storageKey) || '[]') as SupplierProduct[];
+      localStorage.setItem(storageKey, JSON.stringify([product, ...current]));
+      setErrors((prev) => ({
+        ...prev,
+        submit: err instanceof Error ? `${err.message}. Түр local хадгаллаа.` : 'Server алдаа. Түр local хадгаллаа.',
+      }));
+      window.setTimeout(() => router.push('/supplier/products'), 900);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -303,12 +344,13 @@ export default function NewSupplierProductPage() {
         </button>
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          {errors.submit && <p className="mr-auto self-center text-xs text-error">{errors.submit}</p>}
           <Link href="/supplier/products" className="inline-flex items-center justify-center rounded-xl border border-[var(--glass-border)] px-5 py-3 text-sm font-semibold text-foreground-muted hover:bg-white/5 hover:text-foreground">
             Болих
           </Link>
-          <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand/20 hover:bg-brand-hover">
+          <button disabled={saving} type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand/20 hover:bg-brand-hover disabled:opacity-60">
             <Save size={16} />
-            Хадгалах
+            {saving ? 'Хадгалж байна...' : 'Хадгалах'}
           </button>
         </div>
       </form>
@@ -316,7 +358,7 @@ export default function NewSupplierProductPage() {
       <div className="rounded-2xl border border-[var(--glass-border)] bg-card/60 p-4">
         <div className="flex items-center gap-3 text-sm text-foreground-muted">
           <Package size={18} />
-          <span>Одоогоор local хадгалалт ашиглаж байна. Vendure Admin API бэлэн болмогц энэ form mutation руу холбогдоно.</span>
+          <span>Бараа server database руу хадгалагдаж, web болон supplier app дээр нэгэн зэрэг харагдана.</span>
         </div>
       </div>
     </div>

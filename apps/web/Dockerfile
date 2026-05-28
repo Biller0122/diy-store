@@ -2,9 +2,8 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
-COPY apps/server/package.json apps/server/package.json
-COPY apps/cms/package.json apps/cms/package.json
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --workspace @diy-store/web --legacy-peer-deps
 
 FROM deps AS builder
 WORKDIR /app
@@ -15,6 +14,7 @@ ARG NEXT_PUBLIC_SITE_URL=https://example.com
 ENV NEXT_PUBLIC_VENDURE_SHOP_API=$NEXT_PUBLIC_VENDURE_SHOP_API
 ENV NEXT_PUBLIC_VENDURE_ADMIN_API=$NEXT_PUBLIC_VENDURE_ADMIN_API
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+ENV NODE_OPTIONS=--max-old-space-size=1024
 RUN npm run build --workspace @diy-store/web
 
 FROM node:20-alpine AS runner

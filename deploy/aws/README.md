@@ -35,6 +35,13 @@ newgrp docker
 docker version
 ```
 
+Small Lightsail/EC2 instances need swap before Docker build:
+
+```bash
+cd ~/diy-store
+bash deploy/aws/bootstrap-swap.sh
+```
+
 ## 3. Upload Code
 
 ```bash
@@ -63,7 +70,8 @@ Change at least:
 ## 5. Deploy
 
 ```bash
-docker compose -f docker-compose.aws.yml --env-file .env.production up -d --build
+DOCKER_BUILDKIT=1 docker compose -f docker-compose.aws.yml --env-file .env.production build
+docker compose -f docker-compose.aws.yml --env-file .env.production up -d
 ```
 
 ## 6. Check
@@ -85,8 +93,17 @@ URLs:
 
 ```bash
 git pull
-docker compose -f docker-compose.aws.yml --env-file .env.production up -d --build
+bash deploy/aws/bootstrap-swap.sh
+DOCKER_BUILDKIT=1 docker compose -f docker-compose.aws.yml --env-file .env.production build
+docker compose -f docker-compose.aws.yml --env-file .env.production up -d
 docker image prune -f
+```
+
+If the first build was killed before this optimization, clear the partial builder cache:
+
+```bash
+docker builder prune -f
+DOCKER_BUILDKIT=1 docker compose -f docker-compose.aws.yml --env-file .env.production build --no-cache
 ```
 
 ## Notes

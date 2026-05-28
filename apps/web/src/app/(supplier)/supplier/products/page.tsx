@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, Edit3, Trash2, Package, ToggleLeft, ToggleRight } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { MOCK_SUPPLIER_PRODUCTS } from '@/lib/supplier-data';
+import { vendureShopFetch } from '@/lib/vendure';
 
 type SupplierProduct = {
   id: string;
@@ -18,11 +19,34 @@ type SupplierProduct = {
   reviewCount: number;
   badge?: string;
   inStock: boolean;
+  stock?: number;
 };
+
+const SUPPLIER_PRODUCTS_QUERY = `
+  query SupplierProducts($supplierId: String) {
+    supplierProducts(supplierId: $supplierId) {
+      items {
+        id
+        name
+        slug
+        image
+        price
+        originalPrice
+        stock
+        enabled
+      }
+      total
+    }
+  }
+`;
 
 export default function SupplierProductsPage() {
   const { supplier } = useSupplierStore();
   const [search, setSearch] = useState('');
+  const [serverProducts, setServerProducts] = useState<SupplierProduct[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [syncError, setSyncError] = useState('');
+  const [serverLoaded, setServerLoaded] = useState(false);
   const supplierId = supplier?.id;
   const supplierSlug = supplier?.slug;
 
@@ -45,7 +69,39 @@ export default function SupplierProductsPage() {
     { id: 'p5', variantId: 'v5', name: 'Marshall Будаг 2.5L', slug: 'marshall-25', image: '', price: 4990000, rating: 4.4, reviewCount: 33, inStock: true },
   ], []);
 
-  const allProducts = [...localProducts, ...(rawProducts.length > 0 ? rawProducts : fallbackProducts)];
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    vendureShopFetch<{ supplierProducts: { items: Array<SupplierProduct & { enabled: boolean; stock: number }> } }>(
+      SUPPLIER_PRODUCTS_QUERY,
+      { supplierId },
+    )
+      .then((data) => {
+        if (!mounted) return;
+        setServerProducts(data.supplierProducts.items.map((product) => ({
+          ...product,
+          variantId: product.id,
+          rating: 0,
+          reviewCount: 0,
+          inStock: product.enabled && product.stock > 0,
+        })));
+        setServerLoaded(true);
+        setSyncError('');
+      })
+      .catch((err) => {
+        if (mounted) setSyncError(err instanceof Error ? err.message : 'Бараа татахад алдаа гарлаа');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [supplierId]);
+
+  const allProducts = serverLoaded
+    ? serverProducts
+    : [...localProducts, ...(rawProducts.length > 0 ? rawProducts : fallbackProducts)];
 
   const filtered = allProducts.filter((p) =>
     !search || p.name.toLowerCase().includes(search.toLowerCase())
@@ -57,12 +113,18 @@ export default function SupplierProductsPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-foreground">Миний бараа</h2>
-          <p className="text-sm text-foreground-muted mt-0.5">{allProducts.length} нийт бараа</p>
+          <p className="text-sm text-foreground-muted mt-0.5">{loading ? 'Синк хийж байна...' : `${allProducts.length} нийт бараа`}</p>
         </div>
         <Link href="/supplier/products/new" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/20">
           <Plus size={16} /> Бараа нэмэх
         </Link>
       </div>
+
+      {syncError && (
+        <div className="rounded-xl border border-error/20 bg-error/10 px-3 py-2 text-xs text-error">
+          {syncError}
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">

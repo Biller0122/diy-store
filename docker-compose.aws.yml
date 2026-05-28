@@ -40,8 +40,10 @@ services:
       DB_TYPE: postgres
       DB_HOST: postgres-vendure
       DB_PORT: 5432
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
       VENDURE_DISABLE_TELEMETRY: 'true'
       FIREBASE_MOCK_MODE: 'true'
+      NODE_OPTIONS: --max-old-space-size=1024
     ports:
       - '3002:3002'
     depends_on:
@@ -76,6 +78,7 @@ services:
       NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
       NEXT_PUBLIC_SITE_URL: http://${SITE_DOMAIN}
       NEXT_PUBLIC_SOCKET_URL: http://${SITE_DOMAIN}:3002
+      NODE_OPTIONS: --max-old-space-size=1024
     depends_on:
       - server
 
