@@ -3,7 +3,6 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   DRIVER_PROFILE_QUERY,
-  LOGIN_DRIVER_BY_PASSWORD_MUTATION,
   LOGIN_DRIVER_MUTATION,
   LOGOUT_MUTATION,
   REGISTER_DRIVER_MUTATION,
@@ -58,34 +57,23 @@ export interface DeliveryRequest {
 
 interface DriverStore {
   driver: Driver | null;
+  token: string | null;
+  pendingPhone: string | null;
   isOnline: boolean;
   isLoading: boolean;
   error: string | null;
   activeDelivery: ActiveDelivery | null;
   pendingRequest: DeliveryRequest | null;
 
-  login: (email: string, password: string) => Promise<boolean>;
+  sendLoginCode: (phone: string) => Promise<boolean>;
+  registerAndSendCode: (ownerName: string, phone: string) => Promise<boolean>;
+  verifyOtp: (phone: string, otp: string) => Promise<boolean>;
   logout: () => void;
   toggleOnline: () => Promise<void>;
   acceptDelivery: (request: DeliveryRequest) => void;
   rejectDelivery: () => void;
   completeDelivery: () => void;
   clearError: () => void;
-}
-
-const ERROR_MAP: Record<string, string> = {
-  INVALID_CREDENTIALS_ERROR: 'И-мэйл эсвэл нууц үг буруу байна',
-  NOT_VERIFIED_ERROR: 'И-мэйл баталгаажаагүй байна',
-  NATIVE_AUTH_STRATEGY_ERROR: 'Нэвтрэх боломжгүй байна',
-};
-
-const DEMO_DRIVER_EMAIL = 'starbiller@gmail.com';
-const DEMO_DRIVER_PASSWORD = 'Odbayar22';
-const DEMO_DRIVER_PHONE = '99112233';
-const DEV_OTP = '1234';
-
-function isDemoDriverLogin(email: string, password: string) {
-  return email.toLowerCase() === DEMO_DRIVER_EMAIL && password === DEMO_DRIVER_PASSWORD;
 }
 
 type DriverProfileResponse = {
@@ -98,33 +86,18 @@ type DriverProfileResponse = {
 function normalizeDbDriver(driver: DriverProfileResponse['getDriverProfile']): Driver {
   return {
     ...driver,
-    emailAddress: driver.emailAddress ?? DEMO_DRIVER_EMAIL,
+    emailAddress: driver.emailAddress ?? '',
     vehiclePlate: driver.vehiclePlate ?? 'Бүртгээгүй',
     vehicleModel: driver.vehicleModel ?? 'Бүртгээгүй',
   };
 }
 
-function buildDriver(customer: {
-  id: string;
-  firstName: string;
-  lastName: string;
-  emailAddress: string;
-  phoneNumber?: string;
-}): Driver {
-  return {
-    id: customer.id,
-    firstName: customer.firstName,
-    lastName: customer.lastName,
-    emailAddress: customer.emailAddress,
-    phone: customer.phoneNumber ?? '',
-    vehicleType: 'MOTORCYCLE',
-    vehiclePlate: '7777УБА',
-    vehicleModel: 'Honda PCX150',
-    rating: 4.8,
-    totalDeliveries: 143,
-    todayEarnings: 45000,
-    totalEarnings: 3200000,
-  };
+function normalizePhone(phone: string) {
+  return phone.replace(/\D/g, '').slice(0, 8);
+}
+
+function isValidPhone(phone: string) {
+  return /^[6789]\d{7}$/.test(phone);
 }
 
 const MOCK_PENDING_REQUEST: DeliveryRequest = {
@@ -137,61 +110,117 @@ const MOCK_PENDING_REQUEST: DeliveryRequest = {
   estimatedMinutes: 18,
 };
 
-const DEMO_DRIVER: Driver = {
-  id: 'demo-driver-001',
-  firstName: 'Одбаяр',
-  lastName: 'Батбилэг',
-  emailAddress: DEMO_DRIVER_EMAIL,
-  phone: DEMO_DRIVER_PHONE,
-  vehicleType: 'MOTORCYCLE',
-  vehiclePlate: '7777УБА',
-  vehicleModel: 'Honda PCX150',
-  status: 'ACTIVE',
-  isOnline: false,
-  rating: 4.8,
-  totalDeliveries: 143,
-  todayEarnings: 45000,
-  totalEarnings: 3200000,
-};
-
 let pendingRequestTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useDriverStore = create<DriverStore>()(
   persist(
     (set, get) => ({
       driver: null,
+      token: null,
+      pendingPhone: null,
       isOnline: false,
       isLoading: false,
       error: null,
       activeDelivery: null,
       pendingRequest: null,
 
-      login: async (email, password) => {
-        set({ isLoading: true, error: null });
-
-        if (isDemoDriverLogin(email.trim(), password)) {
-          try {
-            const auth = await shopFetch<{
-              loginDriverByPassword: { success: boolean; message: string; driverId: string | null; token: string | null };
-            }>(LOGIN_DRIVER_BY_PASSWORD_MUTATION, { email: email.trim(), password });
-            if (!auth.loginDriverByPassword.success || !auth.loginDriverByPassword.driverId) {
-              set({ isLoading: false, error: auth.loginDriverByPassword.message });
-              return false;
-            }
-
-            const profile = await shopFetch<DriverProfileResponse>(DRIVER_PROFILE_QUERY, {
-              id: auth.loginDriverByPassword.driverId,
-            });
-            set({ driver: normalizeDbDriver(profile.getDriverProfile), isOnline: profile.getDriverProfile.isOnline ?? false, isLoading: false, error: null });
-            return true;
-          } catch (err: unknown) {
-            set({ driver: DEMO_DRIVER, isOnline: false, isLoading: false, error: null });
-            return true;
-          }
+      sendLoginCode: async (phoneInput) => {
+        const phone = normalizePhone(phoneInput);
+        if (!isValidPhone(phone)) {
+          set({ error: 'Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой' });
+          return false;
         }
 
-        set({ isLoading: false, error: 'Жолоочийн эрхээр нэвтрэх бүртгэл олдсонгүй' });
-        return false;
+        set({ isLoading: true, error: null });
+        try {
+          const data = await shopFetch<{
+            loginDriver: { success: boolean; message: string; phone: string | null };
+          }>(LOGIN_DRIVER_MUTATION, { phone });
+          if (!data.loginDriver.success) {
+            set({ isLoading: false, error: data.loginDriver.message });
+            return false;
+          }
+          set({ isLoading: false, pendingPhone: phone, error: null });
+          return true;
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Код илгээхэд алдаа гарлаа';
+          set({ isLoading: false, error: message });
+          return false;
+        }
+      },
+
+      registerAndSendCode: async (ownerNameInput, phoneInput) => {
+        const ownerName = ownerNameInput.trim();
+        const phone = normalizePhone(phoneInput);
+        if (ownerName.length < 2) {
+          set({ error: 'Овог нэр 2-оос дээш тэмдэгттэй байх ёстой' });
+          return false;
+        }
+        if (!isValidPhone(phone)) {
+          set({ error: 'Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой' });
+          return false;
+        }
+
+        set({ isLoading: true, error: null });
+        try {
+          const data = await shopFetch<{
+            registerDriver: { success: boolean; message: string; phone: string | null };
+          }>(REGISTER_DRIVER_MUTATION, { input: { ownerName, phone } });
+          if (!data.registerDriver.success) {
+            set({ isLoading: false, error: data.registerDriver.message });
+            return false;
+          }
+          set({ isLoading: false, pendingPhone: phone, error: null });
+          return true;
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Бүртгэл үүсгэхэд алдаа гарлаа';
+          set({ isLoading: false, error: message });
+          return false;
+        }
+      },
+
+      verifyOtp: async (phoneInput, otp) => {
+        const phone = normalizePhone(phoneInput);
+        if (!isValidPhone(phone)) {
+          set({ error: 'Утасны дугаар буруу байна' });
+          return false;
+        }
+        if (!/^\d{4}$/.test(otp.trim())) {
+          set({ error: '4 оронтой код оруулна уу' });
+          return false;
+        }
+
+        set({ isLoading: true, error: null });
+        try {
+          const auth = await shopFetch<{
+            verifyDriverOTP: { success: boolean; message: string; driverId: string | null; token: string | null };
+          }>(VERIFY_DRIVER_OTP_MUTATION, { phone, otp: otp.trim() });
+          if (!auth.verifyDriverOTP.success || !auth.verifyDriverOTP.driverId) {
+            set({ isLoading: false, error: auth.verifyDriverOTP.message });
+            return false;
+          }
+
+          const profile = await shopFetch<DriverProfileResponse>(DRIVER_PROFILE_QUERY, {
+            id: auth.verifyDriverOTP.driverId,
+          });
+          if (!profile.getDriverProfile) {
+            set({ isLoading: false, error: 'Жолоочийн мэдээлэл олдсонгүй' });
+            return false;
+          }
+          set({
+            driver: normalizeDbDriver(profile.getDriverProfile),
+            token: auth.verifyDriverOTP.token ?? null,
+            pendingPhone: null,
+            isOnline: profile.getDriverProfile.isOnline ?? false,
+            isLoading: false,
+            error: null,
+          });
+          return true;
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Код баталгаажуулахад алдаа гарлаа';
+          set({ isLoading: false, error: message });
+          return false;
+        }
       },
 
       logout: () => {
@@ -200,7 +229,7 @@ export const useDriverStore = create<DriverStore>()(
           clearTimeout(pendingRequestTimer);
           pendingRequestTimer = null;
         }
-        set({ driver: null, isOnline: false, activeDelivery: null, pendingRequest: null, error: null });
+        set({ driver: null, token: null, pendingPhone: null, isOnline: false, activeDelivery: null, pendingRequest: null, error: null });
       },
 
       toggleOnline: async () => {
@@ -283,7 +312,7 @@ export const useDriverStore = create<DriverStore>()(
     {
       name: 'diy-driver-store',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (s) => ({ driver: s.driver }),
+      partialize: (s) => ({ driver: s.driver, token: s.token }),
     },
   ),
 );

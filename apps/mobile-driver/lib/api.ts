@@ -1,4 +1,4 @@
-const SHOP_API = 'http://52.77.245.218/shop-api';
+const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || 'http://52.77.245.218/shop-api';
 const REQUEST_TIMEOUT_MS = 12000;
 
 export async function shopFetch<T>(
@@ -15,12 +15,16 @@ export async function shopFetch<T>(
       body: JSON.stringify({ query, variables }),
       signal: controller.signal,
     });
+    if (!res.ok) throw new Error(`API холболтын алдаа (${res.status})`);
     const json = await res.json();
     if (json.errors) throw new Error(json.errors[0]?.message ?? 'API алдаа');
     return json.data as T;
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error('Серверээс хариу ирсэнгүй. Дахин оролдоно уу');
+    }
+    if (err instanceof TypeError) {
+      throw new Error('API сервертэй холбогдож чадсангүй. Интернэт болон серверийн хаягийг шалгана уу');
     }
     throw err;
   } finally {
@@ -52,8 +56,8 @@ export const LOGOUT_MUTATION = `
 `;
 
 export const REGISTER_DRIVER_MUTATION = `
-  mutation RegisterDriver($ownerName: String!, $phone: String!) {
-    registerDriver(ownerName: $ownerName, phone: $phone) {
+  mutation RegisterDriver($input: RegisterDriverInput!) {
+    registerDriver(input: $input) {
       success
       message
       phone
@@ -67,17 +71,6 @@ export const LOGIN_DRIVER_MUTATION = `
       success
       message
       phone
-    }
-  }
-`;
-
-export const LOGIN_DRIVER_BY_PASSWORD_MUTATION = `
-  mutation LoginDriverByPassword($email: String!, $password: String!) {
-    loginDriverByPassword(email: $email, password: $password) {
-      success
-      message
-      driverId
-      token
     }
   }
 `;

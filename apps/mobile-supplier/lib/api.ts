@@ -1,5 +1,5 @@
-const SHOP_API = 'http://52.77.245.218/shop-api';
-const ADMIN_API = 'http://52.77.245.218/admin-api';
+const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || 'http://52.77.245.218/shop-api';
+const ADMIN_API = process.env.EXPO_PUBLIC_ADMIN_API_URL || 'http://52.77.245.218/admin-api';
 const REQUEST_TIMEOUT_MS = 12000;
 
 async function postGraphql<T>(
@@ -20,12 +20,16 @@ async function postGraphql<T>(
       body: JSON.stringify({ query, variables }),
       signal: controller.signal,
     });
+    if (!res.ok) throw new Error(`API холболтын алдаа (${res.status})`);
     const json = await res.json();
     if (json.errors) throw new Error(json.errors[0].message);
     return json.data as T;
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error('Серверээс хариу ирсэнгүй. Дахин оролдоно уу');
+    }
+    if (err instanceof TypeError) {
+      throw new Error('API сервертэй холбогдож чадсангүй. Интернэт болон серверийн хаягийг шалгана уу');
     }
     throw err;
   } finally {

@@ -25,7 +25,7 @@ export class DriverService {
     const name = input.ownerName.trim();
     const phone = this.normalizePhone(input.phone);
     if (name.length < 2) throw new Error('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
-    if (!/^\d{8}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой байх ёстой');
+    if (!/^[6789]\d{7}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
     if (await this.driverRepo.findOne({ where: { phone } })) throw new Error('Энэ дугаар бүртгэлтэй байна');
 
     const [firstName, ...rest] = name.split(/\s+/);

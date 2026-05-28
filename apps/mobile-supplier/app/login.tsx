@@ -205,7 +205,7 @@ export default function LoginScreen() {
                 <TouchableOpacity style={styles.ghostBtn} onPress={() => setStep('email')}>
                   <Text style={styles.ghostText}>И-мэйл солих</Text>
                 </TouchableOpacity>
-                <Text style={styles.devText}>dev code: 1234</Text>
+                {__DEV__ ? <Text style={styles.devText}>dev code: 1234</Text> : null}
               </>
             )}
 
