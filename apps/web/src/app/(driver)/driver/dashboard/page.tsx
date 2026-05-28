@@ -67,23 +67,25 @@ export default function DriverDashboardPage() {
 
         console.log('[socket] delivery:request received', payload.orderNumber);
 
+        const stops = Array.isArray(payload.pickupStops) ? payload.pickupStops : [];
+        const dropoff = payload.dropoff ?? { district: 'Улаанбаатар' };
         const request: ActiveDelivery = {
           id: `req-${payload.orderId}`,
           orderId: payload.orderId,
           orderNumber: payload.orderNumber,
           customerName: 'Хэрэглэгч',
           customerPhone: '',
-          dropoffAddress: `${payload.dropoff.district}${payload.dropoff.khoroo ? ', ' + payload.dropoff.khoroo : ''}`,
+          dropoffAddress: `${dropoff.district}${dropoff.khoroo ? ', ' + dropoff.khoroo : ''}`,
           dropoffLat: 47.9268,
           dropoffLng: 106.9145,
           distance: 4.2,
           estimatedDuration: 25,
-          fee: payload.fee,
+          fee: payload.fee ?? 0,
           status: 'REQUESTED',
-          pickupStops: payload.pickupStops.map((s) => ({
-            supplierId: s.supplierId,
-            supplierName: s.name,
-            address: s.district,
+          pickupStops: stops.map((s) => ({
+            supplierId: s.supplierId ?? '',
+            supplierName: s.name ?? '',
+            address: s.district ?? '',
             lat: 47.92,
             lng: 106.93,
             status: 'PENDING' as const,
