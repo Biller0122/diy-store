@@ -16,11 +16,13 @@
     "sync-algolia": "ts-node src/plugins/search/sync-products.ts"
   },
   "dependencies": {
+    "@types/nodemailer": "^6.4.23",
     "@vendure/admin-ui-plugin": "^3.6.0",
     "@vendure/asset-server-plugin": "^3.6.0",
     "@vendure/core": "^3.6.0",
     "@vendure/email-plugin": "^3.6.0",
     "algoliasearch": "^5.52.1",
+    "nodemailer": "^8.0.5",
     "pg": "^8.11.3",
     "socket.io": "^4.8.3"
   },
