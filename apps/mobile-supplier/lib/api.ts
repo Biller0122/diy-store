@@ -1,21 +1,44 @@
 const SHOP_API = 'http://52.77.245.218/shop-api';
 const ADMIN_API = 'http://52.77.245.218/admin-api';
+const REQUEST_TIMEOUT_MS = 12000;
 
-export async function shopFetch<T>(
+async function postGraphql<T>(
+  url: string,
   query: string,
   variables?: Record<string, unknown>,
   token?: string | null,
 ): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(SHOP_API, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors[0].message);
-  return json.data as T;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query, variables }),
+      signal: controller.signal,
+    });
+    const json = await res.json();
+    if (json.errors) throw new Error(json.errors[0].message);
+    return json.data as T;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Серверээс хариу ирсэнгүй. Дахин оролдоно уу');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function shopFetch<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+  token?: string | null,
+): Promise<T> {
+  return postGraphql<T>(SHOP_API, query, variables, token);
 }
 
 export async function adminFetch<T>(
@@ -23,16 +46,7 @@ export async function adminFetch<T>(
   variables?: Record<string, unknown>,
   token?: string | null,
 ): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(ADMIN_API, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors[0].message);
-  return json.data as T;
+  return postGraphql<T>(ADMIN_API, query, variables, token);
 }
 
 export const LOGIN_MUTATION = `

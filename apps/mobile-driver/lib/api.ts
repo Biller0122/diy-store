@@ -1,18 +1,31 @@
 const SHOP_API = 'http://52.77.245.218/shop-api';
+const REQUEST_TIMEOUT_MS = 12000;
 
 export async function shopFetch<T>(
   query: string,
   variables?: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch(SHOP_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors[0]?.message ?? 'API алдаа');
-  return json.data as T;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(SHOP_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ query, variables }),
+      signal: controller.signal,
+    });
+    const json = await res.json();
+    if (json.errors) throw new Error(json.errors[0]?.message ?? 'API алдаа');
+    return json.data as T;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Серверээс хариу ирсэнгүй. Дахин оролдоно уу');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const LOGIN_MUTATION = `

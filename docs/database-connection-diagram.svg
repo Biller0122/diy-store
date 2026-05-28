@@ -1,0 +1,164 @@
+<svg width="1400" height="980" viewBox="0 0 1400 980" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1400" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#08080E"/>
+      <stop offset="1" stop-color="#121225"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FF6A1A"/>
+      <stop offset="1" stop-color="#FF4500"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2 2L10 6L2 10" stroke="#FF8A4C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .title{font:800 34px Arial,sans-serif;fill:#F5F5FF}
+      .sub{font:400 15px Arial,sans-serif;fill:#8888AA}
+      .box-title{font:800 20px Arial,sans-serif;fill:#F5F5FF}
+      .box-sub{font:400 13px Arial,sans-serif;fill:#B7B7D0}
+      .small{font:400 12px Arial,sans-serif;fill:#8888AA}
+      .mono{font:700 13px Consolas,monospace;fill:#FFB547}
+      .box{fill:rgba(255,255,255,.045);stroke:rgba(255,255,255,.12);stroke-width:1.5}
+      .db{fill:rgba(0,212,170,.10);stroke:#00D4AA;stroke-width:2}
+      .proxy{fill:rgba(255,69,0,.12);stroke:#FF4500;stroke-width:2}
+      .api{fill:rgba(124,92,252,.12);stroke:#7C5CFC;stroke-width:2}
+      .vol{fill:rgba(255,181,71,.10);stroke:#FFB547;stroke-width:2}
+      .line{stroke:#FF8A4C;stroke-width:2.5;marker-end:url(#arrow)}
+      .line2{stroke:#7C5CFC;stroke-width:2.5;marker-end:url(#arrow)}
+      .line3{stroke:#00D4AA;stroke-width:2.5;marker-end:url(#arrow)}
+      .dash{stroke-dasharray:8 8}
+    </style>
+  </defs>
+
+  <rect width="1400" height="980" rx="32" fill="url(#bg)"/>
+  <circle cx="1190" cy="90" r="160" fill="#FF4500" opacity=".08"/>
+  <circle cx="190" cy="840" r="190" fill="#7C5CFC" opacity=".08"/>
+
+  <text x="70" y="70" class="title">DIY Store Database Холболтын Диаграм</text>
+  <text x="70" y="100" class="sub">Web, mobile apps, Vendure API, PostgreSQL, Redis, assets/email storage нэг AWS Docker Compose орчинд холбогдох зураглал</text>
+
+  <!-- Clients -->
+  <rect x="70" y="160" width="300" height="104" rx="22" class="box"/>
+  <text x="95" y="196" class="box-title">Web Storefront</text>
+  <text x="95" y="222" class="box-sub">apps/web · Next.js</text>
+  <text x="95" y="244" class="mono">http://52.77.245.218</text>
+
+  <rect x="70" y="300" width="300" height="104" rx="22" class="box"/>
+  <text x="95" y="336" class="box-title">Customer App</text>
+  <text x="95" y="362" class="box-sub">mobile-customer · Expo</text>
+  <text x="95" y="384" class="mono">/shop-api</text>
+
+  <rect x="70" y="440" width="300" height="120" rx="22" class="box"/>
+  <text x="95" y="476" class="box-title">Supplier App</text>
+  <text x="95" y="502" class="box-sub">mobile-supplier · Expo</text>
+  <text x="95" y="524" class="mono">email OTP · supplierProducts</text>
+  <text x="95" y="545" class="mono">supplierOrders · orderAction</text>
+
+  <rect x="70" y="596" width="300" height="104" rx="22" class="box"/>
+  <text x="95" y="632" class="box-title">Driver App</text>
+  <text x="95" y="658" class="box-sub">mobile-driver · Expo</text>
+  <text x="95" y="680" class="mono">/shop-api + socket :3002</text>
+
+  <!-- AWS network -->
+  <rect x="450" y="145" width="850" height="720" rx="30" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.10)" stroke-width="2"/>
+  <text x="485" y="188" class="box-title">AWS Instance / Docker Compose</text>
+  <text x="485" y="212" class="sub">52.77.245.218 · нэг compose network дотор service нэрээрээ холбогдоно</text>
+
+  <!-- Caddy -->
+  <rect x="510" y="255" width="250" height="128" rx="24" class="proxy" filter="url(#glow)"/>
+  <text x="540" y="294" class="box-title">Caddy Proxy</text>
+  <text x="540" y="320" class="box-sub">deploy/aws/Caddyfile</text>
+  <text x="540" y="344" class="mono">:80 / :443</text>
+  <text x="540" y="365" class="small">/shop-api, /admin-api, /assets</text>
+
+  <!-- Web container -->
+  <rect x="840" y="230" width="300" height="118" rx="24" class="box"/>
+  <text x="870" y="268" class="box-title">web container</text>
+  <text x="870" y="294" class="box-sub">Next.js standalone</text>
+  <text x="870" y="318" class="mono">web:3000</text>
+
+  <!-- Server container -->
+  <rect x="620" y="455" width="340" height="150" rx="24" class="api" filter="url(#glow)"/>
+  <text x="650" y="494" class="box-title">server container</text>
+  <text x="650" y="520" class="box-sub">Vendure + custom plugins</text>
+  <text x="650" y="544" class="mono">server:3001</text>
+  <text x="650" y="566" class="small">Shop API · Admin API · Supplier API</text>
+  <text x="650" y="586" class="small">Email OTP · Product/Order sync</text>
+
+  <!-- Socket -->
+  <rect x="1010" y="455" width="210" height="120" rx="24" class="api"/>
+  <text x="1038" y="494" class="box-title">Realtime</text>
+  <text x="1038" y="520" class="box-sub">Socket.io</text>
+  <text x="1038" y="544" class="mono">server:3002</text>
+
+  <!-- DB -->
+  <path d="M620 720C620 697.9 682.7 680 760 680C837.3 680 900 697.9 900 720V800C900 822.1 837.3 840 760 840C682.7 840 620 822.1 620 800V720Z" class="db"/>
+  <ellipse cx="760" cy="720" rx="140" ry="40" class="db"/>
+  <text x="690" y="745" class="box-title">PostgreSQL</text>
+  <text x="674" y="772" class="box-sub">postgres-vendure:5432</text>
+  <text x="664" y="796" class="mono">DB_NAME=vendure</text>
+  <text x="668" y="818" class="small">Бараа, захиалга, supplier, driver</text>
+
+  <!-- Redis -->
+  <rect x="1010" y="692" width="220" height="120" rx="24" class="db"/>
+  <text x="1040" y="732" class="box-title">Redis</text>
+  <text x="1040" y="758" class="box-sub">redis:6379</text>
+  <text x="1040" y="782" class="small">Job queue / cache</text>
+
+  <!-- volumes -->
+  <rect x="500" y="690" width="70" height="135" rx="18" class="vol"/>
+  <text x="518" y="735" class="box-title">📦</text>
+  <text x="486" y="782" class="small">assets</text>
+  <text x="477" y="802" class="small">emails</text>
+
+  <!-- Env -->
+  <rect x="960" y="145" width="280" height="54" rx="16" fill="rgba(255,181,71,.08)" stroke="rgba(255,181,71,.35)" stroke-width="1.5"/>
+  <text x="985" y="178" class="mono">.env.production</text>
+  <text x="1115" y="178" class="small">API/DB/SMTP keys</text>
+
+  <!-- arrows clients to caddy -->
+  <path d="M370 212C420 212 450 290 510 310" class="line"/>
+  <path d="M370 352C420 352 450 330 510 330" class="line"/>
+  <path d="M370 500C468 500 487 365 510 350" class="line"/>
+  <path d="M370 648C492 648 475 360 510 363" class="line"/>
+
+  <!-- caddy to web/server -->
+  <path d="M760 292L840 292" class="line"/>
+  <text x="775" y="275" class="small">/</text>
+  <path d="M650 383C650 420 680 430 705 455" class="line2"/>
+  <text x="660" y="424" class="small">/shop-api /admin-api /assets</text>
+
+  <!-- web to server internal -->
+  <path d="M930 348C910 405 875 435 840 455" class="line2"/>
+  <text x="900" y="410" class="small">INTERNAL_VENDURE_* = server:3001</text>
+
+  <!-- server to db/redis/volumes/socket -->
+  <path d="M760 605L760 680" class="line3"/>
+  <path d="M960 545C1000 575 1060 620 1095 692" class="line3"/>
+  <path d="M650 600C610 635 570 670 545 690" class="line"/>
+  <path d="M960 505L1010 505" class="line2"/>
+
+  <!-- env to containers -->
+  <path d="M1080 199C1045 220 1030 225 1005 230" class="line dash"/>
+  <path d="M1070 199C1010 300 950 390 900 455" class="line dash"/>
+
+  <!-- Legend -->
+  <rect x="70" y="760" width="420" height="130" rx="24" class="box"/>
+  <text x="100" y="798" class="box-title">Нэг database баталгаажуулалт</text>
+  <text x="100" y="826" class="box-sub">1. Supplier app → createSupplierProduct → PostgreSQL</text>
+  <text x="100" y="850" class="box-sub">2. Web supplier page → supplierProducts → PostgreSQL</text>
+  <text x="100" y="874" class="box-sub">3. Web checkout order → Vendure Order → supplierOrders mobile app</text>
+
+  <rect x="940" y="855" width="310" height="58" rx="18" fill="rgba(0,212,170,.08)" stroke="rgba(0,212,170,.35)" stroke-width="1.5"/>
+  <text x="965" y="880" class="small">Health check:</text>
+  <text x="1045" y="880" class="mono">/shop-api → PostgreSQL OK</text>
+  <text x="965" y="900" class="small">Public:</text>
+  <text x="1020" y="900" class="mono">http://52.77.245.218</text>
+</svg>
