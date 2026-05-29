@@ -1,76 +1,60 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../../src/theme';
+import { useDeliveryStore } from '../../src/store/delivery';
 
-type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-function TabIcon({
-  name,
-  focused,
-  size = 24,
-}: {
-  name: IoniconsName;
-  focused: boolean;
-  size?: number;
-}) {
-  return (
-    <Ionicons
-      name={name}
-      size={size}
-      color={focused ? '#FF4500' : '#55556A'}
-    />
-  );
+function iconName(focused: boolean, active: IconName, inactive: IconName) {
+  return focused ? active : inactive;
 }
 
 export default function TabsLayout() {
+  const hasActiveOrder = useDeliveryStore((state) => !!state.activeOrder);
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
           backgroundColor: 'rgba(8,8,14,0.97)',
-          borderTopColor: 'rgba(255,255,255,0.06)',
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           height: 84,
+          paddingBottom: 18,
+          paddingTop: 8,
         },
-        tabBarActiveTintColor: '#FF4500',
-        tabBarInactiveTintColor: '#55556A',
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '700' },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Самбар',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} />
-          ),
+          title: 'Нүүр',
+          tabBarIcon: ({ focused, color }) => <Ionicons name={iconName(focused, 'home', 'home-outline')} size={24} color={color} />,
         }}
       />
       <Tabs.Screen
         name="delivery"
         options={{
           title: 'Хүргэлт',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name={focused ? 'bicycle' : 'bicycle-outline'} focused={focused} />
-          ),
+          href: hasActiveOrder ? undefined : null,
+          tabBarIcon: ({ focused, color }) => <Ionicons name={iconName(focused, 'navigate', 'navigate-outline')} size={24} color={hasActiveOrder ? color : colors.textTertiary} />,
         }}
       />
       <Tabs.Screen
         name="earnings"
         options={{
           title: 'Орлого',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name={focused ? 'wallet' : 'wallet-outline'} focused={focused} />
-          ),
+          tabBarIcon: ({ focused, color }) => <Ionicons name={iconName(focused, 'wallet', 'wallet-outline')} size={24} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Профайл',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name={focused ? 'person' : 'person-outline'} focused={focused} />
-          ),
+          tabBarIcon: ({ focused, color }) => <Ionicons name={iconName(focused, 'person', 'person-outline')} size={24} color={color} />,
         }}
       />
     </Tabs>

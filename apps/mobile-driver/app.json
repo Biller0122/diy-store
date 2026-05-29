@@ -1,17 +1,55 @@
 {
   "expo": {
-    "name": "DIY Driver",
-    "slug": "diy-driver",
+    "name": "DIY Store Жолооч",
+    "slug": "diy-store-driver",
+    "scheme": "diystore-driver",
     "version": "1.0.0",
-    "scheme": "diy-driver",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "splash": { "backgroundColor": "#08080E" },
-    "ios": { "supportsTablet": false, "bundleIdentifier": "mn.diy.driver" },
-    "android": { "package": "mn.diy.driver", "adaptiveIcon": { "backgroundColor": "#08080E" } },
-    "web": { "favicon": "./assets/favicon.png", "bundler": "metro" },
-    "plugins": ["expo-router"],
-    "experiments": { "typedRoutes": true }
+    "splash": {
+      "backgroundColor": "#08080E"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Захиалга хүргэх үед байршлыг ашиглана"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#FF4500"
+        }
+      ]
+    ],
+    "android": {
+      "package": "mn.diystore.driver",
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_KEY"
+        }
+      },
+      "adaptiveIcon": {
+        "backgroundColor": "#08080E"
+      }
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "mn.diystore.driver",
+      "config": {
+        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_KEY"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

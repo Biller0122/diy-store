@@ -1,331 +1,201 @@
-import { useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Animated,
-} from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useDriverStore } from '../../lib/store';
+import * as Haptics from 'expo-haptics';
 import OrderRequestModal from '../../components/OrderRequestModal';
+import { Badge } from '../../src/components/Badge';
+import { Button } from '../../src/components/Button';
+import { Card } from '../../src/components/Card';
+import { MOCK_ORDER, RECENT_DELIVERIES } from '../../src/data/mock';
+import { setupDriverNotifications } from '../../src/services/notifications';
+import { socketService } from '../../src/services/socket';
+import { startLocationTracking, stopLocationTracking } from '../../src/services/location';
+import { useAuthStore, VEHICLE_LABEL } from '../../src/store/auth';
+import { useDeliveryStore } from '../../src/store/delivery';
+import { colors } from '../../src/theme';
 
-const C = {
-  bg: '#08080E',
-  card: '#0F0F1A',
-  surface: '#161625',
-  primary: '#FF4500',
-  primaryGlow: 'rgba(255,69,0,0.15)',
-  success: '#00D4AA',
-  warning: '#FFB547',
-  border: 'rgba(255,255,255,0.06)',
-  text: '#F5F5FF',
-  textSub: '#8888AA',
-  textTertiary: '#55556A',
-};
-
-const MOCK_RECENT = [
-  { id: '1', address: 'Баянзүрх → Хан-Уул', fee: 8500, time: '14:32', done: true },
-  { id: '2', address: 'СБД → Баянгол', fee: 5000, time: '11:15', done: true },
-  { id: '3', address: 'Чингэлтэй → Сүхбаатар', fee: 4200, time: '09:05', done: true },
-];
-
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ value, label }: { value: string; label: string }) {
   return (
-    <View style={styles.statCard}>
+    <Card style={styles.statCard}>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </Card>
   );
 }
 
-export default function DashboardScreen() {
-  const { driver, isOnline, toggleOnline, activeDelivery, pendingRequest, acceptDelivery, rejectDelivery } = useDriverStore();
+function WaitingDots() {
+  const [dots, setDots] = useState('');
+  useEffect(() => {
+    const interval = setInterval(() => setDots((current) => (current.length >= 3 ? '' : `${current}.`)), 420);
+    return () => clearInterval(interval);
+  }, []);
+  return <Text style={styles.toggleSub}>Захиалга хүлээж байна{dots}</Text>;
+}
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+export default function DashboardScreen() {
+  const router = useRouter();
+  const driver = useAuthStore((state) => state.driver);
+  const updateOnline = useAuthStore((state) => state.updateOnline);
+  const activeOrder = useDeliveryStore((state) => state.activeOrder);
+  const incomingOrder = useDeliveryStore((state) => state.incomingOrder);
+  const isOnline = useDeliveryStore((state) => state.isOnline);
+  const setOnline = useDeliveryStore((state) => state.setOnline);
+  const setOffline = useDeliveryStore((state) => state.setOffline);
+  const setIncomingOrder = useDeliveryStore((state) => state.setIncomingOrder);
+  const acceptOrder = useDeliveryStore((state) => state.acceptOrder);
+  const rejectOrder = useDeliveryStore((state) => state.rejectOrder);
+  const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(1)).current;
-  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
-    if (isOnline) {
-      pulseLoop.current = Animated.loop(
-        Animated.parallel([
-          Animated.sequence([
-            Animated.timing(pulseAnim, {
-              toValue: 1.15,
-              duration: 750,
-              useNativeDriver: true,
-            }),
-            Animated.timing(pulseAnim, {
-              toValue: 1,
-              duration: 750,
-              useNativeDriver: true,
-            }),
-          ]),
-          Animated.sequence([
-            Animated.timing(pulseOpacity, {
-              toValue: 0,
-              duration: 1500,
-              useNativeDriver: true,
-            }),
-            Animated.timing(pulseOpacity, {
-              toValue: 1,
-              duration: 0,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-      );
-      pulseLoop.current.start();
-    } else {
-      pulseLoop.current?.stop();
-      pulseAnim.setValue(1);
+    if (!isOnline) return;
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.timing(pulseScale, { toValue: 1.4, duration: 2000, useNativeDriver: true }),
+        Animated.timing(pulseOpacity, { toValue: 0, duration: 2000, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      pulseScale.setValue(1);
       pulseOpacity.setValue(1);
-    }
-    return () => pulseLoop.current?.stop();
-  }, [isOnline]);
+    };
+  }, [isOnline, pulseOpacity, pulseScale]);
+
+  useEffect(() => {
+    if (!driver || !isOnline) return;
+    setupDriverNotifications(driver.id).catch(() => {});
+    socketService.connect(driver.id, (order) => {
+      if (useDeliveryStore.getState().isOnline && !useDeliveryStore.getState().activeOrder) setIncomingOrder(order);
+    });
+    startLocationTracking(driver.id, activeOrder?.orderId).catch(() => {});
+    const timer = __DEV__ ? setTimeout(() => {
+      const state = useDeliveryStore.getState();
+      if (state.isOnline && !state.activeOrder && !state.incomingOrder) setIncomingOrder(MOCK_ORDER);
+    }, 8000) : null;
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [driver, isOnline, activeOrder?.orderId, setIncomingOrder]);
 
   if (!driver) return null;
 
-  const handleToggle = async () => {
+  const toggle = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    toggleOnline();
+    const next = !isOnline;
+    await updateOnline(next);
+    if (next) {
+      setOnline();
+    } else {
+      setOffline();
+      stopLocationTracking();
+      socketService.disconnect();
+    }
+  };
+
+  const accept = async () => {
+    await acceptOrder(driver.id, incomingOrder ?? undefined);
+    router.push('/(tabs)/delivery');
+  };
+
+  const reject = async () => {
+    await rejectOrder(driver.id, incomingOrder ?? undefined);
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Сайн байна уу,</Text>
+            <Text style={styles.hello}>Сайн байна уу,</Text>
             <Text style={styles.name}>{driver.firstName} {driver.lastName}</Text>
           </View>
-          <View style={styles.ratingBadge}>
-            <Ionicons name="star" size={14} color="#FFB547" />
-            <Text style={styles.ratingText}>{driver.rating}</Text>
-          </View>
+          <Text style={styles.vehicle}>{VEHICLE_LABEL[driver.vehicleType]} · {driver.vehiclePlate}</Text>
         </View>
 
-        {/* Online toggle */}
         <View style={styles.onlineSection}>
-          <View style={styles.pulseContainer}>
-            {isOnline && (
-              <Animated.View
-                style={[
-                  styles.pulseRing,
-                  {
-                    transform: [{ scale: pulseAnim }],
-                    opacity: pulseOpacity,
-                  },
-                ]}
-              />
-            )}
-            <TouchableOpacity
-              style={[styles.toggleBtn, isOnline && styles.toggleBtnOnline]}
-              onPress={handleToggle}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name={isOnline ? 'flash' : 'power-outline'}
-                size={40}
-                color={isOnline ? '#fff' : C.textTertiary}
-              />
+          <View style={styles.powerWrap}>
+            {isOnline ? <Animated.View style={[styles.pulseRing, { opacity: pulseOpacity, transform: [{ scale: pulseScale }] }]} /> : null}
+            <TouchableOpacity style={[styles.powerButton, isOnline && styles.powerButtonOnline]} activeOpacity={0.86} onPress={toggle}>
+              <Ionicons name="power" size={54} color={isOnline ? colors.white : colors.textTertiary} />
             </TouchableOpacity>
           </View>
-          <Text style={[styles.toggleLabel, isOnline && styles.toggleLabelOnline]}>
-            {isOnline ? 'Онлайн' : 'Офлайн'}
-          </Text>
-          <Text style={styles.toggleSub}>
-            {isOnline ? 'Хүргэлт авах боломжтой' : 'Товчийг дарж идэвхжүүлнэ үү'}
-          </Text>
+          <Text style={[styles.toggleTitle, isOnline && styles.toggleTitleOnline]}>{isOnline ? 'Онлайн байна' : 'Офлайн байна'}</Text>
+          {isOnline ? <WaitingDots /> : <Text style={styles.toggleSub}>Захиалга авахын тулд онлайн болно уу</Text>}
+          <Button title={isOnline ? 'Офлайн болох' : 'Онлайн болох'} variant="ghost" size="md" onPress={toggle} style={styles.onlineButton} />
         </View>
 
-        {/* Stats */}
         <View style={styles.statsRow}>
-          <StatCard label="Хүргэлт" value={String(driver.totalDeliveries)} />
-          <StatCard label="Орлого" value={`₮${driver.todayEarnings.toLocaleString()}`} />
-          <StatCard label="Үнэлгээ" value={`${driver.rating}⭐`} />
+          <StatCard value={String(driver.totalDeliveries)} label="Хүргэлт" />
+          <StatCard value={`₮${driver.todayEarnings.toLocaleString()}`} label="Орлого" />
+          <StatCard value={`⭐ ${driver.rating.toFixed(1)}`} label="Үнэлгээ" />
         </View>
 
-        {/* Recent deliveries */}
-        <Text style={styles.sectionTitle}>Сүүлийн хүргэлтүүд</Text>
+        {activeOrder ? (
+          <Card style={styles.activeCard}>
+            <Badge label="Идэвхтэй хүргэлт" />
+            <Text style={styles.activeOrder}>{activeOrder.orderNumber}</Text>
+            <Text style={styles.activeStatus}>{activeOrder.status}</Text>
+            <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${((activeOrder.currentStop + 1) / (activeOrder.pickupStops.length + 1)) * 100}%` }]} /></View>
+            <Button title="Хүргэлт үзэх" onPress={() => router.push('/(tabs)/delivery')} size="md" />
+          </Card>
+        ) : null}
 
-        {activeDelivery ? (
-          <View style={styles.deliveryItem}>
-            <View style={[styles.deliveryDot, { backgroundColor: C.warning }]} />
-            <View style={styles.deliveryInfo}>
-              <Text style={styles.deliveryAddress}>{activeDelivery.pickupAddress} → {activeDelivery.dropoffAddress}</Text>
-              <Text style={styles.deliverySub}>Идэвхтэй · {activeDelivery.status}</Text>
+        <Text style={styles.sectionTitle}>Сүүлийн хүргэлтүүд</Text>
+        {RECENT_DELIVERIES.length ? RECENT_DELIVERIES.map((item) => (
+          <Card key={item.id} style={styles.deliveryItem}>
+            <View style={[styles.districtBadge, { backgroundColor: `${item.color}22` }]}>
+              <Text style={[styles.districtText, { color: item.color }]}>{item.district.slice(0, 2)}</Text>
             </View>
-            <Text style={styles.deliveryFee}>₮{activeDelivery.fee.toLocaleString()}</Text>
-          </View>
-        ) : (
-          MOCK_RECENT.map((item) => (
-            <View key={item.id} style={styles.deliveryItem}>
-              <View style={[styles.deliveryDot, { backgroundColor: C.success }]} />
-              <View style={styles.deliveryInfo}>
-                <Text style={styles.deliveryAddress}>{item.address}</Text>
-                <Text style={styles.deliverySub}>{item.time} · Дууссан</Text>
-              </View>
-              <Text style={styles.deliveryFee}>₮{item.fee.toLocaleString()}</Text>
+            <View style={styles.deliveryMiddle}>
+              <Text style={styles.deliveryTitle}>{item.district}</Text>
+              <Text style={styles.deliveryDate}>{item.date}</Text>
             </View>
-          ))
-        )}
+            <Text style={styles.deliveryAmount}>₮{item.amount.toLocaleString()}</Text>
+          </Card>
+        )) : <Text style={styles.emptyText}>Хүргэлт байхгүй байна</Text>}
       </ScrollView>
 
-      {pendingRequest && (
-        <OrderRequestModal
-          visible={!!pendingRequest}
-          request={pendingRequest}
-          onAccept={() => acceptDelivery(pendingRequest)}
-          onReject={rejectDelivery}
-        />
-      )}
+      {incomingOrder && isOnline ? <OrderRequestModal visible request={incomingOrder} onAccept={accept} onReject={reject} /> : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
-  scroll: { flex: 1 },
-  content: { padding: 20, paddingBottom: 32 },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  greeting: { fontSize: 13, color: C.textSub },
-  name: { fontSize: 22, fontWeight: '900', color: C.text, marginTop: 2 },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,181,71,0.12)',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  ratingText: { color: '#FFB547', fontWeight: '800', fontSize: 14 },
-
-  onlineSection: {
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  pulseContainer: {
-    width: 120,
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  pulseRing: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: C.success,
-  },
-  toggleBtn: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: C.surface,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggleBtnOnline: {
-    backgroundColor: C.success,
-    borderColor: C.success,
-  },
-  toggleLabel: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: C.textSub,
-  },
-  toggleLabelOnline: {
-    color: C.success,
-  },
-  toggleSub: {
-    fontSize: 13,
-    color: C.textTertiary,
-    marginTop: 4,
-  },
-
-  statsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 28,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: C.card,
-    borderRadius: 16,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: C.primary,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: C.textSub,
-    textAlign: 'center',
-  },
-
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: C.text,
-    marginBottom: 12,
-  },
-  deliveryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: C.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  deliveryDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  deliveryInfo: { flex: 1 },
-  deliveryAddress: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.text,
-  },
-  deliverySub: {
-    fontSize: 11,
-    color: C.textSub,
-    marginTop: 2,
-  },
-  deliveryFee: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: C.success,
-  },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: 20, paddingBottom: 34 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 24 },
+  hello: { color: colors.textSub, fontSize: 13 },
+  name: { color: colors.text, fontSize: 23, fontWeight: '900', marginTop: 2 },
+  vehicle: { color: colors.textSub, fontSize: 11, maxWidth: 150, textAlign: 'right' },
+  onlineSection: { alignItems: 'center', marginBottom: 24, paddingVertical: 12 },
+  powerWrap: { width: 170, height: 170, alignItems: 'center', justifyContent: 'center' },
+  pulseRing: { position: 'absolute', width: 140, height: 140, borderRadius: 70, borderWidth: 2, borderColor: colors.success },
+  powerButton: { width: 140, height: 140, borderRadius: 70, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)' },
+  powerButtonOnline: { backgroundColor: colors.success, borderColor: colors.success },
+  toggleTitle: { color: colors.textSub, fontSize: 19, fontWeight: '900', marginTop: 4 },
+  toggleTitleOnline: { color: colors.success },
+  toggleSub: { color: colors.textTertiary, fontSize: 13, marginTop: 6, minHeight: 20 },
+  onlineButton: { marginTop: 14, minWidth: 180 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  statCard: { flex: 1, padding: 13, alignItems: 'center' },
+  statValue: { color: colors.primary, fontFamily: 'Courier', fontSize: 17, fontWeight: '900', marginBottom: 4 },
+  statLabel: { color: colors.textSub, fontSize: 11 },
+  activeCard: { padding: 16, marginBottom: 22, borderColor: 'rgba(255,69,0,0.45)' },
+  activeOrder: { color: colors.text, fontFamily: 'Courier', fontSize: 15, fontWeight: '800', marginTop: 10 },
+  activeStatus: { color: colors.textSub, fontSize: 12, marginTop: 3 },
+  progressTrack: { height: 7, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden', marginVertical: 14 },
+  progressFill: { height: '100%', backgroundColor: colors.primary },
+  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '900', marginBottom: 12 },
+  deliveryItem: { flexDirection: 'row', alignItems: 'center', padding: 13, marginBottom: 9 },
+  districtBadge: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  districtText: { fontSize: 12, fontWeight: '900' },
+  deliveryMiddle: { flex: 1 },
+  deliveryTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  deliveryDate: { color: colors.textSub, fontSize: 11, marginTop: 2 },
+  deliveryAmount: { color: colors.primary, fontFamily: 'Courier', fontSize: 14, fontWeight: '900' },
+  emptyText: { color: colors.textSub, textAlign: 'center', paddingVertical: 24 },
 });

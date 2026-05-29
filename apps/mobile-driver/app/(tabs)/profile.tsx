@@ -1,88 +1,81 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { useState } from 'react';
+import { Alert, Linking, Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useDriverStore } from '../../lib/store';
+import * as Haptics from 'expo-haptics';
+import { Badge } from '../../src/components/Badge';
+import { Button } from '../../src/components/Button';
+import { Card } from '../../src/components/Card';
+import { Input } from '../../src/components/Input';
+import { StarRating } from '../../src/components/StarRating';
+import { SUPPORT_PHONE } from '../../src/data/mock';
+import { stopLocationTracking } from '../../src/services/location';
+import { socketService } from '../../src/services/socket';
+import { useAuthStore, VEHICLE_LABEL } from '../../src/store/auth';
+import { useDeliveryStore } from '../../src/store/delivery';
+import { Driver } from '../../src/api/client';
+import { colors } from '../../src/theme';
 
-const C = {
-  bg: '#08080E',
-  card: '#0F0F1A',
-  surface: '#161625',
-  primary: '#FF4500',
-  success: '#00D4AA',
-  warning: '#FFB547',
-  border: 'rgba(255,255,255,0.06)',
-  text: '#F5F5FF',
-  textSub: '#8888AA',
-  textTertiary: '#55556A',
-};
-
-const VEHICLE_TYPE_LABEL: Record<string, string> = {
-  MOTORCYCLE: 'Мотоцикл',
-  CAR: 'Машин',
-  VAN: 'Ван',
-};
-
-function StarRating({ rating }: { rating: number }) {
-  const fullStars = Math.floor(rating);
-  const hasHalf = rating - fullStars >= 0.5;
-  return (
-    <View style={{ flexDirection: 'row', gap: 2 }}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Ionicons
-          key={i}
-          name={
-            i <= fullStars
-              ? 'star'
-              : i === fullStars + 1 && hasHalf
-              ? 'star-half'
-              : 'star-outline'
-          }
-          size={20}
-          color="#FFB547"
-        />
-      ))}
-    </View>
-  );
+function statusMeta(status?: string) {
+  if (status === 'SUSPENDED') return { label: 'Түдгэлзүүлсэн', tone: 'error' as const };
+  if (status === 'ACTIVE') return { label: 'Идэвхтэй жолооч', tone: 'success' as const };
+  return { label: 'Хянагдаж байна', tone: 'warning' as const };
 }
 
-function InfoRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  value: string;
-}) {
+function SettingRow({ icon, label, onPress, right }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress?: () => void; right?: React.ReactNode }) {
   return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoIcon}>
-        <Ionicons name={icon} size={18} color={C.textSub} />
-      </View>
-      <View style={styles.infoContent}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={styles.infoValue}>{value}</Text>
-      </View>
-    </View>
+    <TouchableOpacity style={styles.settingRow} onPress={onPress} activeOpacity={0.75}>
+      <Ionicons name={icon} size={20} color={colors.textSub} />
+      <Text style={styles.settingLabel}>{label}</Text>
+      {right ?? <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />}
+    </TouchableOpacity>
   );
 }
 
 export default function ProfileScreen() {
-  const { driver, logout } = useDriverStore();
+  const router = useRouter();
+  const driver = useAuthStore((state) => state.driver);
+  const logout = useAuthStore((state) => state.logout);
+  const updateVehicle = useAuthStore((state) => state.updateVehicle);
+  const setOffline = useDeliveryStore((state) => state.setOffline);
+  const [notifications, setNotifications] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [vehicleType, setVehicleType] = useState<Driver['vehicleType']>('CAR');
+  const [plate, setPlate] = useState('');
+  const [model, setModel] = useState('');
 
   if (!driver) return null;
 
+  const meta = statusMeta(driver.status);
   const initials = `${driver.firstName.charAt(0)}${driver.lastName.charAt(0)}`.toUpperCase();
 
-  const handleLogout = async () => {
+  const openEdit = () => {
+    setVehicleType(driver.vehicleType);
+    setPlate(driver.vehiclePlate);
+    setModel(driver.vehicleModel);
+    setEditing(true);
+  };
+
+  const saveVehicle = () => {
+    updateVehicle(vehicleType, plate, model);
+    setEditing(false);
+  };
+
+  const confirmLogout = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert('Гарах', 'Та гарахдаа итгэлтэй байна уу?', [
       { text: 'Болих', style: 'cancel' },
       {
         text: 'Гарах',
         style: 'destructive',
-        onPress: () => logout(),
+        onPress: () => {
+          stopLocationTracking();
+          socketService.disconnect();
+          setOffline();
+          logout();
+          router.replace('/(auth)/login');
+        },
       },
     ]);
   };
@@ -90,193 +83,103 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.heading}>Профайл</Text>
-
-        {/* Avatar */}
-        <View style={styles.avatarSection}>
+        <View style={styles.profileHeader}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
-          <Text style={styles.fullName}>{driver.firstName} {driver.lastName}</Text>
+          <Text style={styles.name}>{driver.firstName} {driver.lastName}</Text>
           <Text style={styles.email}>{driver.emailAddress}</Text>
-          <View style={styles.ratingRow}>
-            <StarRating rating={driver.rating} />
-            <Text style={styles.ratingNum}>{driver.rating.toFixed(1)}</Text>
-          </View>
+          <Text style={styles.member}>Хамтарсан: {driver.createdAt ? new Date(driver.createdAt).getFullYear() : 2025} оноос</Text>
+          <Badge label={meta.label} tone={meta.tone} />
         </View>
 
-        {/* Stats */}
+        <Card style={styles.ratingCard}>
+          <StarRating rating={driver.rating} size={24} />
+          <Text style={styles.ratingText}>{driver.rating.toFixed(1)} / 5.0 ({Math.max(23, driver.totalDeliveries)} үнэлгээ)</Text>
+        </Card>
+
+        <Card style={styles.vehicleCard}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.sectionTitle}>Тээврийн хэрэгсэл</Text>
+            <TouchableOpacity onPress={openEdit}><Text style={styles.edit}>Засах</Text></TouchableOpacity>
+          </View>
+          <Text style={styles.infoLine}>🚗 {VEHICLE_LABEL[driver.vehicleType]} · {driver.vehicleModel}</Text>
+          <Text style={styles.infoLine}>🔢 {driver.vehiclePlate}</Text>
+        </Card>
+
         <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{driver.totalDeliveries}</Text>
-            <Text style={styles.statLabel}>Хүргэлт</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>₮{(driver.totalEarnings / 1000000).toFixed(1)}M</Text>
-            <Text style={styles.statLabel}>Нийт орлого</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{driver.rating.toFixed(1)}</Text>
-            <Text style={styles.statLabel}>Үнэлгээ</Text>
-          </View>
+          <Card style={styles.miniCard}><Text style={styles.miniValue}>{driver.totalDeliveries}</Text><Text style={styles.miniLabel}>Нийт хүргэлт</Text></Card>
+          <Card style={styles.miniCard}><Text style={styles.miniValue}>₮{driver.totalEarnings.toLocaleString()}</Text><Text style={styles.miniLabel}>Нийт орлого</Text></Card>
+          <Card style={styles.miniCard}><Text style={styles.miniValue}>7 сар</Text><Text style={styles.miniLabel}>Хамтарсан</Text></Card>
         </View>
 
-        {/* Vehicle info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Тээврийн хэрэгсэл</Text>
-          <View style={styles.card}>
-            <InfoRow icon="car-outline" label="Загвар" value={driver.vehicleModel ?? 'Бүртгээгүй'} />
-            <View style={styles.rowDivider} />
-            <InfoRow icon="document-text-outline" label="Улсын дугаар" value={driver.vehiclePlate ?? 'Бүртгээгүй'} />
-            <View style={styles.rowDivider} />
-            <InfoRow
-              icon="bicycle-outline"
-              label="Төрөл"
-              value={VEHICLE_TYPE_LABEL[driver.vehicleType] ?? driver.vehicleType}
-            />
-          </View>
-        </View>
-
-        {/* Personal info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Хувийн мэдээлэл</Text>
-          <View style={styles.card}>
-            <InfoRow icon="mail-outline" label="И-мэйл" value={driver.emailAddress} />
-            {driver.phone ? (
-              <>
-                <View style={styles.rowDivider} />
-                <InfoRow icon="call-outline" label="Утас" value={driver.phone} />
-              </>
-            ) : null}
-          </View>
-        </View>
-
-        {/* Settings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Тохиргоо</Text>
-          <View style={styles.card}>
-            {(
-              [
-                { icon: 'notifications-outline' as const, label: 'Мэдэгдэл' },
-                { icon: 'lock-closed-outline' as const, label: 'Нууц үг солих' },
-                { icon: 'help-circle-outline' as const, label: 'Тусламж' },
-              ] as const
-            ).map(({ icon, label }) => (
-              <TouchableOpacity
-                key={label}
-                style={styles.settingRow}
-                onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name={icon} size={20} color={C.textSub} />
-                <Text style={styles.settingLabel}>{label}</Text>
-                <Ionicons name="chevron-forward" size={16} color={C.textTertiary} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-          <Ionicons name="log-out-outline" size={20} color="#FF4444" />
-          <Text style={styles.logoutText}>Гарах</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.version}>DIY Driver v1.0.0</Text>
+        <Card style={styles.menu}>
+          <SettingRow icon="notifications-outline" label="Мэдэгдэл тохиргоо" right={<Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: colors.primary, false: colors.surface }} />} />
+          <SettingRow icon="moon-outline" label="Dark mode" right={<Text style={styles.infoOnly}>үргэлж асаалттай</Text>} />
+          <SettingRow icon="call-outline" label="Тусламж холбоо барих" onPress={() => Linking.openURL(`tel:${SUPPORT_PHONE}`)} />
+          <SettingRow icon="document-text-outline" label="Үйлчилгээний нөхцөл" onPress={() => Linking.openURL('https://diystore.mn/terms')} />
+          <SettingRow icon="lock-closed-outline" label="Нууц үг солих" onPress={() => Alert.alert('Нууц үг солих', 'Энэ хэсэг удахгүй идэвхжинэ.')} />
+          <TouchableOpacity style={styles.logoutRow} onPress={confirmLogout}>
+            <Ionicons name="log-out-outline" size={20} color={colors.error} />
+            <Text style={styles.logoutText}>Гарах</Text>
+          </TouchableOpacity>
+        </Card>
       </ScrollView>
+
+      <Modal visible={editing} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <Card style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Тээврийн мэдээлэл засах</Text>
+            <View style={styles.typeRow}>
+              {(Object.keys(VEHICLE_LABEL) as Driver['vehicleType'][]).map((type) => (
+                <TouchableOpacity key={type} style={[styles.typePill, vehicleType === type && styles.typePillActive]} onPress={() => setVehicleType(type)}>
+                  <Text style={[styles.typeText, vehicleType === type && styles.typeTextActive]}>{VEHICLE_LABEL[type]}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Input label="Улсын дугаар" value={plate} onChangeText={setPlate} />
+            <Input label="Машины загвар" value={model} onChangeText={setModel} />
+            <Button title="Хадгалах" onPress={saveVehicle} />
+            <Button title="Болих" variant="ghost" size="md" onPress={() => setEditing(false)} />
+          </Card>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+  safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
-  heading: { fontSize: 26, fontWeight: '900', color: C.text, marginBottom: 24 },
-
-  avatarSection: { alignItems: 'center', marginBottom: 24 },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: C.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  avatarText: { fontSize: 28, fontWeight: '900', color: '#fff' },
-  fullName: { fontSize: 20, fontWeight: '800', color: C.text, marginBottom: 4 },
-  email: { fontSize: 13, color: C.textSub, marginBottom: 10 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ratingNum: { fontSize: 16, fontWeight: '800', color: '#FFB547' },
-
-  statsRow: {
-    flexDirection: 'row',
-    backgroundColor: C.card,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  statCard: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 18, fontWeight: '900', color: C.primary, marginBottom: 4 },
-  statLabel: { fontSize: 10, color: C.textSub, textAlign: 'center' },
-  statDivider: { width: 1, backgroundColor: C.border, marginHorizontal: 4 },
-
-  section: { marginBottom: 20 },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: C.textSub,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  card: {
-    backgroundColor: C.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
-  },
-  infoRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  infoIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: C.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoContent: { flex: 1 },
-  infoLabel: { fontSize: 11, color: C.textSub, marginBottom: 2 },
-  infoValue: { fontSize: 14, fontWeight: '600', color: C.text },
-  rowDivider: { height: 1, backgroundColor: C.border, marginLeft: 62 },
-
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  settingLabel: { flex: 1, fontSize: 15, color: C.text },
-
-  logoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,68,68,0.3)',
-    marginBottom: 16,
-  },
-  logoutText: { fontSize: 16, fontWeight: '700', color: '#FF4444' },
-  version: { textAlign: 'center', fontSize: 12, color: C.textTertiary },
+  profileHeader: { alignItems: 'center', marginBottom: 18 },
+  avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: colors.primaryGlow, borderWidth: 3, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  avatarText: { color: colors.primary, fontSize: 34, fontWeight: '900' },
+  name: { color: colors.text, fontSize: 23, fontWeight: '900' },
+  email: { color: colors.textSub, fontSize: 13, marginTop: 4 },
+  member: { color: colors.textTertiary, fontSize: 12, marginTop: 4, marginBottom: 10 },
+  ratingCard: { padding: 16, alignItems: 'center', gap: 8, marginBottom: 14 },
+  ratingText: { color: colors.warning, fontSize: 14, fontWeight: '800' },
+  vehicleCard: { padding: 16, marginBottom: 14 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
+  edit: { color: colors.primary, fontSize: 13, fontWeight: '900' },
+  infoLine: { color: colors.text, fontSize: 14, lineHeight: 23 },
+  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  miniCard: { flex: 1, padding: 12, alignItems: 'center' },
+  miniValue: { color: colors.primary, fontFamily: 'Courier', fontSize: 15, fontWeight: '900', textAlign: 'center' },
+  miniLabel: { color: colors.textSub, fontSize: 10, marginTop: 5, textAlign: 'center' },
+  menu: { overflow: 'hidden' },
+  settingRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  settingLabel: { color: colors.text, fontSize: 14, flex: 1, fontWeight: '700' },
+  infoOnly: { color: colors.textTertiary, fontSize: 11 },
+  logoutRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14 },
+  logoutText: { color: colors.error, fontSize: 15, fontWeight: '900' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', padding: 22 },
+  modalCard: { padding: 18, gap: 12 },
+  modalTitle: { color: colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  typePill: { width: '48%', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.borderHover },
+  typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  typeText: { color: colors.textSub, fontSize: 12, fontWeight: '800' },
+  typeTextActive: { color: colors.white },
 });

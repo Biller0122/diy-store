@@ -1,329 +1,176 @@
-import { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-} from 'react-native';
+import { useMemo, useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useDriverStore } from '../../lib/store';
-
-const C = {
-  bg: '#08080E',
-  card: '#0F0F1A',
-  surface: '#161625',
-  primary: '#FF4500',
-  success: '#00D4AA',
-  warning: '#FFB547',
-  border: 'rgba(255,255,255,0.06)',
-  text: '#F5F5FF',
-  textSub: '#8888AA',
-  textTertiary: '#55556A',
-};
+import { Badge } from '../../src/components/Badge';
+import { Card } from '../../src/components/Card';
+import { EARNINGS_HISTORY } from '../../src/data/mock';
+import { useAuthStore } from '../../src/store/auth';
+import { colors } from '../../src/theme';
 
 type Period = 'today' | 'week' | 'month';
 
-const PERIOD_LABELS: Record<Period, string> = {
+const labels: Record<Period, string> = {
   today: 'Өнөөдөр',
-  week: '7 хоног',
-  month: 'Сар',
+  week: 'Энэ 7 хоног',
+  month: 'Энэ сар',
 };
 
-const WEEK_DATA = [
-  { day: 'Да', earnings: 32000, count: 4 },
-  { day: 'Мя', earnings: 45000, count: 6 },
-  { day: 'Лх', earnings: 28000, count: 3 },
-  { day: 'Пү', earnings: 56000, count: 7 },
-  { day: 'Ба', earnings: 41000, count: 5 },
-  { day: 'Бя', earnings: 78000, count: 10 },
-  { day: 'Ня', earnings: 45000, count: 6 },
-];
-
-const MOCK_HISTORY = [
-  { id: '1', date: 'Өнөөдөр 14:32', address: 'Баянзүрх → Хан-Уул', fee: 8500, km: 6.2, status: 'Дууссан' },
-  { id: '2', date: 'Өнөөдөр 11:15', address: 'СБД → Баянгол', fee: 5000, km: 3.8, status: 'Дууссан' },
-  { id: '3', date: 'Өчигдөр 18:44', address: 'Чингэлтэй → Сүхбаатар', fee: 4200, km: 2.9, status: 'Дууссан' },
-  { id: '4', date: 'Өчигдөр 15:20', address: 'Баянзүрх → СБД', fee: 7800, km: 5.5, status: 'Дууссан' },
-  { id: '5', date: 'Өчигдөр 10:05', address: 'Налайх → Баянзүрх', fee: 18000, km: 18.1, status: 'Дууссан' },
-];
-
-const PERIOD_STATS: Record<Period, { deliveries: number; earnings: number }> = {
-  today: { deliveries: 6, earnings: 45000 },
-  week: { deliveries: 41, earnings: 325000 },
-  month: { deliveries: 143, earnings: 1120000 },
+const dataByPeriod: Record<Period, Array<{ label: string; amount: number }>> = {
+  today: [
+    { label: '09', amount: 3500 },
+    { label: '10', amount: 0 },
+    { label: '11', amount: 6500 },
+    { label: '12', amount: 8500 },
+    { label: '13', amount: 0 },
+    { label: '14', amount: 4500 },
+  ],
+  week: ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'].map((label, index) => ({ label, amount: [24000, 31000, 18000, 42000, 36000, 51000, 28500][index] })),
+  month: ['1', '5', '10', '15', '20', '25', '30'].map((label, index) => ({ label, amount: [82000, 92000, 71000, 120000, 99000, 135000, 88000][index] })),
 };
 
-const maxEarnings = Math.max(...WEEK_DATA.map((d) => d.earnings));
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <Card style={styles.summaryCard}>
+      <Text style={styles.summaryValue}>{value}</Text>
+      <Text style={styles.summaryLabel}>{label}</Text>
+    </Card>
+  );
+}
 
 export default function EarningsScreen() {
-  const driver = useDriverStore((s) => s.driver);
+  const driver = useAuthStore((state) => state.driver);
   const [period, setPeriod] = useState<Period>('today');
+  const [selected, setSelected] = useState<(typeof EARNINGS_HISTORY)[number] | null>(null);
+  const chart = dataByPeriod[period];
+  const max = Math.max(...chart.map((item) => item.amount), 1);
+  const total = chart.reduce((sum, item) => sum + item.amount, 0);
+  const deliveries = period === 'today' ? 7 : period === 'week' ? 42 : 164;
+  const average = Math.round(total / deliveries);
+  const history = useMemo(() => period === 'today' ? EARNINGS_HISTORY.slice(0, 3) : EARNINGS_HISTORY, [period]);
 
   if (!driver) return null;
-
-  const stats = PERIOD_STATS[period];
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Орлого</Text>
-
-        {/* Period selector */}
         <View style={styles.periodRow}>
-          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-            <TouchableOpacity
-              key={p}
-              style={[styles.periodPill, period === p && styles.periodPillActive]}
-              onPress={() => setPeriod(p)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.periodText, period === p && styles.periodTextActive]}>
-                {PERIOD_LABELS[p]}
-              </Text>
+          {(Object.keys(labels) as Period[]).map((key) => (
+            <TouchableOpacity key={key} style={[styles.periodPill, period === key && styles.periodPillActive]} onPress={() => setPeriod(key)}>
+              <Text style={[styles.periodText, period === key && styles.periodTextActive]}>{labels[key]}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Big stats cards */}
-        <View style={styles.bigStatsRow}>
-          <View style={styles.bigCard}>
-            <Ionicons name="bicycle-outline" size={20} color={C.textSub} />
-            <Text style={styles.bigValue}>{stats.deliveries}</Text>
-            <Text style={styles.bigLabel}>Хүргэлт</Text>
-          </View>
-          <View style={[styles.bigCard, styles.bigCardPrimary]}>
-            <Ionicons name="wallet-outline" size={20} color={C.primary} />
-            <Text style={[styles.bigValue, { color: C.primary }]}>
-              ₮{stats.earnings.toLocaleString()}
-            </Text>
-            <Text style={styles.bigLabel}>Нийт орлого</Text>
-          </View>
+        <View style={styles.summaryGrid}>
+          <SummaryCard label="Нийт хүргэлт" value={String(deliveries)} />
+          <SummaryCard label="Нийт орлого" value={`₮${total.toLocaleString()}`} />
+          <SummaryCard label="Дундаж үнэлгээ" value={`⭐ ${driver.rating.toFixed(1)}`} />
+          <SummaryCard label="Дундаж хүргэлт" value={`₮${average.toLocaleString()}`} />
         </View>
 
-        {/* Bar chart */}
-        <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>7 хоногийн орлого</Text>
-          <View style={styles.chartBars}>
-            {WEEK_DATA.map((item) => {
-              const heightPct = maxEarnings > 0 ? (item.earnings / maxEarnings) * 100 : 0;
-              return (
-                <View key={item.day} style={styles.barWrapper}>
-                  <View style={styles.barContainer}>
-                    <View
-                      style={[
-                        styles.bar,
-                        { height: `${heightPct}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.barLabel}>{item.day}</Text>
+        <Card style={styles.chartCard}>
+          <Text style={styles.sectionTitle}>Орлогын график</Text>
+          <View style={styles.chart}>
+            {chart.map((item) => (
+              <TouchableOpacity key={item.label} style={styles.barWrap} activeOpacity={0.75}>
+                <Text style={styles.tooltip}>₮{item.amount.toLocaleString()}</Text>
+                <View style={styles.barTrack}>
+                  <View style={[styles.bar, { height: `${Math.max(8, (item.amount / max) * 100)}%` }]} />
                 </View>
-              );
-            })}
+                <Text style={styles.barLabel}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        </View>
+        </Card>
 
-        {/* History */}
-        <Text style={styles.historyTitle}>Хүргэлтийн түүх</Text>
-        <View style={styles.historyCard}>
-          {MOCK_HISTORY.map((item, idx) => (
-            <View
-              key={item.id}
-              style={[
-                styles.historyItem,
-                idx < MOCK_HISTORY.length - 1 && styles.historyItemBorder,
-              ]}
-            >
+        <Text style={styles.sectionTitle}>Хүргэлтийн түүх</Text>
+        {history.map((item) => (
+          <TouchableOpacity key={item.id} onPress={() => setSelected(item)} activeOpacity={0.82}>
+            <Card style={styles.historyCard}>
               <View style={styles.historyLeft}>
-                <View style={styles.historyIcon}>
-                  <Ionicons name="checkmark-circle" size={18} color={C.success} />
-                </View>
-                <View>
-                  <Text style={styles.historyAddress}>{item.address}</Text>
-                  <Text style={styles.historyMeta}>{item.date} · {item.km} км</Text>
-                </View>
+                <Text style={styles.historyDate}>{item.date}</Text>
+                <Text style={styles.historyRoute}>From: {item.from} → To: {item.to}</Text>
               </View>
               <View style={styles.historyRight}>
-                <Text style={styles.historyFee}>+₮{item.fee.toLocaleString()}</Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{item.status}</Text>
-                </View>
+                <Text style={styles.historyAmount}>₮{item.amount.toLocaleString()}</Text>
+                <Text style={styles.historyRating}>⭐ {item.rating}</Text>
               </View>
-            </View>
-          ))}
-        </View>
+            </Card>
+          </TouchableOpacity>
+        ))}
+
+        <Card style={styles.payoutCard}>
+          <View style={styles.payoutHeader}>
+            <Text style={styles.sectionTitle}>Төлбөр авах</Text>
+            <Badge label="Удахгүй" tone="warning" />
+          </View>
+          <Text style={styles.bank}>Банк: {driver.bankName ?? 'Хаан банк'} {driver.bankAccount ?? '5030001122'}</Text>
+          <Text style={styles.editLink}>Банкны мэдээлэл засах</Text>
+          <View style={styles.disabledButton}><Text style={styles.disabledText}>Төлбөр хүсэх</Text></View>
+          <Text style={styles.minNote}>Хамгийн бага ₮50,000</Text>
+        </Card>
       </ScrollView>
+
+      <Modal visible={!!selected} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <Card style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{selected?.orderNumber}</Text>
+            <Text style={styles.modalText}>Нийлүүлэгчид: {selected?.from}</Text>
+            <Text style={styles.modalText}>Хаяг: {selected?.to}, хэрэглэгчийн хаяг</Text>
+            <Text style={styles.modalText}>Бараа: Өрөм ×1, Будаг ×2</Text>
+            <Text style={styles.modalFee}>₮{selected?.amount.toLocaleString()}</Text>
+            <Text style={styles.modalText}>Үнэлгээ: ⭐ {selected?.rating}</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={() => setSelected(null)}>
+              <Ionicons name="close" size={20} color={colors.white} />
+            </TouchableOpacity>
+          </Card>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
-  content: { padding: 20, paddingBottom: 32 },
-  heading: { fontSize: 26, fontWeight: '900', color: C.text, marginBottom: 20 },
-
-  periodRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
-  },
-  periodPill: {
-    flex: 1,
-    paddingVertical: 10,
-    backgroundColor: C.card,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  periodPillActive: {
-    backgroundColor: C.primary,
-    borderColor: C.primary,
-  },
-  periodText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.textSub,
-  },
-  periodTextActive: {
-    color: '#fff',
-  },
-
-  bigStatsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  bigCard: {
-    flex: 1,
-    backgroundColor: C.card,
-    borderRadius: 20,
-    padding: 18,
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  bigCardPrimary: {
-    borderColor: 'rgba(255,69,0,0.2)',
-    backgroundColor: 'rgba(255,69,0,0.05)',
-  },
-  bigValue: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: C.text,
-  },
-  bigLabel: {
-    fontSize: 12,
-    color: C.textSub,
-  },
-
-  chartCard: {
-    backgroundColor: C.card,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  chartTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.textSub,
-    marginBottom: 16,
-  },
-  chartBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 100,
-    gap: 6,
-  },
-  barWrapper: {
-    flex: 1,
-    alignItems: 'center',
-    height: '100%',
-  },
-  barContainer: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'flex-end',
-    marginBottom: 4,
-  },
-  bar: {
-    width: '100%',
-    backgroundColor: C.primary,
-    borderRadius: 4,
-    minHeight: 4,
-  },
-  barLabel: {
-    fontSize: 10,
-    color: C.textSub,
-    fontWeight: '600',
-  },
-
-  historyTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: C.text,
-    marginBottom: 12,
-  },
-  historyCard: {
-    backgroundColor: C.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
-  },
-  historyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-  },
-  historyItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  historyLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  historyIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,212,170,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  historyAddress: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.text,
-  },
-  historyMeta: {
-    fontSize: 11,
-    color: C.textSub,
-    marginTop: 2,
-  },
-  historyRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  historyFee: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: C.success,
-  },
-  statusBadge: {
-    backgroundColor: 'rgba(0,212,170,0.1)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  statusText: {
-    fontSize: 10,
-    color: C.success,
-    fontWeight: '700',
-  },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: 20, paddingBottom: 38 },
+  heading: { color: colors.text, fontSize: 28, fontWeight: '900', marginBottom: 18 },
+  periodRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
+  periodPill: { flex: 1, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  periodPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  periodText: { color: colors.textSub, fontSize: 12, fontWeight: '800' },
+  periodTextActive: { color: colors.white },
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 18 },
+  summaryCard: { width: '48.5%', padding: 15 },
+  summaryValue: { color: colors.primary, fontFamily: 'Courier', fontSize: 20, fontWeight: '900' },
+  summaryLabel: { color: colors.textSub, fontSize: 11, marginTop: 6 },
+  chartCard: { padding: 16, marginBottom: 22 },
+  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '900', marginBottom: 12 },
+  chart: { height: 160, flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  barWrap: { flex: 1, height: '100%', alignItems: 'center' },
+  tooltip: { color: colors.textSub, fontSize: 9, height: 18 },
+  barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
+  bar: { width: '100%', backgroundColor: colors.primary, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
+  barLabel: { color: colors.textSub, fontSize: 11, fontWeight: '700', marginTop: 6 },
+  historyCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, marginBottom: 9 },
+  historyLeft: { flex: 1 },
+  historyDate: { color: colors.textSub, fontSize: 12 },
+  historyRoute: { color: colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  historyRight: { alignItems: 'flex-end' },
+  historyAmount: { color: colors.primary, fontFamily: 'Courier', fontSize: 15, fontWeight: '900' },
+  historyRating: { color: colors.warning, fontSize: 12, marginTop: 4 },
+  payoutCard: { padding: 16, marginTop: 12 },
+  payoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  bank: { color: colors.text, fontSize: 14, marginBottom: 10 },
+  editLink: { color: colors.primary, fontWeight: '800', marginBottom: 12 },
+  disabledButton: { height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
+  disabledText: { color: colors.textTertiary, fontWeight: '900' },
+  minNote: { color: colors.textSub, fontSize: 12, textAlign: 'center', marginTop: 10 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', padding: 24 },
+  modalCard: { padding: 18 },
+  modalTitle: { color: colors.text, fontSize: 20, fontWeight: '900', marginBottom: 12 },
+  modalText: { color: colors.textSub, fontSize: 14, lineHeight: 22 },
+  modalFee: { color: colors.primary, fontSize: 32, fontFamily: 'Courier', fontWeight: '900', marginVertical: 12 },
+  closeButton: { position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
 });

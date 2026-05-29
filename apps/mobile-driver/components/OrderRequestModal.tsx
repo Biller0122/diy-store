@@ -1,401 +1,170 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  Modal,
-  Animated,
-} from 'react-native';
-import * as Haptics from 'expo-haptics';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Dimensions, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import type { DeliveryRequest } from '../lib/store';
+import * as Haptics from 'expo-haptics';
+import { ActiveOrder } from '../src/store/delivery';
+import { Button } from '../src/components/Button';
+import { colors, radius } from '../src/theme';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
+const CIRCUMFERENCE = 2 * Math.PI * 38;
 
-const C = {
-  bg: '#08080E',
-  card: '#0F0F1A',
-  modal: '#1E1E30',
-  surface: '#161625',
-  primary: '#FF4500',
-  primaryGlow: 'rgba(255,69,0,0.15)',
-  success: '#00D4AA',
-  warning: '#FFB547',
-  border: 'rgba(255,255,255,0.06)',
-  text: '#F5F5FF',
-  textSub: '#8888AA',
-  textTertiary: '#55556A',
-};
-
-const COUNTDOWN_SECONDS = 30;
-
-interface Props {
-  request: DeliveryRequest;
+type Props = {
   visible: boolean;
+  request: ActiveOrder;
   onAccept: () => void;
   onReject: () => void;
-}
+};
 
-export default function OrderRequestModal({ request, visible, onAccept, onReject }: Props) {
-  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
-  const countdownAnim = useRef(new Animated.Value(1)).current;
-  const [secondsLeft, setSecondsLeft] = useState(COUNTDOWN_SECONDS);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+export default function OrderRequestModal({ visible, request, onAccept, onReject }: Props) {
+  const translateY = useRef(new Animated.Value(height)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
+  const [seconds, setSeconds] = useState(30);
+  const progress = useMemo(() => Math.max(0, seconds / 30), [seconds]);
 
   useEffect(() => {
-    if (visible) {
-      setSecondsLeft(COUNTDOWN_SECONDS);
-      countdownAnim.setValue(1);
+    if (!visible) return;
+    setSeconds(30);
+    Animated.spring(translateY, { toValue: 0, damping: 24, stiffness: 220, useNativeDriver: true }).start();
+    const interval = setInterval(() => {
+      setSeconds((current) => {
+        if (current <= 1) {
+          clearInterval(interval);
+          onReject();
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [visible, onReject, translateY]);
 
-      Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          damping: 20,
-          stiffness: 200,
-          mass: 1,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
+  useEffect(() => {
+    if (seconds > 5) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.12, duration: 280, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 280, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, seconds]);
 
-      Animated.timing(countdownAnim, {
-        toValue: 0,
-        duration: COUNTDOWN_SECONDS * 1000,
-        useNativeDriver: false,
-      }).start();
-
-      intervalRef.current = setInterval(() => {
-        setSecondsLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(intervalRef.current!);
-            onReject();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: SCREEN_HEIGHT,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [visible]);
-
-  const handleAccept = async () => {
+  const accept = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    if (intervalRef.current) clearInterval(intervalRef.current);
     onAccept();
   };
 
-  const handleReject = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
+  const reject = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onReject();
   };
 
-  const countdownColor = countdownAnim.interpolate({
-    inputRange: [0, 0.3, 1],
-    outputRange: ['#FF4444', '#FFB547', '#00D4AA'],
-  });
-
-  const percentage = secondsLeft / COUNTDOWN_SECONDS;
-  const countdownBg = percentage < 0.3 ? '#FF444420' : percentage < 0.6 ? '#FFB54720' : '#00D4AA20';
-  const countdownBorder = percentage < 0.3 ? '#FF444460' : percentage < 0.6 ? '#FFB54760' : '#00D4AA60';
-
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      statusBarTranslucent
-      onRequestClose={handleReject}
-    >
-      {/* Backdrop */}
-      <Animated.View
-        style={[
-          styles.backdrop,
-          { opacity: backdropAnim },
-        ]}
-      />
-
-      {/* Panel */}
-      <Animated.View
-        style={[
-          styles.panel,
-          { transform: [{ translateY: slideAnim }] },
-        ]}
-      >
-        {/* Handle */}
-        <View style={styles.handle} />
-
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <View style={styles.newBadge}>
-            <View style={styles.newDot} />
-            <Text style={styles.newBadgeText}>Шинэ захиалга!</Text>
-          </View>
-          <View style={[styles.countdownBadge, { backgroundColor: countdownBg, borderColor: countdownBorder }]}>
-            <Animated.Text style={[styles.countdownNumber, { color: countdownColor }]}>
-              {secondsLeft}с
-            </Animated.Text>
-          </View>
-        </View>
-
-        {/* Distance + time */}
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Ionicons name="navigate-outline" size={16} color={C.textSub} />
-            <Text style={styles.metaValue}>{request.distance} км</Text>
-          </View>
-          <View style={styles.metaDivider} />
-          <View style={styles.metaItem}>
-            <Ionicons name="time-outline" size={16} color={C.textSub} />
-            <Text style={styles.metaValue}>~{request.estimatedMinutes} мин</Text>
-          </View>
-          <View style={styles.metaDivider} />
-          <View style={styles.metaItem}>
-            <Ionicons name="person-outline" size={16} color={C.textSub} />
-            <Text style={styles.metaValue}>{request.customerName}</Text>
-          </View>
-        </View>
-
-        {/* Addresses */}
-        <View style={styles.addressCard}>
-          <View style={styles.addressRow}>
-            <View style={[styles.addressDot, { backgroundColor: C.primary }]} />
-            <View style={styles.addressTextWrap}>
-              <Text style={styles.addressLabel}>Авах газар</Text>
-              <Text style={styles.addressText}>{request.pickupAddress}</Text>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.backdrop}>
+        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+          <View style={styles.handle} />
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.title}>Шинэ захиалга!</Text>
+                <Text style={styles.orderNumber}>{request.orderNumber}</Text>
+              </View>
+              <Animated.View style={{ transform: [{ scale: seconds < 5 ? pulse : 1 }] }}>
+                <Svg width={88} height={88}>
+                  <Circle cx={44} cy={44} r={38} stroke="rgba(255,255,255,0.12)" strokeWidth={6} fill="none" />
+                  <Circle
+                    cx={44}
+                    cy={44}
+                    r={38}
+                    stroke={seconds < 10 ? colors.error : colors.primary}
+                    strokeWidth={6}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray={CIRCUMFERENCE}
+                    strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
+                    rotation="-90"
+                    origin="44,44"
+                  />
+                </Svg>
+                <Text style={[styles.seconds, seconds < 10 && { color: colors.error }]}>{seconds}</Text>
+              </Animated.View>
             </View>
-          </View>
-          <View style={styles.addressConnector} />
-          <View style={styles.addressRow}>
-            <View style={[styles.addressDot, { backgroundColor: C.success }]} />
-            <View style={styles.addressTextWrap}>
-              <Text style={styles.addressLabel}>Хүргэх газар</Text>
-              <Text style={styles.addressText}>{request.dropoffAddress}</Text>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Барааны цуглуулах цэгүүд</Text>
+              {request.pickupStops.map((stop, index) => (
+                <View key={stop.supplierId} style={styles.stopBlock}>
+                  <View style={styles.stopTop}>
+                    <View style={styles.stopNumber}>
+                      <Text style={styles.stopNumberText}>{index + 1}</Text>
+                    </View>
+                    <View style={styles.stopText}>
+                      <Text style={styles.stopTitle}>🏪 {stop.supplierName} — {stop.district}</Text>
+                      <Text style={styles.muted}>{stop.address}</Text>
+                    </View>
+                    {stop.phone ? (
+                      <TouchableOpacity style={styles.phoneBtn} onPress={() => Linking.openURL(`tel:${stop.phone}`)}>
+                        <Ionicons name="call" size={16} color={colors.success} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  {stop.phone ? <Text style={styles.phone}>📞 {stop.phone}</Text> : null}
+                  <Text style={styles.items}>{stop.items.map((item) => `${item.name} ×${item.qty}`).join(', ')}</Text>
+                </View>
+              ))}
             </View>
-          </View>
-        </View>
 
-        {/* Fee */}
-        <View style={styles.feeWrap}>
-          <Text style={styles.feeLabel}>Хөлс</Text>
-          <Text style={styles.feeAmount}>₮{request.fee.toLocaleString()}</Text>
-        </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Хүргэлтийн хаяг</Text>
+              <Text style={styles.stopTitle}>🏠 {request.customerDistrict}, {request.customerKhoroo ?? ''}</Text>
+              <Text style={styles.muted}>{request.dropoffAddress}</Text>
+            </View>
 
-        {/* Actions */}
-        <TouchableOpacity style={styles.acceptBtn} onPress={handleAccept} activeOpacity={0.85}>
-          <Ionicons name="checkmark-circle" size={22} color="#fff" />
-          <Text style={styles.acceptBtnText}>Хүлээн авах</Text>
-        </TouchableOpacity>
+            <View style={styles.pills}>
+              <View style={styles.pill}><Text style={styles.pillText}>📏 {request.distance.toFixed(1)} км</Text></View>
+              <View style={styles.pill}><Text style={styles.pillText}>🏪 {request.pickupStops.length} дэлгүүр</Text></View>
+              <View style={styles.pill}><Text style={styles.pillText}>⏱ ~{request.estimatedDuration} мин</Text></View>
+            </View>
 
-        <TouchableOpacity style={styles.rejectBtn} onPress={handleReject} activeOpacity={0.8}>
-          <Ionicons name="close-circle-outline" size={20} color={C.textSub} />
-          <Text style={styles.rejectBtnText}>Татгалзах</Text>
-        </TouchableOpacity>
-      </Animated.View>
+            <Text style={styles.fee}>₮{request.fee.toLocaleString()}</Text>
+
+            <Button title="Хүлээн авах" variant="success" style={styles.acceptBtn} onPress={accept} />
+            <Button title="Татгалзах" variant="ghost" size="md" onPress={reject} />
+          </ScrollView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  panel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1E1E30',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingBottom: 40,
-    borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  newBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  newDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#FF4500',
-  },
-  newBadgeText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FF4500',
-  },
-  countdownBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    minWidth: 56,
-    alignItems: 'center',
-  },
-  countdownNumber: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#161625',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    gap: 8,
-  },
-  metaItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    justifyContent: 'center',
-  },
-  metaValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#F5F5FF',
-  },
-  metaDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  addressCard: {
-    backgroundColor: '#161625',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
-    gap: 4,
-  },
-  addressRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  addressDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginTop: 3,
-  },
-  addressConnector: {
-    width: 2,
-    height: 14,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginLeft: 5,
-    marginVertical: 4,
-  },
-  addressTextWrap: { flex: 1 },
-  addressLabel: {
-    fontSize: 10,
-    color: '#8888AA',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  addressText: {
-    fontSize: 14,
-    color: '#F5F5FF',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  feeWrap: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  feeLabel: {
-    fontSize: 12,
-    color: '#8888AA',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  feeAmount: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: '#FF4500',
-  },
-  acceptBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    height: 56,
-    backgroundColor: '#00D4AA',
-    borderRadius: 16,
-    marginBottom: 10,
-  },
-  acceptBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  rejectBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  rejectBtnText: {
-    color: '#8888AA',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.74)' },
+  sheet: { maxHeight: '92%', backgroundColor: '#111315', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, borderColor: colors.borderHover },
+  handle: { width: 42, height: 4, backgroundColor: colors.borderHover, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
+  content: { padding: 20, paddingBottom: 34 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
+  title: { color: colors.text, fontSize: 28, fontWeight: '900' },
+  orderNumber: { color: colors.textSub, fontFamily: 'Courier', marginTop: 3 },
+  seconds: { position: 'absolute', left: 0, right: 0, top: 31, textAlign: 'center', color: colors.text, fontSize: 21, fontWeight: '900' },
+  section: { borderRadius: radius.xl, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 12 },
+  sectionLabel: { color: colors.textSub, fontSize: 12, fontWeight: '800', marginBottom: 12 },
+  stopBlock: { marginBottom: 12 },
+  stopTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  stopNumber: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryGlow },
+  stopNumberText: { color: colors.primary, fontWeight: '900', fontSize: 12 },
+  stopText: { flex: 1 },
+  stopTitle: { color: colors.text, fontSize: 14, fontWeight: '800', lineHeight: 20 },
+  muted: { color: colors.textSub, fontSize: 12, lineHeight: 18, marginTop: 2 },
+  phoneBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,212,170,0.13)' },
+  phone: { color: colors.success, fontSize: 12, marginLeft: 34, marginTop: 3 },
+  items: { color: colors.textSub, fontSize: 11, marginLeft: 34, marginTop: 5 },
+  pills: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  pill: { flex: 1, borderRadius: radius.lg, backgroundColor: 'rgba(255,255,255,0.04)', paddingVertical: 12, alignItems: 'center' },
+  pillText: { color: colors.text, fontSize: 12, fontWeight: '800' },
+  fee: { color: colors.primary, fontSize: 52, fontWeight: '900', textAlign: 'center', marginBottom: 14 },
+  acceptBtn: { height: 60, marginBottom: 10 },
 });

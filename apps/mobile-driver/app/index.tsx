@@ -1,7 +1,7 @@
 import { Redirect } from 'expo-router';
-import { useDriverStore } from '../lib/store';
+import { useAuthStore } from '../src/store/auth';
 
 export default function IndexScreen() {
-  const driver = useDriverStore((s) => s.driver);
-  return <Redirect href={driver ? '/(tabs)' : '/login'} />;
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  return <Redirect href={isAuthenticated ? '/(tabs)' : '/(auth)/login'} />;
 }
