@@ -159,18 +159,39 @@ export default function ActiveDeliveryPage() {
 
           <div className="mb-4 space-y-2">
             {delivery.pickupStops.map((stop, index) => (
-              <div key={stop.supplierId} className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3 py-2">
-                <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${step > index * 2 ? 'bg-success text-white' : 'bg-white/10 text-foreground-muted'}`}>
-                  {step > index * 2 ? '✓' : ''}
-                </span>
-                <p className="text-xs text-foreground">Дэлгүүр {index + 1}: {stop.supplierName} - {stop.address}</p>
+              <div key={stop.supplierId} className="rounded-xl bg-white/[0.04] px-3 py-2.5 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] ${step > index * 2 ? 'bg-success text-white' : 'bg-white/10 text-foreground-muted'}`}>
+                      {step > index * 2 ? '✓' : index + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">{stop.supplierName}</p>
+                      <p className="text-[11px] text-foreground-muted truncate">{stop.address}</p>
+                    </div>
+                  </div>
+                  {stop.phone && (
+                    <a href={`tel:${stop.phone}`} className="shrink-0 grid h-8 w-8 place-items-center rounded-xl bg-success/15 text-success">
+                      <Phone size={14} />
+                    </a>
+                  )}
+                </div>
+                {stop.items && stop.items.length > 0 && (
+                  <div className="ml-7 flex flex-wrap gap-1">
+                    {stop.items.map((item, j) => (
+                      <span key={j} className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-foreground-muted border border-white/10">
+                        {item.name} × {item.qty}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             <div className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3 py-2">
-              <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${step >= 4 ? 'bg-success text-white' : 'bg-white/10 text-foreground-muted'}`}>
-                {step >= 4 ? '✓' : ''}
+              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] ${step >= 4 ? 'bg-success text-white' : 'bg-white/10 text-foreground-muted'}`}>
+                {step >= 4 ? '✓' : '🏠'}
               </span>
-              <p className="text-xs text-foreground">Хэрэглэгч: {delivery.dropoffAddress}</p>
+              <p className="text-xs text-foreground">{delivery.dropoffAddress}</p>
             </div>
           </div>
 
@@ -178,7 +199,7 @@ export default function ActiveDeliveryPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-foreground">{delivery.customerName}</p>
-                <p className="text-xs text-foreground-muted">Орцны код: 1234, баруун хаалга</p>
+                <p className="text-xs text-foreground-muted">{delivery.dropoffAddress}</p>
               </div>
               <a href={`tel:${delivery.customerPhone}`} className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success">
                 <Phone size={17} />

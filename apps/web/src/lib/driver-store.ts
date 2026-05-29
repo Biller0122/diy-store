@@ -37,6 +37,8 @@ export interface ActiveDelivery {
     supplierId: string;
     supplierName: string;
     address: string;
+    phone?: string;
+    items?: Array<{ name: string; qty: number }>;
     lat: number;
     lng: number;
     status: 'PENDING' | 'ARRIVED' | 'PICKED_UP';

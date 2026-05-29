@@ -86,12 +86,29 @@ function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineD
     .map(({ driver }) => driver);
 }
 
+export interface DispatchPickupStop {
+  supplierId: string;
+  name: string;
+  address: string;
+  phone?: string;
+  items?: Array<{ name: string; qty: number }>;
+}
+
+export interface DispatchCustomerInfo {
+  name: string;
+  phone: string;
+  address: string;
+  district: string;
+  khoroo?: string;
+}
+
 export async function dispatchOrder(
   orderId: string,
   pickupLat: number,
   pickupLng: number,
   customerId?: string,
-  pickupStops?: Array<{ supplierId: string; name: string; district: string }>,
+  pickupStops?: DispatchPickupStop[],
+  customer?: DispatchCustomerInfo,
 ): Promise<DispatchResult> {
   const orderNumber = generateOrderNumber();
   dispatchState.set(orderId, { status: 'SEARCHING', orderNumber });
@@ -121,8 +138,22 @@ export async function dispatchOrder(
     orderId,
     orderNumber,
     fee: deliveryFee,
-    pickupStops: pickupStops ?? [],
-    dropoff: { district: 'Чингэлтэй' },
+    pickupStops: (pickupStops ?? []).map((s) => ({
+      supplierId: s.supplierId,
+      name: s.name,
+      address: s.address,
+      phone: s.phone ?? '',
+      items: s.items ?? [],
+    })),
+    dropoff: {
+      district: customer?.district ?? 'Улаанбаатар',
+      khoroo: customer?.khoroo,
+      address: customer?.address ?? '',
+      customerName: customer?.name ?? 'Хэрэглэгч',
+      customerPhone: customer?.phone ?? '',
+    },
+    distance: Math.round(distance * 10) / 10,
+    estimatedMinutes: Math.round(distance * 3 + 5),
   });
 
   void sendDriverNewOrderNotification(offered.id, {

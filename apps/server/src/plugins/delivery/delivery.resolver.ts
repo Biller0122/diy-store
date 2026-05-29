@@ -2,7 +2,7 @@ import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryOrderItem, DeliveryRequest, DeliveryStatus, PickupStop } from './delivery-request.entity';
-import { generateOrderNumber, dispatchOrder } from '../../services/order-dispatch.service';
+import { generateOrderNumber, dispatchOrder, type DispatchPickupStop } from '../../services/order-dispatch.service';
 
 @Resolver()
 export class DeliveryResolver {
@@ -76,13 +76,25 @@ export class DeliveryResolver {
     const saved = await this.deliveryRepo.save(request);
 
     // Fire-and-forget: dispatch to nearest driver via WebSocket
-    const dispatchPickupStops = pickupStops.map((s) => ({
+    const dispatchPickupStops: DispatchPickupStop[] = pickupStops.map((s) => ({
       supplierId: s.supplierId,
       name: s.supplierName,
-      district: s.address,
+      address: s.address,
+      phone: (s as PickupStop & { phone?: string }).phone ?? '',
+      items: orderItems
+        .filter((i) => i.supplierId === s.supplierId)
+        .map((i) => ({ name: i.name, qty: i.qty })),
     }));
 
-    void dispatchOrder(String(saved.id), pickupLat, pickupLng, customerId, dispatchPickupStops)
+    const customerInfo = customerName ? {
+      name: customerName,
+      phone: customerPhone,
+      address: dropoffAddress,
+      district: dropoffAddress.split(',')[0]?.trim() ?? 'Улаанбаатар',
+      khoroo: dropoffAddress.split(',')[1]?.trim(),
+    } : undefined;
+
+    void dispatchOrder(String(saved.id), pickupLat, pickupLng, customerId, dispatchPickupStops, customerInfo)
       .then(async (result) => {
         if (result.status === 'ACCEPTED' && result.driver) {
           await this.deliveryRepo.update(saved.id, {

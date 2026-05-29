@@ -14,6 +14,7 @@ export interface PickupStop {
   supplierId: string;
   supplierName: string;
   address: string;
+  phone?: string;
   lat: number;
   lng: number;
   status: 'PENDING' | 'ARRIVED' | 'PICKED_UP';

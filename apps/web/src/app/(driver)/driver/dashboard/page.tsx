@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Navigation, Star, Wallet } from 'lucide-react';
-import DeliveryRequestPopup from '@/components/driver/DeliveryRequestPopup';
+import DeliveryRequestPopup, { MOCK_DELIVERY_REQUEST } from '@/components/driver/DeliveryRequestPopup';
 import { useDriverStore, VEHICLE_LABEL, type ActiveDelivery } from '@/lib/driver-store';
 
 const RECENT_DELIVERIES: { id: string; address: string; amount: number; time: string }[] = [];
@@ -59,12 +59,12 @@ export default function DriverDashboardPage() {
         orderId: string;
         orderNumber: string;
         fee: number;
-        pickupStops: Array<{ supplierId: string; name: string; district: string }>;
-        dropoff: { district: string; khoroo?: string };
+        pickupStops: Array<{ supplierId: string; name: string; address: string; phone?: string; items?: Array<{ name: string; qty: number }> }>;
+        dropoff: { district: string; khoroo?: string; address?: string; customerName?: string; customerPhone?: string };
+        distance?: number;
+        estimatedMinutes?: number;
       }) => {
-        // Always use refs for current values — never the closed-over ones
         if (!isOnlineRef.current || activeDeliveryRef.current) return;
-
         console.log('[socket] delivery:request received', payload.orderNumber);
 
         const stops = Array.isArray(payload.pickupStops) ? payload.pickupStops : [];
@@ -73,19 +73,21 @@ export default function DriverDashboardPage() {
           id: `req-${payload.orderId}`,
           orderId: payload.orderId,
           orderNumber: payload.orderNumber,
-          customerName: 'Хэрэглэгч',
-          customerPhone: '',
-          dropoffAddress: `${dropoff.district}${dropoff.khoroo ? ', ' + dropoff.khoroo : ''}`,
+          customerName: dropoff.customerName ?? 'Хэрэглэгч',
+          customerPhone: dropoff.customerPhone ?? '',
+          dropoffAddress: dropoff.address ?? `${dropoff.district}${dropoff.khoroo ? ', ' + dropoff.khoroo : ''}`,
           dropoffLat: 47.9268,
           dropoffLng: 106.9145,
-          distance: 4.2,
-          estimatedDuration: 25,
+          distance: payload.distance ?? 4.2,
+          estimatedDuration: payload.estimatedMinutes ?? 25,
           fee: payload.fee ?? 0,
           status: 'REQUESTED',
           pickupStops: stops.map((s) => ({
             supplierId: s.supplierId ?? '',
             supplierName: s.name ?? '',
-            address: s.district ?? '',
+            address: s.address ?? '',
+            phone: s.phone ?? '',
+            items: s.items ?? [],
             lat: 47.92,
             lng: 106.93,
             status: 'PENDING' as const,
@@ -114,6 +116,17 @@ export default function DriverDashboardPage() {
     if (isOnline) {
       socket.emit('driver:join', driver.id);
       socket.emit('driver:online', driver.id);
+
+      // Dev mode: show mock order popup after 5s when going online
+      if (process.env.NODE_ENV === 'development') {
+        const t = window.setTimeout(() => {
+          if (isOnlineRef.current && !activeDeliveryRef.current) {
+            setPendingRequest(MOCK_DELIVERY_REQUEST);
+            setShowRequest(true);
+          }
+        }, 5000);
+        return () => window.clearTimeout(t);
+      }
     } else {
       socket.emit('driver:offline', driver.id);
     }

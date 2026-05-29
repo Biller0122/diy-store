@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, Phone, X } from 'lucide-react';
 import type { ActiveDelivery } from '@/lib/driver-store';
 
 export const MOCK_DELIVERY_REQUEST: ActiveDelivery = {
@@ -22,7 +22,9 @@ export const MOCK_DELIVERY_REQUEST: ActiveDelivery = {
     {
       supplierId: 'sup-001',
       supplierName: 'Ганцоо барилгын материал',
-      address: 'Баянзүрх дүүрэг',
+      address: 'Баянзүрх дүүрэг, Барилгачдын гудамж 15',
+      phone: '99001122',
+      items: [{ name: 'Будаг (цагаан)', qty: 3 }, { name: 'Roller brush', qty: 2 }],
       lat: 47.9185,
       lng: 106.9403,
       status: 'PENDING',
@@ -30,7 +32,9 @@ export const MOCK_DELIVERY_REQUEST: ActiveDelivery = {
     {
       supplierId: 'sup-002',
       supplierName: 'Төмөр зах',
-      address: 'Сүхбаатар дүүрэг',
+      address: 'Сүхбаатар дүүрэг, Гэгээн Өндөр 22',
+      phone: '88334455',
+      items: [{ name: 'Хадаас (жижиг)', qty: 100 }, { name: 'Гайк М10', qty: 20 }],
       lat: 47.9208,
       lng: 106.9279,
       status: 'PENDING',
@@ -125,19 +129,50 @@ export default function DeliveryRequestPopup({
 
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
               <div>
-                <p className="mb-2 text-xs font-semibold text-foreground-muted">Авах цэгүүд</p>
-                <div className="space-y-2">
-                  {delivery.pickupStops.map((stop) => (
-                    <div key={stop.supplierId} className="flex items-center gap-2 text-sm text-foreground">
-                      <span>📍</span>
-                      <span>{stop.supplierName} — {stop.address.replace(' дүүрэг', '')}</span>
+                <p className="mb-2 text-xs font-semibold text-foreground-muted">Авах цэгүүд ({delivery.pickupStops.length})</p>
+                <div className="space-y-3">
+                  {delivery.pickupStops.map((stop, i) => (
+                    <div key={stop.supplierId} className="space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded-full bg-brand/20 text-brand text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{stop.supplierName}</p>
+                            <p className="text-xs text-foreground-muted">{stop.address}</p>
+                          </div>
+                        </div>
+                        {stop.phone && (
+                          <a href={`tel:${stop.phone}`} className="shrink-0 w-7 h-7 rounded-lg bg-success/15 flex items-center justify-center text-success hover:bg-success/25">
+                            <Phone size={13} />
+                          </a>
+                        )}
+                      </div>
+                      {stop.items && stop.items.length > 0 && (
+                        <div className="ml-7 flex flex-wrap gap-1">
+                          {stop.items.map((item, j) => (
+                            <span key={j} className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-foreground-muted border border-white/10">
+                              {item.name} × {item.qty}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
               <div className="border-t border-white/10 pt-3">
                 <p className="mb-1 text-xs font-semibold text-foreground-muted">Хүргэх хаяг</p>
-                <p className="text-sm text-foreground">🏠 {delivery.dropoffAddress}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">🏠 {delivery.customerName}</p>
+                    <p className="text-xs text-foreground-muted">{delivery.dropoffAddress}</p>
+                  </div>
+                  {delivery.customerPhone && (
+                    <a href={`tel:${delivery.customerPhone}`} className="shrink-0 w-7 h-7 rounded-lg bg-success/15 flex items-center justify-center text-success hover:bg-success/25">
+                      <Phone size={13} />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
 
