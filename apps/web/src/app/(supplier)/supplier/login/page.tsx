@@ -66,8 +66,11 @@ export default function SupplierLoginPage() {
             <Store size={26} />
           </div>
           <h1 className="text-2xl font-black text-foreground">
-            {step === 'email' ? 'Нийлүүлэгч нэвтрэх' : 'Баталгаажуулах код'}
+            {step === 'email' ? 'Нийлүүлэгчийн нэвтрэлт' : 'Баталгаажуулах код'}
           </h1>
+          {step === 'email' && (
+            <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-brand/70">Дэлгүүрийн данс</p>
+          )}
           <p className="mt-1 text-sm text-foreground-muted">
             {step === 'email' ? 'И-мэйл хаягаа оруулна уу' : `${cleanEmail} хаягт код илгээлээ`}
           </p>

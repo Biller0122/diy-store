@@ -93,7 +93,8 @@ function LoginForm() {
           <Link href="/" className="inline-flex items-center gap-2 text-2xl font-bold text-foreground">
             🔨 <span>DIY Store</span>
           </Link>
-          <p className="text-sm text-foreground-muted mt-2">Монголын гар урлалын дэлгүүр</p>
+          <h1 className="text-xl font-black text-foreground mt-3">Нэвтрэх / Бүртгүүлэх</h1>
+          <p className="text-sm text-foreground-muted mt-1">Монголын гар урлалын дэлгүүр</p>
         </div>
 
         <div className="bg-card rounded-2xl p-8">

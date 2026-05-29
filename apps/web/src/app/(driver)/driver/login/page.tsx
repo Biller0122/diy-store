@@ -46,7 +46,8 @@ export default function DriverLoginPage() {
       <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-card/80 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-brand text-3xl shadow-xl shadow-brand/25">🚗</div>
-          <h1 className="text-2xl font-black text-foreground">Жолооч нэвтрэх</h1>
+          <h1 className="text-2xl font-black text-foreground">Жолоочийн нэвтрэлт</h1>
+          <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-brand/70">Хүргэлтийн данс</p>
           <p className="mt-2 text-sm text-foreground-muted">
             {step === 'phone' ? 'Утасны дугаараа оруулж код авна уу' : `${phone} дугаарт код илгээлээ`}
           </p>
