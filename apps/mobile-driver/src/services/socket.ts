@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { ActiveOrder } from '../store/delivery';
 
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? 'ws://52.77.245.218:3002';
+const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? 'ws://192.168.0.13:3002';
 
 type OrderPayload = {
   orderId?: string;

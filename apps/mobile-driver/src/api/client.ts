@@ -2,7 +2,7 @@ import { GraphQLClient } from 'graphql-request';
 import { GET_DRIVER_EARNINGS, GET_DRIVER_PROFILE } from './queries';
 import { ACCEPT_DELIVERY, LOGIN_DRIVER, REGISTER_DRIVER, REJECT_DELIVERY, UPDATE_DRIVER_LOCATION, UPDATE_DRIVER_STATUS, UPDATE_ORDER_STATUS } from './mutations';
 
-export const SHOP_API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL ?? 'http://52.77.245.218/shop-api';
+export const SHOP_API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL ?? 'http://192.168.0.13:3001/shop-api';
 
 const client = new GraphQLClient(SHOP_API_URL, {
   credentials: 'include',
@@ -41,11 +41,16 @@ export type Driver = {
 };
 
 export async function loginDriver(email: string, password: string) {
-  return request<{ login: { id?: string; identifier?: string; errorCode?: string; message?: string } }>(LOGIN_DRIVER, { email, password });
+  return request<{ loginDriverByPassword: { success: boolean; message: string; driverId: string | null; token: string | null } }>(LOGIN_DRIVER, { email, password });
 }
 
 export async function getDriverProfile(id: string) {
-  return request<{ getDriverProfile: Driver | null }>(GET_DRIVER_PROFILE, { id });
+  const data = await request<{ getDriverProfile: (Omit<Driver, 'emailAddress'> & { emailAddress?: string | null }) | null }>(GET_DRIVER_PROFILE, { id });
+  return {
+    getDriverProfile: data.getDriverProfile
+      ? { ...data.getDriverProfile, emailAddress: data.getDriverProfile.emailAddress ?? 'starbiller@gmail.com' }
+      : null,
+  };
 }
 
 export async function registerDriver(input: Record<string, unknown>) {
@@ -57,7 +62,7 @@ export async function updateDriverStatus(id: string, isOnline: boolean) {
 }
 
 export async function updateDriverLocation(driverId: string, lat: number, lng: number, heading?: number | null, orderId?: string | null) {
-  return request<{ updateDriverLocation: { success: boolean } }>(UPDATE_DRIVER_LOCATION, { driverId, lat, lng, heading, orderId });
+  return request<{ updateDriverLocation: { id: string; currentLat: number | null; currentLng: number | null } }>(UPDATE_DRIVER_LOCATION, { id: driverId, lat, lng });
 }
 
 export async function acceptDeliveryApi(driverId: string, orderId: string) {

@@ -1,14 +1,10 @@
 export const LOGIN_DRIVER = `
   mutation LoginDriver($email: String!, $password: String!) {
-    login(username: $email, password: $password) {
-      ... on CurrentUser {
-        id
-        identifier
-      }
-      ... on ErrorResult {
-        errorCode
-        message
-      }
+    loginDriverByPassword(email: $email, password: $password) {
+      success
+      message
+      driverId
+      token
     }
   }
 `;
@@ -34,9 +30,11 @@ export const UPDATE_DRIVER_STATUS = `
 `;
 
 export const UPDATE_DRIVER_LOCATION = `
-  mutation UpdateDriverLocation($driverId: ID!, $lat: Float!, $lng: Float!, $heading: Float, $orderId: ID) {
-    updateDriverLocation(driverId: $driverId, lat: $lat, lng: $lng, heading: $heading, orderId: $orderId) {
-      success
+  mutation UpdateDriverLocation($id: ID!, $lat: Float!, $lng: Float!) {
+    updateDriverLocation(id: $id, lat: $lat, lng: $lng) {
+      id
+      currentLat
+      currentLng
     }
   }
 `;

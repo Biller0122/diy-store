@@ -24,7 +24,8 @@
         {
           "color": "#FF4500"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "android": {
       "package": "mn.diystore.driver",

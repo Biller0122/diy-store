@@ -4,7 +4,6 @@ export const GET_DRIVER_PROFILE = `
       id
       firstName
       lastName
-      emailAddress
       phone
       vehicleType
       vehiclePlate

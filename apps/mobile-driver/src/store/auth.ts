@@ -70,14 +70,14 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const data = await loginDriver(email.trim(), password);
-          if (data.login.errorCode || !data.login.id) {
-            set({ isLoading: false, error: mapLoginError(data.login.message) });
+          if (!data.loginDriverByPassword.success || !data.loginDriverByPassword.driverId) {
+            set({ isLoading: false, error: mapLoginError(data.loginDriverByPassword.message) });
             return false;
           }
-          const token = `driver-session-${data.login.id}`;
+          const token = data.loginDriverByPassword.token ?? `driver-session-${data.loginDriverByPassword.driverId}`;
           setAuthToken(token);
-          const profile = await getDriverProfile(data.login.id);
-          const driver = profile.getDriverProfile ?? { ...MOCK_DRIVER, id: data.login.id, emailAddress: email.trim() };
+          const profile = await getDriverProfile(data.loginDriverByPassword.driverId);
+          const driver = profile.getDriverProfile ?? { ...MOCK_DRIVER, id: data.loginDriverByPassword.driverId, emailAddress: email.trim() };
           set({ driver, token, isAuthenticated: true, isLoading: false });
           return true;
         } catch (error) {
@@ -98,8 +98,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const payload = {
             ownerName: input.ownerName.trim(),
-            emailAddress: input.email.trim(),
-            password: input.password,
+            phone: '99112233',
             vehicleType: input.vehicleType,
             vehiclePlate: input.vehiclePlate.trim(),
             vehicleModel: input.vehicleModel.trim(),
