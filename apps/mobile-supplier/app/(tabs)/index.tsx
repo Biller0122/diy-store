@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSupplierStore } from '@/lib/store';
+import { SUPPLIER_ORDERS_QUERY, shopFetch } from '@/lib/api';
 import { SupplierOrder } from '@/lib/types';
 
 const C = {
@@ -27,43 +28,6 @@ const C = {
   textSub: '#8888AA',
   textTertiary: '#55556A',
 };
-
-const MOCK_PENDING_ORDERS: SupplierOrder[] = [
-  {
-    id: '1',
-    code: 'ORD-2025-001',
-    state: 'PaymentAuthorized',
-    total: 24500_00,
-    createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
-    shippingAddress: { streetLine1: 'Сүхбаатар дүүрэг, 3-р хороо', city: 'Улаанбаатар' },
-    lines: [
-      { quantity: 2, productVariant: { name: 'Стандарт', product: { name: 'Нийлүүлэгч багаж' } } },
-    ],
-  },
-  {
-    id: '2',
-    code: 'ORD-2025-002',
-    state: 'PaymentSettled',
-    total: 18750_00,
-    createdAt: new Date(Date.now() - 22 * 60000).toISOString(),
-    shippingAddress: { streetLine1: 'Хан-Уул дүүрэг, 15-р хороо', city: 'Улаанбаатар' },
-    lines: [
-      { quantity: 3, productVariant: { name: 'Урт', product: { name: 'Боолт M8' } } },
-      { quantity: 1, productVariant: { name: 'Үндсэн', product: { name: 'Цахилгаан кабель' } } },
-    ],
-  },
-  {
-    id: '3',
-    code: 'ORD-2025-003',
-    state: 'PaymentAuthorized',
-    total: 9200_00,
-    createdAt: new Date(Date.now() - 58 * 60000).toISOString(),
-    shippingAddress: { streetLine1: 'Баянзүрх дүүрэг, 6-р хороо', city: 'Улаанбаатар' },
-    lines: [
-      { quantity: 4, productVariant: { name: 'Жижиг', product: { name: 'Будгийн сойз' } } },
-    ],
-  },
-];
 
 function formatPrice(cents: number) {
   return '₮' + (cents / 100).toLocaleString('mn-MN');
@@ -91,6 +55,26 @@ function PulsingDot() {
 
 export default function DashboardScreen() {
   const supplier = useSupplierStore((s) => s.supplier);
+  const [orders, setOrders] = useState<SupplierOrder[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    shopFetch<{ supplierOrders: { items: SupplierOrder[] } }>(SUPPLIER_ORDERS_QUERY, { skip: 0, take: 20 })
+      .then((data) => {
+        if (mounted) setOrders(data.supplierOrders.items);
+      })
+      .catch(() => {
+        if (mounted) setOrders([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const pendingOrders = orders.filter((order) => order.state === 'PaymentAuthorized' || order.state === 'PaymentSettled');
+  const todayRevenue = orders
+    .filter((order) => new Date(order.createdAt).toDateString() === new Date().toDateString())
+    .reduce((sum, order) => sum + order.total, 0);
 
   const handleAccept = async (code: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -123,13 +107,13 @@ export default function DashboardScreen() {
         <View style={styles.row}>
           <View style={[styles.statCard, { flex: 1, marginRight: 8 }]}>
             <Text style={styles.statLabel}>Өнөөдрийн орлого</Text>
-            <Text style={styles.statValueOrange}>₮245,000</Text>
-            <Text style={styles.statHint}>+12% өчигдрөөс</Text>
+            <Text style={styles.statValueOrange}>{formatPrice(todayRevenue)}</Text>
+            <Text style={styles.statHint}>real data</Text>
           </View>
           <View style={[styles.statCard, { flex: 1, marginLeft: 8 }]}>
             <Text style={styles.statLabel}>Хүлээгдэж буй</Text>
             <View style={styles.pendingRow}>
-              <Text style={styles.statValueLarge}>4</Text>
+              <Text style={styles.statValueLarge}>{pendingOrders.length}</Text>
               <PulsingDot />
             </View>
             <Text style={styles.statHint}>захиалга</Text>
@@ -140,20 +124,20 @@ export default function DashboardScreen() {
         <View style={styles.row}>
           <View style={[styles.statCard, { flex: 1, marginRight: 8 }]}>
             <Text style={styles.statLabel}>Бүтээгдэхүүн</Text>
-            <Text style={styles.statValueWhite}>10</Text>
-            <Text style={styles.statHint}>8 идэвхтэй</Text>
+            <Text style={styles.statValueWhite}>{supplier?.productCount ?? 0}</Text>
+            <Text style={styles.statHint}>бодит бүтээгдэхүүн</Text>
           </View>
           <View style={[styles.statCard, { flex: 1, marginLeft: 8 }]}>
             <Text style={styles.statLabel}>Сарын орлого</Text>
-            <Text style={styles.statValueOrange}>₮3,840,000</Text>
-            <Text style={styles.statHint}>5-р сар</Text>
+            <Text style={styles.statValueOrange}>{formatPrice(orders.reduce((sum, order) => sum + order.total, 0))}</Text>
+            <Text style={styles.statHint}>нийт татсан захиалга</Text>
           </View>
         </View>
 
         {/* Pending orders */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Шинэ захиалгууд</Text>
-          {MOCK_PENDING_ORDERS.map((order) => (
+          {pendingOrders.map((order) => (
             <View key={order.id} style={styles.orderCard}>
               <View style={styles.orderHeader}>
                 <Text style={styles.orderCode}>#{order.code}</Text>
@@ -185,6 +169,7 @@ export default function DashboardScreen() {
               </View>
             </View>
           ))}
+          {pendingOrders.length === 0 ? <Text style={styles.emptyText}>Шинэ захиалга байхгүй байна</Text> : null}
         </View>
 
         {/* Quick stats */}
@@ -192,15 +177,15 @@ export default function DashboardScreen() {
           <Text style={styles.sectionTitle}>Шуурхай статистик</Text>
           <View style={styles.pillRow}>
             <View style={styles.pill}>
-              <Text style={styles.pillValue}>7</Text>
+              <Text style={styles.pillValue}>{orders.length}</Text>
               <Text style={styles.pillLabel}>Өнөөдрийн захиалга</Text>
             </View>
             <View style={styles.pill}>
-              <Text style={styles.pillValue}>₮35K</Text>
+              <Text style={styles.pillValue}>{formatPrice(orders.length ? Math.round(orders.reduce((sum, order) => sum + order.total, 0) / orders.length) : 0)}</Text>
               <Text style={styles.pillLabel}>Дундаж үнэ</Text>
             </View>
             <View style={styles.pill}>
-              <Text style={styles.pillValue}>94%</Text>
+              <Text style={styles.pillValue}>{orders.length ? Math.round((orders.filter((o) => o.state === 'Delivered').length / orders.length) * 100) : 0}%</Text>
               <Text style={styles.pillLabel}>Биелэлт</Text>
             </View>
           </View>
@@ -379,5 +364,11 @@ const styles = StyleSheet.create({
     color: C.textTertiary,
     fontSize: 10,
     textAlign: 'center',
+  },
+  emptyText: {
+    color: C.textSub,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });

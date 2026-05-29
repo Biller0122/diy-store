@@ -1,5 +1,5 @@
 import { haversineDistance } from './delivery-fee.service';
-import { emitToDriver, emitToOrder, getOnlineDrivers } from '../plugins/realtime.plugin';
+import { emitToDriver, emitToOrder, getOnlineDrivers, registerDriverOfferHandlers } from '../plugins/realtime.plugin';
 import {
   sendDriverNewOrderNotification,
   sendCustomerDriverAssignedNotification,
@@ -29,10 +29,17 @@ export interface DispatchResult {
 const SEARCH_RADIUS_KM_FIRST = 5;
 const SEARCH_RADIUS_KM_EXPAND = 10;
 const OFFER_TIMEOUT_MS = 30_000;
-const MOCK_ACCEPT_DELAY_MS = 5_000;
 
-// In-memory dispatch state for mock (real impl uses DB)
+// In-memory dispatch state for the active realtime offer lifecycle.
 const dispatchState = new Map<string, DispatchResult>();
+const pendingOffers = new Map<string, {
+  driver: OnlineDriver;
+  orderNumber: string;
+  customerId?: string;
+  customer?: DispatchCustomerInfo;
+  resolve: (result: DispatchResult) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}>();
 
 // FIX 4 — Order number counter (resets on restart; real impl uses DB sequence)
 let orderCounter = 1000;
@@ -43,43 +50,21 @@ export function generateOrderNumber(): string {
   return `DIY-${year}-${String(orderCounter).padStart(5, '0')}`;
 }
 
-// Mock online drivers around UB — IDs match fresh SQLite auto-increment (1,2,3)
-const MOCK_DRIVERS: OnlineDriver[] = [
-  { id: '1', firstName: 'Нарантуяа', lastName: 'Болд', phone: '88112233', vehicleType: 'MOTORCYCLE', vehiclePlate: '1234-УБА', rating: 4.9, lat: 47.9185, lng: 106.9170 },
-  { id: '2', firstName: 'Ганболд', lastName: 'Мөнхбат', phone: '88224466', vehicleType: 'CAR', vehiclePlate: '5678-УВА', rating: 4.7, lat: 47.9200, lng: 106.9300 },
-  { id: '3', firstName: 'Мөнхцэцэг', lastName: 'Дорж', phone: '88336699', vehicleType: 'VAN', vehiclePlate: '9012-УВА', rating: 4.8, lat: 47.9150, lng: 106.9050 },
-];
-
 function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineDriver[] {
-  // Prefer actually-connected drivers (clicked "Онлайн болох" in browser)
   const online = getOnlineDrivers();
-  if (online.size > 0) {
-    const realOnline: OnlineDriver[] = [];
-    for (const [driverId, info] of online) {
-      // Try to enrich with MOCK_DRIVERS data; fall back to minimal info
-      const mock = MOCK_DRIVERS.find((d) => d.id === driverId);
-      realOnline.push(mock
-        ? { ...mock, lat: info.lat, lng: info.lng }
-        : { id: driverId, firstName: 'Жолооч', lastName: '', phone: '', vehicleType: 'CAR', vehiclePlate: '', rating: 5, lat: info.lat, lng: info.lng },
-      );
-    }
-    const inRadius = realOnline
-      .map((d) => ({ driver: d, dist: haversineDistance(lat, lng, d.lat, d.lng) }))
-      .filter(({ dist }) => dist <= radiusKm)
-      .sort((a, b) => a.dist - b.dist)
-      .map(({ driver }) => driver);
-
-    // If any real online driver is in range, use them
-    if (inRadius.length > 0) return inRadius;
-    // If online drivers exist but out of range, still pick closest online driver
-    const closest = realOnline
-      .map((d) => ({ driver: d, dist: haversineDistance(lat, lng, d.lat, d.lng) }))
-      .sort((a, b) => a.dist - b.dist);
-    if (closest.length > 0) return [closest[0].driver];
-  }
-
-  // Fallback to MOCK_DRIVERS when no real drivers are online
-  return MOCK_DRIVERS
+  if (online.size === 0) return [];
+  const realOnline: OnlineDriver[] = Array.from(online.entries()).map(([driverId, info]) => ({
+    id: driverId,
+    firstName: 'Жолооч',
+    lastName: '',
+    phone: '',
+    vehicleType: 'CAR',
+    vehiclePlate: '',
+    rating: 5,
+    lat: info.lat,
+    lng: info.lng,
+  }));
+  return realOnline
     .map((d) => ({ driver: d, dist: haversineDistance(lat, lng, d.lat, d.lng) }))
     .filter(({ dist }) => dist <= radiusKm)
     .sort((a, b) => a.dist - b.dist)
@@ -166,46 +151,9 @@ export async function dispatchOrder(
     dropoffDistrict: 'Чингэлтэй',
   });
 
-  // Mock: auto-accept after 5 seconds
   return new Promise((resolve) => {
-    const acceptTimer = setTimeout(async () => {
-      const accepted: DispatchResult = {
-        ...offeredResult,
-        status: 'ACCEPTED',
-        acceptedAt: new Date(),
-      };
-      dispatchState.set(orderId, accepted);
-
-      // Notify customer
-      emitToOrder(orderId, 'order:driver_assigned', {
-        orderId,
-        orderNumber: resolvedOrderNumber,
-        driver: {
-          id: offered.id,
-          name: `${offered.firstName} ${offered.lastName}`,
-          phone: offered.phone,
-          vehicleType: offered.vehicleType,
-          vehiclePlate: offered.vehiclePlate,
-          rating: offered.rating,
-        },
-        estimatedMinutes: 15,
-      });
-
-      if (customerId) {
-        void sendCustomerDriverAssignedNotification(customerId, {
-          orderNumber: resolvedOrderNumber,
-          driverName: `${offered.firstName} ${offered.lastName}`,
-          driverPhone: offered.phone,
-          estimatedMinutes: 15,
-        });
-      }
-
-      resolve(accepted);
-    }, MOCK_ACCEPT_DELAY_MS);
-
-    // Timeout if no accept in 30s
-    setTimeout(() => {
-      clearTimeout(acceptTimer);
+    const timeout = setTimeout(() => {
+      pendingOffers.delete(orderId);
       if (dispatchState.get(orderId)?.status !== 'ACCEPTED') {
         const timeout: DispatchResult = { status: 'TIMEOUT', orderNumber };
         dispatchState.set(orderId, timeout);
@@ -217,8 +165,63 @@ export async function dispatchOrder(
         resolve(timeout);
       }
     }, OFFER_TIMEOUT_MS);
+    pendingOffers.set(orderId, { driver: offered, orderNumber: resolvedOrderNumber, customerId, customer, resolve, timeout });
   });
 }
+
+function acceptDispatchOffer({ driverId, orderId }: { driverId: string; orderId: string }) {
+  const offer = pendingOffers.get(orderId);
+  if (!offer || offer.driver.id !== driverId) return;
+  clearTimeout(offer.timeout);
+  pendingOffers.delete(orderId);
+  const accepted: DispatchResult = {
+    status: 'ACCEPTED',
+    driver: offer.driver,
+    orderNumber: offer.orderNumber,
+    acceptedAt: new Date(),
+  };
+  dispatchState.set(orderId, accepted);
+  emitToOrder(orderId, 'order:driver_assigned', {
+    orderId,
+    orderNumber: offer.orderNumber,
+    driver: {
+      id: offer.driver.id,
+      name: `${offer.driver.firstName} ${offer.driver.lastName}`.trim() || 'Жолооч',
+      phone: offer.driver.phone,
+      vehicleType: offer.driver.vehicleType,
+      vehiclePlate: offer.driver.vehiclePlate,
+      rating: offer.driver.rating,
+    },
+    estimatedMinutes: 15,
+  });
+  if (offer.customerId) {
+    void sendCustomerDriverAssignedNotification(offer.customerId, {
+      orderNumber: offer.orderNumber,
+      driverName: `${offer.driver.firstName} ${offer.driver.lastName}`.trim() || 'Жолооч',
+      driverPhone: offer.driver.phone,
+      estimatedMinutes: 15,
+    });
+  }
+  offer.resolve(accepted);
+}
+
+function rejectDispatchOffer({ driverId, orderId }: { driverId: string; orderId: string }) {
+  const offer = pendingOffers.get(orderId);
+  if (!offer || offer.driver.id !== driverId) return;
+  clearTimeout(offer.timeout);
+  pendingOffers.delete(orderId);
+  const timeout: DispatchResult = { status: 'TIMEOUT', orderNumber: offer.orderNumber };
+  dispatchState.set(orderId, timeout);
+  if (offer.customerId) {
+    void sendCustomerStatusNotification(offer.customerId, offer.orderNumber, 'CANCELLED');
+  }
+  offer.resolve(timeout);
+}
+
+registerDriverOfferHandlers({
+  accept: acceptDispatchOffer,
+  reject: rejectDispatchOffer,
+});
 
 export function getDispatchStatus(orderId: string): DispatchResult {
   return dispatchState.get(orderId) ?? { status: 'SEARCHING' };

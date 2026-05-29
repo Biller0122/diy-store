@@ -5,43 +5,6 @@ import { m, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, Phone, X } from 'lucide-react';
 import type { ActiveDelivery } from '@/lib/driver-store';
 
-export const MOCK_DELIVERY_REQUEST: ActiveDelivery = {
-  id: 'delivery-dev-001',
-  orderId: 'ORD-2026-0526',
-  orderNumber: 'DIY-2026-01001',
-  customerName: 'Бат-Эрдэнэ',
-  customerPhone: '99112233',
-  dropoffAddress: 'Чингэлтэй, 3-р хороо, 12-р байр',
-  dropoffLat: 47.9268,
-  dropoffLng: 106.9145,
-  distance: 4.2,
-  estimatedDuration: 25,
-  fee: 850000,
-  status: 'REQUESTED',
-  pickupStops: [
-    {
-      supplierId: 'sup-001',
-      supplierName: 'Ганцоо барилгын материал',
-      address: 'Баянзүрх дүүрэг, Барилгачдын гудамж 15',
-      phone: '99001122',
-      items: [{ name: 'Будаг (цагаан)', qty: 3 }, { name: 'Roller brush', qty: 2 }],
-      lat: 47.9185,
-      lng: 106.9403,
-      status: 'PENDING',
-    },
-    {
-      supplierId: 'sup-002',
-      supplierName: 'Төмөр зах',
-      address: 'Сүхбаатар дүүрэг, Гэгээн Өндөр 22',
-      phone: '88334455',
-      items: [{ name: 'Хадаас (жижиг)', qty: 100 }, { name: 'Гайк М10', qty: 20 }],
-      lat: 47.9208,
-      lng: 106.9279,
-      status: 'PENDING',
-    },
-  ],
-};
-
 export default function DeliveryRequestPopup({
   open,
   onAccept,
@@ -53,7 +16,6 @@ export default function DeliveryRequestPopup({
   onReject: () => void;
   request?: ActiveDelivery;
 }) {
-  const delivery = request ?? MOCK_DELIVERY_REQUEST;
   const [seconds, setSeconds] = useState(30);
   const progress = useMemo(() => Math.max(0, (seconds / 30) * 100), [seconds]);
 
@@ -76,6 +38,8 @@ export default function DeliveryRequestPopup({
     };
   }, [open, onReject]);
 
+  if (!request) return null;
+  const delivery = request;
   const feeDisplay = `₮${Math.round(delivery.fee / 100).toLocaleString()}`;
 
   return (

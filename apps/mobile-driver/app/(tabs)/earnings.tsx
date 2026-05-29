@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge } from '../../src/components/Badge';
 import { Card } from '../../src/components/Card';
-import { EARNINGS_HISTORY } from '../../src/data/mock';
 import { useAuthStore } from '../../src/store/auth';
 import { colors } from '../../src/theme';
 
@@ -14,19 +13,6 @@ const labels: Record<Period, string> = {
   today: 'Өнөөдөр',
   week: 'Энэ 7 хоног',
   month: 'Энэ сар',
-};
-
-const dataByPeriod: Record<Period, Array<{ label: string; amount: number }>> = {
-  today: [
-    { label: '09', amount: 3500 },
-    { label: '10', amount: 0 },
-    { label: '11', amount: 6500 },
-    { label: '12', amount: 8500 },
-    { label: '13', amount: 0 },
-    { label: '14', amount: 4500 },
-  ],
-  week: ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'].map((label, index) => ({ label, amount: [24000, 31000, 18000, 42000, 36000, 51000, 28500][index] })),
-  month: ['1', '5', '10', '15', '20', '25', '30'].map((label, index) => ({ label, amount: [82000, 92000, 71000, 120000, 99000, 135000, 88000][index] })),
 };
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
@@ -41,13 +27,15 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
 export default function EarningsScreen() {
   const driver = useAuthStore((state) => state.driver);
   const [period, setPeriod] = useState<Period>('today');
-  const [selected, setSelected] = useState<(typeof EARNINGS_HISTORY)[number] | null>(null);
-  const chart = dataByPeriod[period];
+  const [selected, setSelected] = useState<{ id: string; orderNumber: string; date: string; from: string; to: string; amount: number; rating: number } | null>(null);
+  const chart = period === 'today'
+    ? [{ label: labels.today, amount: driver?.todayEarnings ?? 0 }]
+    : [{ label: labels[period], amount: driver?.totalEarnings ?? 0 }];
   const max = Math.max(...chart.map((item) => item.amount), 1);
   const total = chart.reduce((sum, item) => sum + item.amount, 0);
-  const deliveries = period === 'today' ? 7 : period === 'week' ? 42 : 164;
+  const deliveries = period === 'today' ? driver?.totalDeliveries ?? 0 : driver?.totalDeliveries ?? 0;
   const average = Math.round(total / deliveries);
-  const history = useMemo(() => period === 'today' ? EARNINGS_HISTORY.slice(0, 3) : EARNINGS_HISTORY, [period]);
+  const history: Array<{ id: string; orderNumber: string; date: string; from: string; to: string; amount: number; rating: number }> = [];
 
   if (!driver) return null;
 
@@ -67,7 +55,7 @@ export default function EarningsScreen() {
           <SummaryCard label="Нийт хүргэлт" value={String(deliveries)} />
           <SummaryCard label="Нийт орлого" value={`₮${total.toLocaleString()}`} />
           <SummaryCard label="Дундаж үнэлгээ" value={`⭐ ${driver.rating.toFixed(1)}`} />
-          <SummaryCard label="Дундаж хүргэлт" value={`₮${average.toLocaleString()}`} />
+          <SummaryCard label="Дундаж хүргэлт" value={`₮${Number.isFinite(average) ? average.toLocaleString() : '0'}`} />
         </View>
 
         <Card style={styles.chartCard}>
@@ -100,6 +88,7 @@ export default function EarningsScreen() {
             </Card>
           </TouchableOpacity>
         ))}
+        {history.length === 0 ? <Text style={styles.emptyText}>Хүргэлтийн түүх одоогоор байхгүй</Text> : null}
 
         <Card style={styles.payoutCard}>
           <View style={styles.payoutHeader}>
@@ -160,6 +149,7 @@ const styles = StyleSheet.create({
   historyRight: { alignItems: 'flex-end' },
   historyAmount: { color: colors.primary, fontFamily: 'Courier', fontSize: 15, fontWeight: '900' },
   historyRating: { color: colors.warning, fontSize: 12, marginTop: 4 },
+  emptyText: { color: colors.textSub, textAlign: 'center', paddingVertical: 18 },
   payoutCard: { padding: 16, marginTop: 12 },
   payoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bank: { color: colors.text, fontSize: 14, marginBottom: 10 },

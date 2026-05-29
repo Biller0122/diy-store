@@ -13,6 +13,11 @@ type OrderStatusPayload = {
   status: string;
 };
 
+type DriverOrderDecisionPayload = {
+  driverId: string;
+  orderId: string;
+};
+
 type DeliveryRequestPayload = {
   driverId: string;
   orderId: string;
@@ -45,6 +50,10 @@ interface OnlineDriverInfo {
 }
 
 const onlineDrivers = new Map<string, OnlineDriverInfo>();
+let driverOfferHandlers: {
+  accept?: (payload: DriverOrderDecisionPayload) => void;
+  reject?: (payload: DriverOrderDecisionPayload) => void;
+} = {};
 
 export function getOnlineDrivers(): Map<string, OnlineDriverInfo> {
   return onlineDrivers;
@@ -71,6 +80,10 @@ export function emitToOrder(orderId: string, event: string, payload: unknown) {
 
 export function emitToCustomer(customerId: string, event: string, payload: unknown) {
   _io?.to(`customer:${customerId}`).emit(event, payload);
+}
+
+export function registerDriverOfferHandlers(handlers: typeof driverOfferHandlers) {
+  driverOfferHandlers = handlers;
 }
 
 export function startRealtimeServer() {
@@ -125,6 +138,18 @@ export function startRealtimeServer() {
     // ─── Order status ─────────────────────────────────────────────
     socket.on('order:status', (payload: OrderStatusPayload) => {
       io.to(`order:${payload.orderId}`).emit('order:status', payload);
+    });
+
+    socket.on('driver:accept_order', (payload: DriverOrderDecisionPayload) => {
+      driverOfferHandlers.accept?.(payload);
+      io.to(`driver:${payload.driverId}`).emit('driver:order_accepted', payload);
+      io.to(`order:${payload.orderId}`).emit('order:status', { orderId: payload.orderId, status: 'ACCEPTED' });
+    });
+
+    socket.on('driver:reject_order', (payload: DriverOrderDecisionPayload) => {
+      driverOfferHandlers.reject?.(payload);
+      io.to(`driver:${payload.driverId}`).emit('driver:order_rejected', payload);
+      io.to(`order:${payload.orderId}`).emit('order:status', { orderId: payload.orderId, status: 'REJECTED' });
     });
 
     // ─── Delivery request (server → driver) ──────────────────────

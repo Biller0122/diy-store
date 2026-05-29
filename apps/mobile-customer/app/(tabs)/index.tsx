@@ -78,9 +78,9 @@ function StarRating({ rating }: { rating: number }) {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [suppliers, setSuppliers] = useState<HomeSupplier[]>(MOCK_SUPPLIERS);
-  const [categories, setCategories] = useState<HomeCategory[]>(MOCK_CATEGORIES);
-  const [products, setProducts] = useState<HomeProduct[]>(MOCK_PRODUCTS);
+  const [suppliers, setSuppliers] = useState<HomeSupplier[]>([]);
+  const [categories, setCategories] = useState<HomeCategory[]>([]);
+  const [products, setProducts] = useState<HomeProduct[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -133,7 +133,10 @@ export default function HomeScreen() {
           })),
         );
       } catch {
-        // Keep bundled fallback data when API is unreachable.
+        if (!mounted) return;
+        setSuppliers([]);
+        setCategories([]);
+        setProducts([]);
       }
     }
 

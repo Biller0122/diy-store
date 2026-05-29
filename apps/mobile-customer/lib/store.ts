@@ -9,6 +9,13 @@ interface Customer {
   lastName: string;
   emailAddress: string;
   phoneNumber?: string;
+  addresses?: Array<{
+    id: string;
+    streetLine1: string;
+    city?: string;
+    defaultShippingAddress?: boolean;
+    defaultBillingAddress?: boolean;
+  }>;
 }
 
 interface AppState {

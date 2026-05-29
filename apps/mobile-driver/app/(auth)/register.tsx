@@ -21,6 +21,7 @@ export default function RegisterScreen() {
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [vehicleType, setVehicleType] = useState<Driver['vehicleType']>('MOTORCYCLE');
@@ -28,13 +29,14 @@ export default function RegisterScreen() {
   const [model, setModel] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const validStep1 = useMemo(() => name.trim().length >= 2 && /\S+@\S+\.\S+/.test(email) && password.length >= 8 && password === confirm, [name, email, password, confirm]);
+  const validStep1 = useMemo(() => name.trim().length >= 2 && /\S+@\S+\.\S+/.test(email) && /^[6789]\d{7}$/.test(phone.replace(/\D/g, '')) && password.length >= 8 && password === confirm, [name, email, phone, password, confirm]);
 
   const next = async () => {
     clearError();
     const nextErrors: Record<string, string> = {};
     if (name.trim().length < 2) nextErrors.name = 'Овог нэрээ оруулна уу';
     if (!/\S+@\S+\.\S+/.test(email)) nextErrors.email = 'И-мэйл хаягаа зөв оруулна уу';
+    if (!/^[6789]\d{7}$/.test(phone.replace(/\D/g, ''))) nextErrors.phone = 'Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой';
     if (password.length < 8) nextErrors.password = 'Нууц үг хамгийн багадаа 8 тэмдэгт байна';
     if (password !== confirm) nextErrors.confirm = 'Нууц үг таарахгүй байна';
     setErrors(nextErrors);
@@ -50,7 +52,7 @@ export default function RegisterScreen() {
     if (model.trim().length < 2) nextErrors.model = 'Машины загвараа оруулна уу';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    const ok = await register({ ownerName: name, email, password, vehicleType, vehiclePlate: plate, vehicleModel: model });
+    const ok = await register({ ownerName: name, email, password, phone, vehicleType, vehiclePlate: plate, vehicleModel: model });
     if (ok) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStep(3);
@@ -85,6 +87,7 @@ export default function RegisterScreen() {
             <View style={styles.form}>
               <Input label="Овог нэр*" value={name} onChangeText={setName} error={errors.name} />
               <Input label="И-мэйл*" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" error={errors.email} />
+              <Input label="Утасны дугаар*" value={phone} onChangeText={setPhone} keyboardType="phone-pad" error={errors.phone} />
               <Input label="Нууц үг*" value={password} onChangeText={setPassword} secureTextEntry passwordToggle error={errors.password} />
               <Input label="Нууц үг давтах*" value={confirm} onChangeText={setConfirm} secureTextEntry passwordToggle error={errors.confirm} />
               <Button title="Үргэлжлүүлэх" onPress={next} disabled={!validStep1} />

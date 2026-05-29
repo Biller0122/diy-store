@@ -8,7 +8,6 @@ import OrderRequestModal from '../../components/OrderRequestModal';
 import { Badge } from '../../src/components/Badge';
 import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
-import { MOCK_ORDER, RECENT_DELIVERIES } from '../../src/data/mock';
 import { setupDriverNotifications } from '../../src/services/notifications';
 import { socketService } from '../../src/services/socket';
 import { startLocationTracking, stopLocationTracking } from '../../src/services/location';
@@ -72,13 +71,7 @@ export default function DashboardScreen() {
       if (useDeliveryStore.getState().isOnline && !useDeliveryStore.getState().activeOrder) setIncomingOrder(order);
     });
     startLocationTracking(driver.id, activeOrder?.orderId).catch(() => {});
-    const timer = __DEV__ ? setTimeout(() => {
-      const state = useDeliveryStore.getState();
-      if (state.isOnline && !state.activeOrder && !state.incomingOrder) setIncomingOrder(MOCK_ORDER);
-    }, 8000) : null;
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
+    return undefined;
   }, [driver, isOnline, activeOrder?.orderId, setIncomingOrder]);
 
   if (!driver) return null;
@@ -145,18 +138,7 @@ export default function DashboardScreen() {
         ) : null}
 
         <Text style={styles.sectionTitle}>Сүүлийн хүргэлтүүд</Text>
-        {RECENT_DELIVERIES.length ? RECENT_DELIVERIES.map((item) => (
-          <Card key={item.id} style={styles.deliveryItem}>
-            <View style={[styles.districtBadge, { backgroundColor: `${item.color}22` }]}>
-              <Text style={[styles.districtText, { color: item.color }]}>{item.district.slice(0, 2)}</Text>
-            </View>
-            <View style={styles.deliveryMiddle}>
-              <Text style={styles.deliveryTitle}>{item.district}</Text>
-              <Text style={styles.deliveryDate}>{item.date}</Text>
-            </View>
-            <Text style={styles.deliveryAmount}>₮{item.amount.toLocaleString()}</Text>
-          </Card>
-        )) : <Text style={styles.emptyText}>Хүргэлт байхгүй байна</Text>}
+        <Text style={styles.emptyText}>Хүргэлт байхгүй байна</Text>
       </ScrollView>
 
       {incomingOrder && isOnline ? <OrderRequestModal visible request={incomingOrder} onAccept={accept} onReject={reject} /> : null}

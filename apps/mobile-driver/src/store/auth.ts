@@ -2,7 +2,6 @@ import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 import { createJSONStorage, persist, StateStorage } from 'zustand/middleware';
 import { Driver, getDriverProfile, loginDriver, registerDriver, setAuthToken, updateDriverStatus } from '../api/client';
-import { MOCK_DRIVER } from '../data/mock';
 
 const secureStorage: StateStorage = {
   getItem: async (name) => (await SecureStore.getItemAsync(name)) ?? null,
@@ -18,6 +17,7 @@ type RegisterInput = {
   ownerName: string;
   email: string;
   password: string;
+  phone: string;
   vehicleType: Driver['vehicleType'];
   vehiclePlate: string;
   vehicleModel: string;
@@ -41,13 +41,6 @@ type AuthState = {
 function splitName(name: string) {
   const parts = name.trim().split(/\s+/);
   return { firstName: parts[0] || 'Жолооч', lastName: parts.slice(1).join(' ') || '' };
-}
-
-function fallbackLogin(email: string, password: string): Driver | null {
-  if (email.toLowerCase() === 'driver@diystore.mn' && password.length >= 8) {
-    return { ...MOCK_DRIVER, emailAddress: email };
-  }
-  return null;
 }
 
 function mapLoginError(error: unknown) {
@@ -77,17 +70,14 @@ export const useAuthStore = create<AuthState>()(
           const token = data.loginDriverByPassword.token ?? `driver-session-${data.loginDriverByPassword.driverId}`;
           setAuthToken(token);
           const profile = await getDriverProfile(data.loginDriverByPassword.driverId);
-          const driver = profile.getDriverProfile ?? { ...MOCK_DRIVER, id: data.loginDriverByPassword.driverId, emailAddress: email.trim() };
+          const driver = profile.getDriverProfile;
+          if (!driver) {
+            set({ isLoading: false, error: 'Жолоочийн мэдээлэл олдсонгүй' });
+            return false;
+          }
           set({ driver, token, isAuthenticated: true, isLoading: false });
           return true;
         } catch (error) {
-          const fallback = fallbackLogin(email.trim(), password);
-          if (fallback && __DEV__) {
-            const token = 'dev-driver-token';
-            setAuthToken(token);
-            set({ driver: fallback, token, isAuthenticated: true, isLoading: false, error: null });
-            return true;
-          }
           set({ isLoading: false, error: mapLoginError(error) });
           return false;
         }
@@ -98,7 +88,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const payload = {
             ownerName: input.ownerName.trim(),
-            phone: '99112233',
+            phone: input.phone.replace(/\D/g, '').slice(-8),
             vehicleType: input.vehicleType,
             vehiclePlate: input.vehiclePlate.trim(),
             vehicleModel: input.vehicleModel.trim(),
@@ -110,9 +100,9 @@ export const useAuthStore = create<AuthState>()(
           }
           set({ isLoading: false });
           return true;
-        } catch {
-          set({ isLoading: false });
-          return true;
+        } catch (error) {
+          set({ isLoading: false, error: error instanceof Error ? error.message : 'Бүртгэл илгээхэд алдаа гарлаа' });
+          return false;
         }
       },
 
@@ -164,9 +154,14 @@ export const VEHICLE_LABEL: Record<Driver['vehicleType'], string> = {
 export function createRegisteredDriver(input: RegisterInput): Driver {
   const name = splitName(input.ownerName);
   return {
-    ...MOCK_DRIVER,
-    ...name,
     id: `driver-${Date.now()}`,
+    firstName: name.firstName,
+    lastName: name.lastName,
+    phone: '',
+    rating: 0,
+    totalDeliveries: 0,
+    todayEarnings: 0,
+    totalEarnings: 0,
     emailAddress: input.email,
     vehicleType: input.vehicleType,
     vehiclePlate: input.vehiclePlate,

@@ -253,12 +253,6 @@ export default function OrdersScreen() {
     };
   }, []);
 
-  const fallbackOrders =
-    activeTab === 'pending'
-      ? PENDING_ORDERS
-      : activeTab === 'active'
-      ? ACTIVE_ORDERS
-      : DONE_ORDERS;
   const orders = liveOrders
     ? liveOrders.filter((order) =>
         activeTab === 'pending'
@@ -267,7 +261,7 @@ export default function OrdersScreen() {
           ? order.state === 'PartiallyShipped' || order.state === 'Shipped' || order.state === 'PartiallyDelivered'
           : order.state === 'Delivered' || order.state === 'Cancelled',
       )
-    : fallbackOrders;
+    : [];
 
   const handleAccept = async (order: SupplierOrder) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -294,7 +288,7 @@ export default function OrdersScreen() {
         return;
       }
       const updated = data.supplierOrderAction.order;
-      setLiveOrders((prev) => (prev ?? fallbackOrders).map((item) => (item.id === updated.id ? updated : item)));
+      setLiveOrders((prev) => (prev ?? []).map((item) => (item.id === updated.id ? updated : item)));
       Alert.alert(title, `Захиалга #${order.code} шинэчлэгдлээ.`);
     } catch (err) {
       Alert.alert('Алдаа', err instanceof Error ? err.message : 'Захиалга шинэчлэхэд алдаа гарлаа');

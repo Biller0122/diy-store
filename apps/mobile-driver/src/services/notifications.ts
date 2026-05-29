@@ -1,8 +1,7 @@
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { SHOP_API_URL } from '../api/client';
-import { MOCK_ORDER } from '../data/mock';
-import { useDeliveryStore } from '../store/delivery';
+import { ActiveOrder, useDeliveryStore } from '../store/delivery';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -33,12 +32,14 @@ export async function setupDriverNotifications(driverId?: string) {
 export function installNotificationListeners() {
   const received = Notifications.addNotificationReceivedListener((notification) => {
     const type = notification.request.content.data?.type;
-    if (type === 'NEW_ORDER_REQUEST') useDeliveryStore.getState().setIncomingOrder(MOCK_ORDER);
+    const order = notification.request.content.data?.order as ActiveOrder | undefined;
+    if (type === 'NEW_ORDER_REQUEST' && order) useDeliveryStore.getState().setIncomingOrder(order);
     if (type === 'ORDER_CANCELLED') useDeliveryStore.getState().clearActiveOrder();
   });
   const response = Notifications.addNotificationResponseReceivedListener((response) => {
     const type = response.notification.request.content.data?.type;
-    if (type === 'NEW_ORDER_REQUEST') useDeliveryStore.getState().setIncomingOrder(MOCK_ORDER);
+    const order = response.notification.request.content.data?.order as ActiveOrder | undefined;
+    if (type === 'NEW_ORDER_REQUEST' && order) useDeliveryStore.getState().setIncomingOrder(order);
     if (type === 'ORDER_CANCELLED') useDeliveryStore.getState().clearActiveOrder();
   });
   return () => {

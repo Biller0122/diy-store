@@ -3,10 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, Navigation, Phone } from 'lucide-react';
-import { MOCK_DELIVERY_REQUEST } from '@/components/driver/DeliveryRequestPopup';
 import { useDriverStore } from '@/lib/driver-store';
-
-const FALLBACK_DELIVERY = MOCK_DELIVERY_REQUEST;
 
 function DeliveryMap({
   driverLat,
@@ -98,7 +95,7 @@ function DeliveryMap({
 
 export default function ActiveDeliveryPage() {
   const { activeDelivery, setActiveDelivery } = useDriverStore();
-  const delivery = activeDelivery ?? FALLBACK_DELIVERY;
+  const delivery = activeDelivery;
   const [driverPos, setDriverPos] = useState({ lat: 47.932, lng: 106.905 });
   const [step, setStep] = useState(0);
 
@@ -111,6 +108,18 @@ export default function ActiveDeliveryPage() {
     }, 3000);
     return () => window.clearInterval(interval);
   }, []);
+
+  if (!delivery) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center text-center">
+        <h1 className="text-2xl font-black text-foreground">Идэвхтэй хүргэлт байхгүй</h1>
+        <p className="mt-2 text-sm text-foreground-muted">Бодит захиалга ирэх үед энэ хэсэг автоматаар идэвхжинэ.</p>
+        <Link href="/driver/dashboard" className="mt-6 rounded-2xl bg-brand px-5 py-3 text-sm font-black text-white">
+          Самбар руу буцах
+        </Link>
+      </div>
+    );
+  }
 
   const stops = [
     ...delivery.pickupStops.map((stop) => ({

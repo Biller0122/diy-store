@@ -1,5 +1,5 @@
-const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || 'http://52.77.245.218/shop-api';
-const ADMIN_API = process.env.EXPO_PUBLIC_ADMIN_API_URL || 'http://52.77.245.218/admin-api';
+const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || 'http://192.168.0.13:3001/shop-api';
+const ADMIN_API = process.env.EXPO_PUBLIC_ADMIN_API_URL || 'http://192.168.0.13:3001/admin-api';
 const REQUEST_TIMEOUT_MS = 12000;
 
 async function postGraphql<T>(

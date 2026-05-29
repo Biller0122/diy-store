@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { acceptDeliveryApi, rejectDeliveryApi, updateOrderStatusApi } from '../api/client';
-import { MOCK_ORDER } from '../data/mock';
 import { socketService } from '../services/socket';
 
 export type StopStatus = 'PENDING' | 'ARRIVED' | 'PICKED_UP';
@@ -76,7 +75,9 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   setIncomingOrder: (order) => set({ incomingOrder: order ? normalizeOrder(order) : null }),
 
   acceptOrder: async (driverId, orderInput) => {
-    const order = normalizeOrder(orderInput ?? get().incomingOrder ?? MOCK_ORDER);
+    const pending = orderInput ?? get().incomingOrder;
+    if (!pending) return;
+    const order = normalizeOrder(pending);
     socketService.emitAcceptOrder(driverId, order.orderId);
     acceptDeliveryApi(driverId, order.orderId).catch(() => {});
     set({ activeOrder: { ...order, status: 'DRIVER_ASSIGNED', currentStop: 0 }, incomingOrder: null, currentStop: 0 });

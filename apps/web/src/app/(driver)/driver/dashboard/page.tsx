@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Navigation, Star, Wallet } from 'lucide-react';
-import DeliveryRequestPopup, { MOCK_DELIVERY_REQUEST } from '@/components/driver/DeliveryRequestPopup';
+import DeliveryRequestPopup from '@/components/driver/DeliveryRequestPopup';
 import { useDriverStore, VEHICLE_LABEL, type ActiveDelivery } from '@/lib/driver-store';
 
 const RECENT_DELIVERIES: { id: string; address: string; amount: number; time: string }[] = [];
@@ -116,17 +116,6 @@ export default function DriverDashboardPage() {
     if (isOnline) {
       socket.emit('driver:join', driver.id);
       socket.emit('driver:online', driver.id);
-
-      // Dev mode: show mock order popup after 5s when going online
-      if (process.env.NODE_ENV === 'development') {
-        const t = window.setTimeout(() => {
-          if (isOnlineRef.current && !activeDeliveryRef.current) {
-            setPendingRequest(MOCK_DELIVERY_REQUEST);
-            setShowRequest(true);
-          }
-        }, 5000);
-        return () => window.clearTimeout(t);
-      }
     } else {
       socket.emit('driver:offline', driver.id);
     }

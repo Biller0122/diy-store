@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,18 +14,9 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/lib/store';
 import { C } from '@/lib/colors';
+import { MY_ORDERS_QUERY, shopFetch } from '@/lib/api';
 
-const MOCK_RECENT_ORDERS = [
-  { id: '1', code: 'DIY-2025-00142', status: 'Хүргэгдлээ', total: 188000 },
-  { id: '2', code: 'DIY-2025-00139', status: 'Хүлээгдэж буй', total: 42000 },
-  { id: '3', code: 'DIY-2025-00128', status: 'Хүргэлтэнд гарсан', total: 84000 },
-];
-
-const MOCK_ADDRESS = {
-  id: '1',
-  label: 'Гэр',
-  full: 'Хан-Уул дүүрэг, 7-р хороо, Сонгинохайрхан гудамж 15',
-};
+type AccountOrder = { id: string; code: string; state: string; total: number; createdAt?: string };
 
 function StatusColor(status: string) {
   if (status === 'Хүргэгдлээ') return C.success;
@@ -223,6 +214,21 @@ function AuthPanel() {
 function LoggedInPanel() {
   const router = useRouter();
   const { customer, logout } = useAppStore();
+  const [orders, setOrders] = useState<AccountOrder[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    shopFetch<{ orders: { items: AccountOrder[] } }>(MY_ORDERS_QUERY)
+      .then((data) => {
+        if (mounted) setOrders(data.orders.items);
+      })
+      .catch(() => {
+        if (mounted) setOrders([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   if (!customer) return null;
 
@@ -253,29 +259,33 @@ function LoggedInPanel() {
             <Text style={styles.seeAll}>Бүгдийг харах</Text>
           </TouchableOpacity>
         </View>
-        {MOCK_RECENT_ORDERS.map((order) => (
+        {orders.slice(0, 3).map((order) => (
           <View key={order.id} style={styles.miniOrderCard}>
             <Text style={styles.miniOrderCode}>{order.code}</Text>
-            <Text style={[styles.miniOrderStatus, { color: StatusColor(order.status) }]}>
-              {order.status}
+            <Text style={[styles.miniOrderStatus, { color: StatusColor(order.state) }]}>
+              {order.state}
             </Text>
             <Text style={styles.miniOrderTotal}>{formatPrice(order.total)}</Text>
           </View>
         ))}
+        {orders.length === 0 ? <Text style={styles.emptyText}>Захиалга байхгүй байна</Text> : null}
       </View>
 
       {/* Addresses */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Хаяг</Text>
-        <View style={styles.addressCard}>
-          <View style={styles.addressIconBox}>
-            <Ionicons name="home" size={18} color={C.primary} />
+        {(customer.addresses ?? []).map((address) => (
+          <View key={address.id} style={styles.addressCard}>
+            <View style={styles.addressIconBox}>
+              <Ionicons name="home" size={18} color={C.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addressLabel}>{address.defaultShippingAddress ? 'Үндсэн хаяг' : 'Хаяг'}</Text>
+              <Text style={styles.addressFull}>{address.streetLine1}{address.city ? `, ${address.city}` : ''}</Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.addressLabel}>{MOCK_ADDRESS.label}</Text>
-            <Text style={styles.addressFull}>{MOCK_ADDRESS.full}</Text>
-          </View>
-        </View>
+        ))}
+        {(customer.addresses ?? []).length === 0 ? <Text style={styles.emptyText}>Хаяг бүртгэлгүй байна</Text> : null}
         <TouchableOpacity style={styles.addAddressBtn}>
           <Ionicons name="add" size={18} color={C.primary} />
           <Text style={styles.addAddressText}>Хаяг нэмэх</Text>
@@ -475,5 +485,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,68,68,0.06)',
   },
   logoutText: { color: '#FF4444', fontSize: 15, fontWeight: '700' },
+  emptyText: { color: C.textSub, fontSize: 12, textAlign: 'center', paddingVertical: 10 },
   bottomSpacer: { height: 24 },
 });

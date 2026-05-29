@@ -109,11 +109,11 @@ class SocketService {
   }
 
   emitLocationUpdate(payload: { driverId: string; lat: number; lng: number; heading?: number | null; orderId?: string | null }) {
-    this.socket?.emit('driver:location_update', payload);
+    this.socket?.emit('driver:location', payload);
   }
 
   emitStatusUpdate(orderId: string, status: string) {
-    this.socket?.emit('order:status_update', { orderId, status });
+    this.socket?.emit('order:status', { orderId, status });
   }
 }
 
