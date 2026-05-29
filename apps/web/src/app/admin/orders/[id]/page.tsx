@@ -1,9 +1,39 @@
 'use client';
 
-import { use } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Package, MapPin, CreditCard, Truck, CheckCircle, XCircle, Edit2, Printer, RotateCcw } from 'lucide-react';
-import { MOCK_ORDERS } from '@/lib/admin-data';
+import { MOCK_ORDERS, type AdminOrder } from '@/lib/admin-data';
+
+const ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? '/admin-api';
+
+const ORDER_QUERY = `
+  query AdminOrderDetail($id: ID!) {
+    order(id: $id) {
+      id code state total totalWithTax createdAt updatedAt
+      customer { firstName lastName emailAddress }
+      lines { id quantity unitPriceWithTax productVariant { id name sku product { name } } }
+      payments { method state amount }
+      shippingAddress { fullName streetLine1 city }
+    }
+  }
+`;
+
+async function fetchOrder(id: string): Promise<AdminOrder | null> {
+  try {
+    const res = await fetch(ADMIN_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ query: ORDER_QUERY, variables: { id } }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json() as { data?: { order: AdminOrder | null } };
+    return json.data?.order ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const TIMELINE = [
   { state: 'PaymentAuthorized', label: 'Захиалга баталгаажсан', icon: CreditCard },
@@ -44,7 +74,22 @@ function stateIndex(state: string) {
 
 export default function AdminOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const order = MOCK_ORDERS.find(o => o.id === id);
+  const [order, setOrder] = useState<AdminOrder | null>(MOCK_ORDERS.find(o => o.id === id) ?? null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void fetchOrder(id).then((live) => {
+      if (live) setOrder(live);
+    }).finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading && !order) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-6 h-6 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!order) {
     return (

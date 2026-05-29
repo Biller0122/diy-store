@@ -109,9 +109,10 @@ export async function dispatchOrder(
   customerId?: string,
   pickupStops?: DispatchPickupStop[],
   customer?: DispatchCustomerInfo,
+  orderNumber?: string,
 ): Promise<DispatchResult> {
-  const orderNumber = generateOrderNumber();
-  dispatchState.set(orderId, { status: 'SEARCHING', orderNumber });
+  const resolvedOrderNumber = orderNumber ?? generateOrderNumber();
+  dispatchState.set(orderId, { status: 'SEARCHING', orderNumber: resolvedOrderNumber });
 
   // Find nearest drivers within 5km, expand to 10km if none
   let candidates = findNearestDrivers(pickupLat, pickupLng, SEARCH_RADIUS_KM_FIRST);
@@ -120,13 +121,13 @@ export async function dispatchOrder(
   }
 
   if (candidates.length === 0) {
-    const result: DispatchResult = { status: 'TIMEOUT', orderNumber };
+    const result: DispatchResult = { status: 'TIMEOUT', orderNumber: resolvedOrderNumber };
     dispatchState.set(orderId, result);
     return result;
   }
 
   const offered = candidates[0];
-  const offeredResult: DispatchResult = { status: 'OFFERED', driver: offered, orderNumber, offeredAt: new Date() };
+  const offeredResult: DispatchResult = { status: 'OFFERED', driver: offered, orderNumber: resolvedOrderNumber, offeredAt: new Date() };
   dispatchState.set(orderId, offeredResult);
 
   // Notify the chosen driver via WebSocket + FCM
@@ -136,7 +137,7 @@ export async function dispatchOrder(
   emitToDriver(offered.id, 'delivery:request', {
     driverId: offered.id,
     orderId,
-    orderNumber,
+    orderNumber: resolvedOrderNumber,
     fee: deliveryFee,
     pickupStops: (pickupStops ?? []).map((s) => ({
       supplierId: s.supplierId,
@@ -158,7 +159,7 @@ export async function dispatchOrder(
 
   void sendDriverNewOrderNotification(offered.id, {
     orderId,
-    orderNumber,
+    orderNumber: resolvedOrderNumber,
     fee: deliveryFee,
     distance,
     pickupCount: pickupStops?.length ?? 1,
@@ -178,7 +179,7 @@ export async function dispatchOrder(
       // Notify customer
       emitToOrder(orderId, 'order:driver_assigned', {
         orderId,
-        orderNumber,
+        orderNumber: resolvedOrderNumber,
         driver: {
           id: offered.id,
           name: `${offered.firstName} ${offered.lastName}`,
@@ -192,7 +193,7 @@ export async function dispatchOrder(
 
       if (customerId) {
         void sendCustomerDriverAssignedNotification(customerId, {
-          orderNumber,
+          orderNumber: resolvedOrderNumber,
           driverName: `${offered.firstName} ${offered.lastName}`,
           driverPhone: offered.phone,
           estimatedMinutes: 15,

@@ -94,7 +94,7 @@ export class DeliveryResolver {
       khoroo: dropoffAddress.split(',')[1]?.trim(),
     } : undefined;
 
-    void dispatchOrder(String(saved.id), pickupLat, pickupLng, customerId, dispatchPickupStops, customerInfo)
+    void dispatchOrder(String(saved.id), pickupLat, pickupLng, customerId, dispatchPickupStops, customerInfo, orderNumber)
       .then(async (result) => {
         if (result.status === 'ACCEPTED' && result.driver) {
           await this.deliveryRepo.update(saved.id, {

@@ -40,13 +40,8 @@ function loadTiers() {
 }
 
 export default function AdminCommissionPage() {
-  const [tiers, setTiers] = useState<CommissionTier[]>(DEFAULT_TIERS);
+  const [tiers, setTiers] = useState<CommissionTier[]>(loadTiers);
   const [saved, setSaved] = useState(false);
-
-  // Load persisted tiers on mount
-  useState(() => {
-    setTiers(loadTiers());
-  });
 
   function updateRate(id: string, rate: number) {
     setTiers((prev) => prev.map((t) => t.id === id ? { ...t, rate: Math.max(0, Math.min(50, rate)) } : t));
