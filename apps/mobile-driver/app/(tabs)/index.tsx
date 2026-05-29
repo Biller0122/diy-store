@@ -69,7 +69,7 @@ export default function DashboardScreen() {
     setupDriverNotifications(driver.id).catch(() => {});
     socketService.connect(driver.id, (order) => {
       if (useDeliveryStore.getState().isOnline && !useDeliveryStore.getState().activeOrder) setIncomingOrder(order);
-    });
+    }, driver);
     startLocationTracking(driver.id, activeOrder?.orderId).catch(() => {});
     return undefined;
   }, [driver, isOnline, activeOrder?.orderId, setIncomingOrder]);

@@ -8,7 +8,9 @@ const DELIVERY_SCHEMA_EXTENSION = `
   type PickupStop {
     supplierId: String!
     supplierName: String!
+    district: String
     address: String!
+    phone: String
     lat: Float!
     lng: Float!
     status: String!
@@ -17,7 +19,9 @@ const DELIVERY_SCHEMA_EXTENSION = `
   input PickupStopInput {
     supplierId: String!
     supplierName: String!
+    district: String
     address: String!
+    phone: String
     lat: Float!
     lng: Float!
     status: String
@@ -90,6 +94,7 @@ const DELIVERY_SCHEMA_EXTENSION = `
       dropoffLng: Float!
     ): DeliveryRequest!
     acceptDelivery(deliveryId: ID!, driverId: String!): DeliveryRequest!
+    rejectDelivery(deliveryId: ID!, driverId: String!): DeliveryRequest!
     updateDeliveryStatus(deliveryId: ID!, status: String!): DeliveryRequest!
     updateDeliveryLocation(deliveryId: ID!, lat: Float!, lng: Float!): DeliveryRequest!
   }

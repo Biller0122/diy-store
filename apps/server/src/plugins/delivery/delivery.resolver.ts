@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryOrderItem, DeliveryRequest, DeliveryStatus, PickupStop } from './delivery-request.entity';
 import { generateOrderNumber, dispatchOrder, type DispatchPickupStop } from '../../services/order-dispatch.service';
+import { calculateDeliveryFee } from '../../services/delivery-fee.service';
 
 @Resolver()
 export class DeliveryResolver {
@@ -51,6 +52,10 @@ export class DeliveryResolver {
 
     const pickupLat = pickupStops[0]?.lat ?? 47.9185;
     const pickupLng = pickupStops[0]?.lng ?? 106.917;
+    const feeResult = calculateDeliveryFee(
+      pickupStops.length > 0 ? pickupStops : [{ lat: pickupLat, lng: pickupLng }],
+      { lat: dropoffLat, lng: dropoffLng },
+    );
 
     const request = this.deliveryRepo.create({
       orderId,
@@ -67,9 +72,9 @@ export class DeliveryResolver {
       paymentMethod,
       supplierStatus: 'PENDING',
       status: DeliveryStatus.SEARCHING,
-      distance: 0,
-      estimatedDuration: 30,
-      proposedFee: 500000,
+      distance: feeResult.breakdown.totalDistanceKm,
+      estimatedDuration: feeResult.estimatedMinutes,
+      proposedFee: feeResult.fee,
       finalFee: 0,
     });
 
@@ -79,6 +84,7 @@ export class DeliveryResolver {
     const dispatchPickupStops: DispatchPickupStop[] = pickupStops.map((s) => ({
       supplierId: s.supplierId,
       name: s.supplierName,
+      district: s.district,
       address: s.address,
       phone: (s as PickupStop & { phone?: string }).phone ?? '',
       items: orderItems
@@ -94,7 +100,18 @@ export class DeliveryResolver {
       khoroo: dropoffAddress.split(',')[1]?.trim(),
     } : undefined;
 
-    void dispatchOrder(String(saved.id), pickupLat, pickupLng, customerId, dispatchPickupStops, customerInfo, orderNumber)
+    void dispatchOrder(
+      String(saved.id),
+      pickupLat,
+      pickupLng,
+      customerId,
+      dispatchPickupStops,
+      customerInfo,
+      orderNumber,
+      feeResult.fee,
+      feeResult.breakdown.totalDistanceKm,
+      feeResult.estimatedMinutes,
+    )
       .then(async (result) => {
         if (result.status === 'ACCEPTED' && result.driver) {
           await this.deliveryRepo.update(saved.id, {
@@ -120,6 +137,19 @@ export class DeliveryResolver {
     await this.deliveryRepo.update(deliveryId, {
       driverId,
       status: DeliveryStatus.IN_PROGRESS,
+    });
+    return this.deliveryRepo.findOne({ where: { id: deliveryId } });
+  }
+
+  @Mutation()
+  async rejectDelivery(
+    @Args('deliveryId') deliveryId: string,
+    @Args('driverId') driverId: string,
+  ) {
+    const current = await this.deliveryRepo.findOne({ where: { id: deliveryId } });
+    await this.deliveryRepo.update(deliveryId, {
+      driverId: current?.driverId ?? driverId,
+      status: DeliveryStatus.CANCELLED,
     });
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }

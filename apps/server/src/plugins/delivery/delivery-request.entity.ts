@@ -13,6 +13,7 @@ export enum DeliveryStatus {
 export interface PickupStop {
   supplierId: string;
   supplierName: string;
+  district?: string;
   address: string;
   phone?: string;
   lat: number;

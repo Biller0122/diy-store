@@ -18,6 +18,19 @@ type DriverOrderDecisionPayload = {
   orderId: string;
 };
 
+type DriverOnlinePayload = string | {
+  driverId?: string;
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  vehicleType?: string;
+  vehiclePlate?: string;
+  rating?: number;
+  lat?: number;
+  lng?: number;
+};
+
 type DeliveryRequestPayload = {
   driverId: string;
   orderId: string;
@@ -47,12 +60,18 @@ interface OnlineDriverInfo {
   lat: number;
   lng: number;
   socketId: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  vehicleType?: string;
+  vehiclePlate?: string;
+  rating?: number;
 }
 
 const onlineDrivers = new Map<string, OnlineDriverInfo>();
 let driverOfferHandlers: {
-  accept?: (payload: DriverOrderDecisionPayload) => void;
-  reject?: (payload: DriverOrderDecisionPayload) => void;
+  accept?: (payload: DriverOrderDecisionPayload) => boolean;
+  reject?: (payload: DriverOrderDecisionPayload) => boolean;
 } = {};
 
 export function getOnlineDrivers(): Map<string, OnlineDriverInfo> {
@@ -141,13 +160,15 @@ export function startRealtimeServer() {
     });
 
     socket.on('driver:accept_order', (payload: DriverOrderDecisionPayload) => {
-      driverOfferHandlers.accept?.(payload);
+      const accepted = driverOfferHandlers.accept?.(payload) ?? false;
+      if (!accepted) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_accepted', payload);
       io.to(`order:${payload.orderId}`).emit('order:status', { orderId: payload.orderId, status: 'ACCEPTED' });
     });
 
     socket.on('driver:reject_order', (payload: DriverOrderDecisionPayload) => {
-      driverOfferHandlers.reject?.(payload);
+      const rejected = driverOfferHandlers.reject?.(payload) ?? false;
+      if (!rejected) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_rejected', payload);
       io.to(`order:${payload.orderId}`).emit('order:status', { orderId: payload.orderId, status: 'REJECTED' });
     });
@@ -163,7 +184,8 @@ export function startRealtimeServer() {
     });
 
     // ─── Driver online / offline ──────────────────────────────────
-    socket.on('driver:online', (driverId: string) => {
+    socket.on('driver:online', (payload: DriverOnlinePayload) => {
+      const driverId = typeof payload === 'string' ? payload : payload.driverId ?? payload.id;
       if (!driverId) return;
       console.log('[realtime] driver online', driverId);
       socketDriverIds.add(driverId);
@@ -171,9 +193,15 @@ export function startRealtimeServer() {
       // Register as online with default UB center coords
       onlineDrivers.set(driverId, {
         id: driverId,
-        lat: 47.9185,
-        lng: 106.917,
+        lat: typeof payload === 'string' ? 47.9185 : payload.lat ?? 47.9185,
+        lng: typeof payload === 'string' ? 106.917 : payload.lng ?? 106.917,
         socketId: socket.id,
+        firstName: typeof payload === 'string' ? undefined : payload.firstName,
+        lastName: typeof payload === 'string' ? undefined : payload.lastName,
+        phone: typeof payload === 'string' ? undefined : payload.phone,
+        vehicleType: typeof payload === 'string' ? undefined : payload.vehicleType,
+        vehiclePlate: typeof payload === 'string' ? undefined : payload.vehiclePlate,
+        rating: typeof payload === 'string' ? undefined : payload.rating,
       });
       io.emit('driver:online', { driverId, isOnline: true });
     });

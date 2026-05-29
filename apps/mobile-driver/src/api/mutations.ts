@@ -40,28 +40,31 @@ export const UPDATE_DRIVER_LOCATION = `
 `;
 
 export const ACCEPT_DELIVERY = `
-  mutation AcceptDelivery($driverId: ID!, $orderId: ID!) {
-    acceptDelivery(driverId: $driverId, orderId: $orderId) {
-      success
-      message
+  mutation AcceptDelivery($deliveryId: ID!, $driverId: String!) {
+    acceptDelivery(deliveryId: $deliveryId, driverId: $driverId) {
+      id
+      status
+      driverId
     }
   }
 `;
 
 export const REJECT_DELIVERY = `
-  mutation RejectDelivery($driverId: ID!, $orderId: ID!) {
-    rejectDelivery(driverId: $driverId, orderId: $orderId) {
-      success
-      message
+  mutation RejectDelivery($deliveryId: ID!, $driverId: String!) {
+    rejectDelivery(deliveryId: $deliveryId, driverId: $driverId) {
+      id
+      status
+      driverId
     }
   }
 `;
 
-export const UPDATE_ORDER_STATUS = `
-  mutation UpdateOrderStatus($orderId: ID!, $status: String!, $driverId: ID!) {
-    updateOrderStatus(orderId: $orderId, status: $status, driverId: $driverId) {
-      success
-      message
+export const UPDATE_DELIVERY_STATUS = `
+  mutation UpdateDeliveryStatus($deliveryId: ID!, $status: String!) {
+    updateDeliveryStatus(deliveryId: $deliveryId, status: $status) {
+      id
+      status
+      driverId
     }
   }
 `;

@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import type { Driver } from '../api/client';
 import { ActiveOrder } from '../store/delivery';
 
 const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? 'ws://192.168.0.13:3002';
@@ -66,10 +67,12 @@ function toOrder(payload: OrderPayload): ActiveOrder {
 class SocketService {
   private socket: Socket | null = null;
   private driverId: string | null = null;
+  private driver: Driver | null = null;
   private onOrderRequest: ((order: ActiveOrder) => void) | null = null;
 
-  connect(driverId: string, onOrderRequest: (order: ActiveOrder) => void) {
+  connect(driverId: string, onOrderRequest: (order: ActiveOrder) => void, driver?: Driver | null) {
     this.driverId = driverId;
+    this.driver = driver ?? null;
     this.onOrderRequest = onOrderRequest;
     if (this.socket?.connected) {
       this.joinDriverRoom();
@@ -90,7 +93,15 @@ class SocketService {
     if (!this.socket || !this.driverId) return;
     this.socket.emit('driver:join', this.driverId);
     this.socket.emit('join', `driver:${this.driverId}`);
-    this.socket.emit('driver:online', this.driverId);
+    this.socket.emit('driver:online', {
+      driverId: this.driverId,
+      firstName: this.driver?.firstName,
+      lastName: this.driver?.lastName,
+      phone: this.driver?.phone,
+      vehicleType: this.driver?.vehicleType,
+      vehiclePlate: this.driver?.vehiclePlate,
+      rating: this.driver?.rating,
+    });
   }
 
   disconnect() {
@@ -98,6 +109,7 @@ class SocketService {
     this.socket?.disconnect();
     this.socket = null;
     this.driverId = null;
+    this.driver = null;
   }
 
   emitAcceptOrder(driverId: string, orderId: string) {

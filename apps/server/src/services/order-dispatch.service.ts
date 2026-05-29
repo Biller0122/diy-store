@@ -55,12 +55,12 @@ function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineD
   if (online.size === 0) return [];
   const realOnline: OnlineDriver[] = Array.from(online.entries()).map(([driverId, info]) => ({
     id: driverId,
-    firstName: 'Жолооч',
-    lastName: '',
-    phone: '',
-    vehicleType: 'CAR',
-    vehiclePlate: '',
-    rating: 5,
+    firstName: info.firstName ?? 'Жолооч',
+    lastName: info.lastName ?? '',
+    phone: info.phone ?? '',
+    vehicleType: info.vehicleType ?? 'CAR',
+    vehiclePlate: info.vehiclePlate ?? '',
+    rating: info.rating ?? 5,
     lat: info.lat,
     lng: info.lng,
   }));
@@ -74,6 +74,7 @@ function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineD
 export interface DispatchPickupStop {
   supplierId: string;
   name: string;
+  district?: string;
   address: string;
   phone?: string;
   items?: Array<{ name: string; qty: number }>;
@@ -95,6 +96,9 @@ export async function dispatchOrder(
   pickupStops?: DispatchPickupStop[],
   customer?: DispatchCustomerInfo,
   orderNumber?: string,
+  deliveryFee = 0,
+  routeDistanceKm = 0,
+  estimatedMinutes = 0,
 ): Promise<DispatchResult> {
   const resolvedOrderNumber = orderNumber ?? generateOrderNumber();
   dispatchState.set(orderId, { status: 'SEARCHING', orderNumber: resolvedOrderNumber });
@@ -116,17 +120,20 @@ export async function dispatchOrder(
   dispatchState.set(orderId, offeredResult);
 
   // Notify the chosen driver via WebSocket + FCM
-  const deliveryFee = 8500 * 100; // mock fee in cents
   const distance = haversineDistance(pickupLat, pickupLng, offered.lat, offered.lng);
+  const offeredFee = deliveryFee || 8500 * 100;
+  const offeredDistance = routeDistanceKm || distance;
+  const offeredEstimatedMinutes = estimatedMinutes || Math.round(offeredDistance * 3 + 5);
 
   emitToDriver(offered.id, 'delivery:request', {
     driverId: offered.id,
     orderId,
     orderNumber: resolvedOrderNumber,
-    fee: deliveryFee,
+    fee: offeredFee,
     pickupStops: (pickupStops ?? []).map((s) => ({
       supplierId: s.supplierId,
       name: s.name,
+      district: s.district ?? s.address.split(',')[0]?.trim() ?? '',
       address: s.address,
       phone: s.phone ?? '',
       items: s.items ?? [],
@@ -138,15 +145,15 @@ export async function dispatchOrder(
       customerName: customer?.name ?? 'Хэрэглэгч',
       customerPhone: customer?.phone ?? '',
     },
-    distance: Math.round(distance * 10) / 10,
-    estimatedMinutes: Math.round(distance * 3 + 5),
+    distance: Math.round(offeredDistance * 10) / 10,
+    estimatedMinutes: offeredEstimatedMinutes,
   });
 
   void sendDriverNewOrderNotification(offered.id, {
     orderId,
     orderNumber: resolvedOrderNumber,
-    fee: deliveryFee,
-    distance,
+    fee: offeredFee,
+    distance: offeredDistance,
     pickupCount: pickupStops?.length ?? 1,
     dropoffDistrict: 'Чингэлтэй',
   });
@@ -155,11 +162,11 @@ export async function dispatchOrder(
     const timeout = setTimeout(() => {
       pendingOffers.delete(orderId);
       if (dispatchState.get(orderId)?.status !== 'ACCEPTED') {
-        const timeout: DispatchResult = { status: 'TIMEOUT', orderNumber };
+        const timeout: DispatchResult = { status: 'TIMEOUT', orderNumber: resolvedOrderNumber };
         dispatchState.set(orderId, timeout);
 
         if (customerId) {
-          void sendCustomerStatusNotification(customerId, orderNumber, 'CANCELLED');
+          void sendCustomerStatusNotification(customerId, resolvedOrderNumber, 'CANCELLED');
         }
 
         resolve(timeout);
@@ -169,9 +176,9 @@ export async function dispatchOrder(
   });
 }
 
-function acceptDispatchOffer({ driverId, orderId }: { driverId: string; orderId: string }) {
+function acceptDispatchOffer({ driverId, orderId }: { driverId: string; orderId: string }): boolean {
   const offer = pendingOffers.get(orderId);
-  if (!offer || offer.driver.id !== driverId) return;
+  if (!offer || offer.driver.id !== driverId) return false;
   clearTimeout(offer.timeout);
   pendingOffers.delete(orderId);
   const accepted: DispatchResult = {
@@ -203,11 +210,12 @@ function acceptDispatchOffer({ driverId, orderId }: { driverId: string; orderId:
     });
   }
   offer.resolve(accepted);
+  return true;
 }
 
-function rejectDispatchOffer({ driverId, orderId }: { driverId: string; orderId: string }) {
+function rejectDispatchOffer({ driverId, orderId }: { driverId: string; orderId: string }): boolean {
   const offer = pendingOffers.get(orderId);
-  if (!offer || offer.driver.id !== driverId) return;
+  if (!offer || offer.driver.id !== driverId) return false;
   clearTimeout(offer.timeout);
   pendingOffers.delete(orderId);
   const timeout: DispatchResult = { status: 'TIMEOUT', orderNumber: offer.orderNumber };
@@ -216,6 +224,7 @@ function rejectDispatchOffer({ driverId, orderId }: { driverId: string; orderId:
     void sendCustomerStatusNotification(offer.customerId, offer.orderNumber, 'CANCELLED');
   }
   offer.resolve(timeout);
+  return true;
 }
 
 registerDriverOfferHandlers({

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { acceptDeliveryApi, rejectDeliveryApi, updateOrderStatusApi } from '../api/client';
+import { acceptDeliveryApi, rejectDeliveryApi, updateDeliveryStatusApi } from '../api/client';
 import { socketService } from '../services/socket';
 
 export type StopStatus = 'PENDING' | 'ARRIVED' | 'PICKED_UP';
@@ -79,7 +79,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     if (!pending) return;
     const order = normalizeOrder(pending);
     socketService.emitAcceptOrder(driverId, order.orderId);
-    acceptDeliveryApi(driverId, order.orderId).catch(() => {});
+    await acceptDeliveryApi(driverId, order.orderId);
     set({ activeOrder: { ...order, status: 'DRIVER_ASSIGNED', currentStop: 0 }, incomingOrder: null, currentStop: 0 });
   },
 
@@ -87,7 +87,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     const order = orderInput ?? get().incomingOrder;
     if (order) {
       socketService.emitRejectOrder(driverId, order.orderId);
-      rejectDeliveryApi(driverId, order.orderId).catch(() => {});
+      await rejectDeliveryApi(driverId, order.orderId);
     }
     set({ incomingOrder: null });
   },
@@ -118,7 +118,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }
 
     socketService.emitStatusUpdate(activeOrder.orderId, nextStatus);
-    updateOrderStatusApi(driverId, activeOrder.orderId, nextStatus).catch(() => {});
+    await updateDeliveryStatusApi(activeOrder.orderId, nextStatus);
 
     if (nextStatus === 'DELIVERED') {
       set({ activeOrder: null, currentStop: 0 });

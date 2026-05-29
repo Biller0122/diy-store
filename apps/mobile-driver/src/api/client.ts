@@ -1,6 +1,6 @@
 import { GraphQLClient } from 'graphql-request';
 import { GET_DRIVER_EARNINGS, GET_DRIVER_PROFILE } from './queries';
-import { ACCEPT_DELIVERY, LOGIN_DRIVER, REGISTER_DRIVER, REJECT_DELIVERY, UPDATE_DRIVER_LOCATION, UPDATE_DRIVER_STATUS, UPDATE_ORDER_STATUS } from './mutations';
+import { ACCEPT_DELIVERY, LOGIN_DRIVER, REGISTER_DRIVER, REJECT_DELIVERY, UPDATE_DELIVERY_STATUS, UPDATE_DRIVER_LOCATION, UPDATE_DRIVER_STATUS } from './mutations';
 
 export const SHOP_API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL ?? 'http://192.168.0.13:3001/shop-api';
 
@@ -40,6 +40,12 @@ export type Driver = {
   createdAt?: string;
 };
 
+type DeliveryMutationResult = {
+  id: string;
+  status: string;
+  driverId?: string | null;
+};
+
 export async function loginDriver(email: string, password: string) {
   return request<{ loginDriverByPassword: { success: boolean; message: string; driverId: string | null; token: string | null } }>(LOGIN_DRIVER, { email, password });
 }
@@ -65,16 +71,16 @@ export async function updateDriverLocation(driverId: string, lat: number, lng: n
   return request<{ updateDriverLocation: { id: string; currentLat: number | null; currentLng: number | null } }>(UPDATE_DRIVER_LOCATION, { id: driverId, lat, lng });
 }
 
-export async function acceptDeliveryApi(driverId: string, orderId: string) {
-  return request<{ acceptDelivery: { success: boolean; message?: string } }>(ACCEPT_DELIVERY, { driverId, orderId });
+export async function acceptDeliveryApi(driverId: string, deliveryId: string) {
+  return request<{ acceptDelivery: DeliveryMutationResult }>(ACCEPT_DELIVERY, { driverId, deliveryId });
 }
 
-export async function rejectDeliveryApi(driverId: string, orderId: string) {
-  return request<{ rejectDelivery: { success: boolean; message?: string } }>(REJECT_DELIVERY, { driverId, orderId });
+export async function rejectDeliveryApi(driverId: string, deliveryId: string) {
+  return request<{ rejectDelivery: DeliveryMutationResult }>(REJECT_DELIVERY, { driverId, deliveryId });
 }
 
-export async function updateOrderStatusApi(driverId: string, orderId: string, status: string) {
-  return request<{ updateOrderStatus: { success: boolean; message?: string } }>(UPDATE_ORDER_STATUS, { driverId, orderId, status });
+export async function updateDeliveryStatusApi(deliveryId: string, status: string) {
+  return request<{ updateDeliveryStatus: DeliveryMutationResult }>(UPDATE_DELIVERY_STATUS, { deliveryId, status });
 }
 
 export async function getDriverEarnings(driverId: string, period: string) {
