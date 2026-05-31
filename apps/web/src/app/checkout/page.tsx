@@ -9,7 +9,7 @@ import { useCartStore, calcSubtotal, calcDiscount, calcDeliveryFee, getSupplierG
 import { useOrderStore } from '@/lib/order-store';
 import { vendureShopFetch } from '@/lib/vendure';
 import { useAuthStore } from '@/lib/auth-store';
-import { useCustomerAddressStore } from '@/lib/customer-address-store';
+import { useCustomerAddressStore, type CustomerAddress } from '@/lib/customer-address-store';
 import { QPayModal } from '@/components/payment/QPayModal';
 import { MonPayModal } from '@/components/payment/MonPayModal';
 import { trackBeginCheckout, trackAddPaymentInfo } from '@/lib/analytics/ga4';
@@ -143,8 +143,13 @@ interface ContactData {
   storeId: string; note: string;
 }
 
-function StepContact({ data, onChange, onNext }: {
-  data: ContactData; onChange: (d: Partial<ContactData>) => void; onNext: () => void;
+function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onSelectAddress }: {
+  data: ContactData;
+  onChange: (d: Partial<ContactData>) => void;
+  onNext: () => void;
+  addresses?: CustomerAddress[];
+  selectedAddressId?: string | null;
+  onSelectAddress?: (address: CustomerAddress | null) => void;
 }) {
   const [errors, setErrors] = useState<Partial<Record<keyof ContactData, string>>>({});
 
@@ -194,6 +199,31 @@ function StepContact({ data, onChange, onNext }: {
             </button>
           ))}
         </div>
+
+        {data.deliveryType === 'delivery' && addresses && addresses.length > 0 && (
+          <div className="mb-4">
+            <label className="mb-1 block text-xs font-semibold text-foreground-muted">Хадгалсан хаяг</label>
+            <select
+              className={inputCls}
+              value={selectedAddressId ?? 'new'}
+              onChange={(e) => {
+                if (e.target.value === 'new') {
+                  onSelectAddress?.(null);
+                } else {
+                  const addr = addresses.find((a) => a.id === e.target.value);
+                  if (addr) onSelectAddress?.(addr);
+                }
+              }}
+            >
+              {addresses.map((addr) => (
+                <option key={addr.id} value={addr.id}>
+                  {addr.label || addr.fullName} — {addr.district}
+                </option>
+              ))}
+              <option value="new">+ Шинэ хаяг нэмэх</option>
+            </select>
+          </div>
+        )}
 
         {data.deliveryType === 'delivery' ? (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -455,10 +485,13 @@ export default function CheckoutPage() {
   const [orderNo, setOrderNo] = useState('');
   const [showQPay, setShowQPay] = useState(false);
   const [showMonPay, setShowMonPay] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [showSaveAddressPrompt, setShowSaveAddressPrompt] = useState(false);
+  const [addressSaved, setAddressSaved] = useState(false);
   const { items, promo, deliveryFee, customerAddress, clearCart } = useCartStore();
   const { addOrder } = useOrderStore();
   const { customer, fetchActiveCustomer } = useAuthStore();
-  const addresses = useCustomerAddressStore((state) => state.addresses);
+  const { addresses, addAddress } = useCustomerAddressStore();
 
   useEffect(() => setHydrated(true), []);
 
@@ -470,6 +503,9 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!hydrated) return;
     const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
+    if (defaultAddress && !selectedAddressId) {
+      setSelectedAddressId(defaultAddress.id);
+    }
     setContact((current) => ({
       ...current,
       name: current.name || [customer?.firstName, customer?.lastName].filter(Boolean).join(' '),
@@ -483,6 +519,7 @@ export default function CheckoutPage() {
       doorCode: current.doorCode || customerAddress?.doorCode || '',
       note: current.note || customerAddress?.note || '',
     }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addresses, customer, customerAddress, hydrated]);
 
   const sub      = calcSubtotal(items);
@@ -576,6 +613,44 @@ export default function CheckoutPage() {
     }
   }
 
+  function handleSelectAddress(address: CustomerAddress | null) {
+    if (address) {
+      setSelectedAddressId(address.id);
+      setContact((c) => ({
+        ...c,
+        name: address.fullName || c.name,
+        phone: address.phone || c.phone,
+        province: 'Улаанбаатар',
+        district: address.district ? `${address.district} дүүрэг` : c.district,
+        address: [address.street, address.building, address.apartment].filter(Boolean).join(', '),
+      }));
+    } else {
+      setSelectedAddressId(null);
+      setContact((c) => ({
+        ...c,
+        province: 'Улаанбаатар',
+        district: '',
+        khoroo: '',
+        address: '',
+        doorCode: '',
+      }));
+    }
+  }
+
+  function handleSaveAddress() {
+    addAddress({
+      label: 'Гэр',
+      fullName: contact.name,
+      phone: contact.phone,
+      district: contact.district.replace(' дүүрэг', ''),
+      street: contact.address,
+      building: '',
+      apartment: '',
+    });
+    setShowSaveAddressPrompt(false);
+    setAddressSaved(true);
+  }
+
   function handlePaymentConfirm() {
     const sessionId = `session-${Date.now()}`;
 
@@ -600,6 +675,9 @@ export default function CheckoutPage() {
 
   function handlePaymentSuccess() {
     const sessionId = orderNo || `session-${Date.now()}`;
+    const savedDeliveryType = contact.deliveryType;
+    const savedAddress = contact.address;
+    const savedAddressId = selectedAddressId;
     clearCart();
     setShowQPay(false);
     setShowMonPay(false);
@@ -610,6 +688,9 @@ export default function CheckoutPage() {
       setOrderNo(realOrderNo);
       setStep(3);
       window.scrollTo(0, 0);
+      if (savedDeliveryType === 'delivery' && savedAddress.trim() && !savedAddressId && customer) {
+        setShowSaveAddressPrompt(true);
+      }
     });
   }
 
@@ -645,6 +726,34 @@ export default function CheckoutPage() {
             </div>
           )}
 
+          <AnimatePresence>
+            {step === 3 && showSaveAddressPrompt && !addressSaved && (
+              <m.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                className="mb-4 rounded-2xl bg-card p-4 border border-brand/30"
+              >
+                <p className="text-sm font-semibold text-foreground mb-1">Энэ хаягийг хадгалах уу?</p>
+                <p className="text-xs text-foreground-muted mb-3 truncate">{contact.district}, {contact.address}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveAddress}
+                    className="flex-1 rounded-xl bg-brand py-2 text-sm font-bold text-white hover:bg-brand-hover"
+                  >
+                    Тийм
+                  </button>
+                  <button
+                    onClick={() => setShowSaveAddressPrompt(false)}
+                    className="flex-1 rounded-xl border border-[var(--glass-border)] py-2 text-sm font-semibold text-foreground-muted hover:bg-dark"
+                  >
+                    Үгүй
+                  </button>
+                </div>
+              </m.div>
+            )}
+          </AnimatePresence>
+
           <div className="rounded-2xl bg-card p-5 border border-[var(--glass-border)]">
             <AnimatePresence mode="wait">
               {step === 1 && (
@@ -653,6 +762,9 @@ export default function CheckoutPage() {
                     data={contact}
                     onChange={(d) => setContact((c) => ({ ...c, ...d }))}
                     onNext={goToPayment}
+                    addresses={addresses}
+                    selectedAddressId={selectedAddressId}
+                    onSelectAddress={handleSelectAddress}
                   />
                 </m.div>
               )}

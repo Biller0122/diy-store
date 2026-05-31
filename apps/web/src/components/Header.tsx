@@ -57,7 +57,7 @@ export function Header() {
             {[
               { href: '/how-to', label: 'DIY Зөвлөгөө' },
               { href: '/trade', label: 'Trade данс' },
-              { href: '/driver/login', label: 'Жолооч' },
+              ...(!customer ? [{ href: '/driver/login', label: 'Жолооч' }] : []),
             ].map(({ href, label }) => (
               <Link
                 key={href}
@@ -93,14 +93,16 @@ export function Header() {
               <Search size={18} />
             </button>
 
-            {/* Driver */}
-            <Link
-              href="/driver/login"
-              className="hidden lg:flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white transition-colors"
-            >
-              <Truck size={16} />
-              <span>Жолооч</span>
-            </Link>
+            {/* Driver — hidden for logged-in customers */}
+            {!customer && (
+              <Link
+                href="/driver/login"
+                className="hidden lg:flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white transition-colors"
+              >
+                <Truck size={16} />
+                <span>Жолооч</span>
+              </Link>
+            )}
 
             {/* Account */}
             <Link
