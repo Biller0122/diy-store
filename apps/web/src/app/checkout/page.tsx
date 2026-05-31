@@ -509,7 +509,7 @@ export default function CheckoutPage() {
     setContact((current) => ({
       ...current,
       name: current.name || [customer?.firstName, customer?.lastName].filter(Boolean).join(' '),
-      phone: current.phone || customer?.phoneNumber || defaultAddress?.phone || '',
+      phone: customer?.phoneNumber || current.phone || '',
       email: current.email || customer?.emailAddress || '',
       district: current.district || customerAddress?.district || (defaultAddress?.district ? `${defaultAddress.district} дүүрэг` : ''),
       khoroo: current.khoroo || customerAddress?.khoroo || '',
