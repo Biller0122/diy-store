@@ -1,6 +1,7 @@
 import { Driver, DriverStatus, VehicleType } from '../plugins/driver/driver.entity';
 import { DriverService } from '../plugins/driver/driver.service';
 import { createMockRepository } from './test-repo';
+import { verifyToken } from '../utils/auth';
 
 function createService() {
   const repo = createMockRepository<Driver>();
@@ -95,6 +96,19 @@ describe('DriverService', () => {
       const updated = await driverService.getDriverById(String(driver.id));
       expect(updated?.currentLat).toBe(47.9200);
       expect(updated?.currentLng).toBe(106.9300);
+    });
+  });
+
+  describe('driver auth token', () => {
+    test('verified OTP returns signed driver role token', async () => {
+      const { driverService } = createService();
+      await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
+
+      const result = await driverService.verifyOTP('88001122', '1234');
+      const decoded = verifyToken(result.token);
+
+      expect(decoded.role).toBe('DRIVER');
+      expect(decoded.id).toBe(String(result.driver.id));
     });
   });
 });

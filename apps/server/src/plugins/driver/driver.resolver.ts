@@ -1,10 +1,11 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, ID, Permission } from '@vendure/core';
+import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Driver, DriverStatus } from './driver.entity';
 import { DriverService } from './driver.service';
 import type { RegisterDriverInput } from './driver.service';
+import { requirePlatformRole } from '../../utils/auth';
 
 @Resolver()
 export class DriverResolver {
@@ -89,19 +90,27 @@ export class DriverResolver {
 
   @Mutation()
   @Allow(Permission.Public)
-  async updateDriverLocation(@Args('id') id: ID, @Args('lat') lat: number, @Args('lng') lng: number) {
+  async updateDriverLocation(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('lat') lat: number, @Args('lng') lng: number) {
+    this.requireDriverOwner(ctx, String(id));
     return this.driverService.updateDriverLocation(String(id), lat, lng);
   }
 
   @Mutation()
   @Allow(Permission.Public)
-  async setOnlineStatus(@Args('id') id: ID, @Args('isOnline') isOnline: boolean) {
+  async setOnlineStatus(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('isOnline') isOnline: boolean) {
+    this.requireDriverOwner(ctx, String(id));
     return this.driverService.setOnlineStatus(String(id), isOnline);
   }
 
   @Mutation()
   @Allow(Permission.Public)
-  async updateDriverStatus(@Args('id') id: ID, @Args('status') status: DriverStatus) {
+  async updateDriverStatus(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('status') status: DriverStatus) {
+    if (ctx.apiType !== 'admin' || !ctx.activeUserId) throw new Error('Админ эрх шаардлагатай');
     return this.driverService.updateDriverStatus(String(id), status);
+  }
+
+  private requireDriverOwner(ctx: RequestContext, driverId: string) {
+    const principal = requirePlatformRole(ctx, 'DRIVER');
+    if (principal.id !== driverId) throw new Error('Өөр жолоочийн мэдээлэлд хандах эрхгүй');
   }
 }

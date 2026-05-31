@@ -55,6 +55,7 @@ function PulsingDot() {
 
 export default function DashboardScreen() {
   const supplier = useSupplierStore((s) => s.supplier);
+  const token = useSupplierStore((s) => s.token);
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
 
   useEffect(() => {
@@ -76,14 +77,45 @@ export default function DashboardScreen() {
     .filter((order) => new Date(order.createdAt).toDateString() === new Date().toDateString())
     .reduce((sum, order) => sum + order.total, 0);
 
-  const handleAccept = async (code: string) => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert('Амжилттай', `Захиалга #${code} батлагдлаа!`);
+  const runOrderAction = async (order: SupplierOrder, action: 'ACCEPT' | 'REJECT') => {
+    const mutation = `
+      mutation SupplierOrderAction($orderId: ID!, $action: String!) {
+        supplierOrderAction(orderId: $orderId, action: $action) {
+          success
+          message
+          order { id code state total createdAt shippingAddress { streetLine1 city } lines { quantity productVariant { name product { name } } } }
+        }
+      }
+    `;
+    const data = await shopFetch<{
+      supplierOrderAction: { success: boolean; message: string; order?: SupplierOrder | null };
+    }>(mutation, { orderId: order.id, action }, token);
+    if (!data.supplierOrderAction.success || !data.supplierOrderAction.order) {
+      throw new Error(data.supplierOrderAction.message);
+    }
+    setOrders((current) => current.map((item) => (
+      item.id === data.supplierOrderAction.order?.id ? data.supplierOrderAction.order : item
+    )));
   };
 
-  const handleReject = async (code: string) => {
+  const handleAccept = async (order: SupplierOrder) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert('Цуцлагдлаа', `Захиалга #${code} цуцлагдлаа.`);
+    try {
+      await runOrderAction(order, 'ACCEPT');
+      Alert.alert('Амжилттай', `Захиалга #${order.code} батлагдлаа!`);
+    } catch (err) {
+      Alert.alert('Алдаа', err instanceof Error ? err.message : 'Захиалга шинэчлэхэд алдаа гарлаа');
+    }
+  };
+
+  const handleReject = async (order: SupplierOrder) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      await runOrderAction(order, 'REJECT');
+      Alert.alert('Цуцлагдлаа', `Захиалга #${order.code} цуцлагдлаа.`);
+    } catch (err) {
+      Alert.alert('Алдаа', err instanceof Error ? err.message : 'Захиалга шинэчлэхэд алдаа гарлаа');
+    }
   };
 
   return (
@@ -154,14 +186,14 @@ export default function DashboardScreen() {
               <View style={styles.orderActions}>
                 <TouchableOpacity
                   style={styles.acceptBtn}
-                  onPress={() => handleAccept(order.code)}
+                  onPress={() => handleAccept(order)}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.acceptText}>✅ Батлах</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.rejectBtn}
-                  onPress={() => handleReject(order.code)}
+                  onPress={() => handleReject(order)}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.rejectText}>❌ Цуцлах</Text>

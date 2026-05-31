@@ -85,6 +85,23 @@ export function getOnlineDriverIds(): string[] {
 let _io: Server | null = null;
 let realtimeServerStarted = false;
 
+const ROOM_ID_RE = /^[A-Za-z0-9:_-]{1,80}$/;
+
+function validRoomId(value: unknown): value is string {
+  return typeof value === 'string' && ROOM_ID_RE.test(value);
+}
+
+function validCoordinates(lat: unknown, lng: unknown) {
+  return typeof lat === 'number'
+    && typeof lng === 'number'
+    && Number.isFinite(lat)
+    && Number.isFinite(lng)
+    && lat >= -90
+    && lat <= 90
+    && lng >= -180
+    && lng <= 180;
+}
+
 export function getIO(): Server | null {
   return _io;
 }
@@ -110,10 +127,14 @@ export function startRealtimeServer() {
   realtimeServerStarted = true;
 
   const port = Number(process.env.SOCKET_PORT || 3002);
+  const allowedOrigins = (process.env.SOCKET_CORS_ORIGINS || process.env.STOREFRONT_URL || 'http://localhost:3000,http://localhost:3002')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   const httpServer = createServer();
   const io = new Server(httpServer, {
     cors: {
-      origin: '*',
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
     },
   });
@@ -125,22 +146,23 @@ export function startRealtimeServer() {
 
     // ─── Room joins ─────────────────────────────────────────────
     socket.on('order:join', (orderId: string) => {
-      if (orderId) socket.join(`order:${orderId}`);
+      if (validRoomId(orderId)) socket.join(`order:${orderId}`);
     });
 
     socket.on('driver:join', (driverId: string) => {
-      if (driverId) {
+      if (validRoomId(driverId)) {
         socket.join(`driver:${driverId}`);
         socketDriverIds.add(driverId);
       }
     });
 
     socket.on('customer:join', (customerId: string) => {
-      if (customerId) socket.join(`customer:${customerId}`);
+      if (validRoomId(customerId)) socket.join(`customer:${customerId}`);
     });
 
     // ─── Driver location ─────────────────────────────────────────
     socket.on('driver:location', (payload: DriverLocationPayload) => {
+      if (!validRoomId(payload?.driverId) || !validCoordinates(payload?.lat, payload?.lng)) return;
       // Update online driver's known location
       const existing = onlineDrivers.get(payload.driverId);
       if (existing) {
@@ -148,7 +170,7 @@ export function startRealtimeServer() {
         existing.lng = payload.lng;
       }
 
-      if (payload.orderId) {
+      if (validRoomId(payload.orderId)) {
         io.to(`order:${payload.orderId}`).emit('driver:location', payload);
       }
       io.to(`driver:${payload.driverId}`).emit('driver:location', payload);
@@ -156,10 +178,12 @@ export function startRealtimeServer() {
 
     // ─── Order status ─────────────────────────────────────────────
     socket.on('order:status', (payload: OrderStatusPayload) => {
+      if (!validRoomId(payload?.orderId) || typeof payload?.status !== 'string') return;
       io.to(`order:${payload.orderId}`).emit('order:status', payload);
     });
 
     socket.on('driver:accept_order', (payload: DriverOrderDecisionPayload) => {
+      if (!validRoomId(payload?.driverId) || !validRoomId(payload?.orderId)) return;
       const accepted = driverOfferHandlers.accept?.(payload) ?? false;
       if (!accepted) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_accepted', payload);
@@ -167,26 +191,17 @@ export function startRealtimeServer() {
     });
 
     socket.on('driver:reject_order', (payload: DriverOrderDecisionPayload) => {
+      if (!validRoomId(payload?.driverId) || !validRoomId(payload?.orderId)) return;
       const rejected = driverOfferHandlers.reject?.(payload) ?? false;
       if (!rejected) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_rejected', payload);
       io.to(`order:${payload.orderId}`).emit('order:status', { orderId: payload.orderId, status: 'REJECTED' });
     });
 
-    // ─── Delivery request (server → driver) ──────────────────────
-    socket.on('delivery:request', (payload: DeliveryRequestPayload) => {
-      io.to(`driver:${payload.driverId}`).emit('delivery:request', payload);
-    });
-
-    // ─── Driver assigned (server → customer order room) ──────────
-    socket.on('order:driver_assigned', (payload: DriverAssignedPayload) => {
-      io.to(`order:${payload.orderId}`).emit('order:driver_assigned', payload);
-    });
-
     // ─── Driver online / offline ──────────────────────────────────
     socket.on('driver:online', (payload: DriverOnlinePayload) => {
       const driverId = typeof payload === 'string' ? payload : payload.driverId ?? payload.id;
-      if (!driverId) return;
+      if (!validRoomId(driverId)) return;
       console.log('[realtime] driver online', driverId);
       socketDriverIds.add(driverId);
       socket.join(`driver:${driverId}`);
@@ -207,7 +222,7 @@ export function startRealtimeServer() {
     });
 
     socket.on('driver:offline', (driverId: string) => {
-      if (!driverId) return;
+      if (!validRoomId(driverId)) return;
       console.log('[realtime] driver offline', driverId);
       onlineDrivers.delete(driverId);
       socketDriverIds.delete(driverId);

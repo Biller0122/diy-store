@@ -1,187 +1,280 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
+  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
+import { useAppStore } from '@/lib/store';
+import {
+  shopFetch,
+  ACTIVE_ORDER_QUERY,
+  ADJUST_LINE_MUTATION,
+  REMOVE_LINE_MUTATION,
+} from '@/lib/api';
 
-interface CartLine {
+interface OrderLine {
   id: string;
-  name: string;
-  price: number;
   quantity: number;
-  supplier: string;
+  linePriceWithTax: number;
+  productVariant: {
+    id: string;
+    name: string;
+    priceWithTax: number;
+    product: {
+      name: string;
+      slug: string;
+      featuredAsset: { preview: string } | null;
+    };
+  };
 }
 
-const INITIAL_CART: CartLine[] = [
-  { id: '1', name: 'Perforator Bosch 800W', price: 145000, quantity: 1, supplier: 'Зочин Буд' },
-  { id: '2', name: 'LED Гэрлийн хавтан', price: 15500, quantity: 2, supplier: 'Цахилгаан Хэрэгсэл' },
-  { id: '3', name: 'PVC Хоолой 110мм', price: 28000, quantity: 3, supplier: 'Зочин Буд' },
-];
+interface ActiveOrder {
+  id: string;
+  code: string;
+  state: string;
+  subTotal: number;
+  total: number;
+  lines: OrderLine[];
+}
 
 function formatPrice(price: number) {
-  return '₮' + price.toLocaleString('mn-MN');
+  return '₮' + Math.round(price / 100).toLocaleString('mn-MN');
 }
 
-function groupBySupplier(items: CartLine[]): Record<string, CartLine[]> {
-  return items.reduce((acc, item) => {
-    if (!acc[item.supplier]) acc[item.supplier] = [];
-    acc[item.supplier].push(item);
-    return acc;
-  }, {} as Record<string, CartLine[]>);
+function CartLineRow({
+  line,
+  onAdjust,
+  onRemove,
+}: {
+  line: OrderLine;
+  onAdjust: (id: string, qty: number) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <View style={styles.lineRow}>
+      <View style={styles.lineImage}>
+        <Ionicons name="cube-outline" size={28} color={C.textTertiary} />
+      </View>
+      <View style={styles.lineInfo}>
+        <Text style={styles.lineName} numberOfLines={2}>
+          {line.productVariant.product.name}
+        </Text>
+        <Text style={styles.lineVariant} numberOfLines={1}>
+          {line.productVariant.name}
+        </Text>
+        <Text style={styles.linePrice}>{formatPrice(line.linePriceWithTax)}</Text>
+      </View>
+      <View style={styles.lineActions}>
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={() => {
+            Alert.alert('Устгах уу?', `${line.productVariant.product.name} сагснаас хасах уу?`, [
+              { text: 'Болих', style: 'cancel' },
+              { text: 'Устгах', style: 'destructive', onPress: () => onRemove(line.id) },
+            ]);
+          }}
+        >
+          <Ionicons name="trash-outline" size={15} color="#FF4444" />
+        </TouchableOpacity>
+        <View style={styles.qtyRow}>
+          <TouchableOpacity
+            style={styles.qtyBtn}
+            onPress={() => onAdjust(line.id, line.quantity - 1)}
+            disabled={line.quantity <= 1}
+          >
+            <Ionicons name="remove" size={16} color={line.quantity <= 1 ? C.textTertiary : C.text} />
+          </TouchableOpacity>
+          <Text style={styles.qtyText}>{line.quantity}</Text>
+          <TouchableOpacity style={styles.qtyBtn} onPress={() => onAdjust(line.id, line.quantity + 1)}>
+            <Ionicons name="add" size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export default function CartScreen() {
   const router = useRouter();
-  const [cartItems, setCartItems] = useState<CartLine[]>(INITIAL_CART);
+  const { customer, setCartCount } = useAppStore();
+  const [order, setOrder] = useState<ActiveOrder | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [mutating, setMutating] = useState(false);
 
-  const adjustQty = (id: string, delta: number) => {
-    setCartItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item
-      )
-    );
+  const fetchCart = useCallback(async () => {
+    try {
+      const data = await shopFetch<{ activeOrder: ActiveOrder | null }>(ACTIVE_ORDER_QUERY);
+      const o = data.activeOrder;
+      setOrder(o);
+      setCartCount(o ? o.lines.reduce((s, l) => s + l.quantity, 0) : 0);
+    } catch {
+      // keep previous state on network error
+    } finally {
+      setLoading(false);
+    }
+  }, [setCartCount]);
+
+  useEffect(() => {
+    fetchCart();
+  }, [fetchCart]);
+
+  const handleAdjust = async (lineId: string, qty: number) => {
+    if (qty < 1) return;
+    setMutating(true);
+    try {
+      await shopFetch(ADJUST_LINE_MUTATION, { orderLineId: lineId, quantity: qty });
+      await fetchCart();
+    } catch (e) {
+      Alert.alert('Алдаа', e instanceof Error ? e.message : 'Тоо өөрчлөх боломжгүй');
+    } finally {
+      setMutating(false);
+    }
   };
 
-  const removeItem = (id: string) => {
-    Alert.alert('Устгах уу?', 'Энэ бүтээгдэхүүнийг сагснаас хасах уу?', [
-      { text: 'Болих', style: 'cancel' },
-      {
-        text: 'Устгах',
-        style: 'destructive',
-        onPress: () => setCartItems((prev) => prev.filter((i) => i.id !== id)),
-      },
-    ]);
+  const handleRemove = async (lineId: string) => {
+    setMutating(true);
+    try {
+      await shopFetch(REMOVE_LINE_MUTATION, { orderLineId: lineId });
+      await fetchCart();
+    } catch (e) {
+      Alert.alert('Алдаа', e instanceof Error ? e.message : 'Устгах боломжгүй');
+    } finally {
+      setMutating(false);
+    }
   };
 
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = 5000;
-  const total = subtotal + deliveryFee;
-
-  const grouped = groupBySupplier(cartItems);
-
-  if (cartItems.length === 0) {
+  if (!customer) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Сагс</Text>
         </View>
-        <View style={styles.emptyState}>
+        <View style={styles.emptyBox}>
           <Text style={styles.emptyIcon}>🛒</Text>
-          <Text style={styles.emptyTitle}>Сагс хоосон байна</Text>
-          <Text style={styles.emptySubtitle}>Бүтээгдэхүүн нэмж эхлэх</Text>
+          <Text style={styles.emptyTitle}>Нэвтэрнэ үү</Text>
+          <Text style={styles.emptySub}>Сагсаа харахын тулд нэвтэрнэ үү</Text>
           <TouchableOpacity
-            style={styles.shopBtn}
-            onPress={() => router.push('/(tabs)/' as never)}
-            activeOpacity={0.85}
+            style={styles.loginBtn}
+            onPress={() => router.push('/(tabs)/account' as never)}
           >
-            <Text style={styles.shopBtnText}>Дэлгүүрлэх</Text>
+            <Text style={styles.loginBtnText}>Нэвтрэх</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Сагс</Text>
-        <Text style={styles.headerCount}>{cartItems.length} бараа</Text>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {Object.entries(grouped).map(([supplier, items]) => (
-          <View key={supplier} style={styles.supplierGroup}>
-            <View style={styles.supplierHeader}>
-              <View style={styles.supplierIcon}>
-                <Ionicons name="storefront-outline" size={14} color={C.primary} />
-              </View>
-              <Text style={styles.supplierName}>{supplier}</Text>
-              <Text style={styles.supplierCount}>{items.length} бараа</Text>
-            </View>
-
-            {items.map((item) => (
-              <View key={item.id} style={styles.lineItem}>
-                <View style={styles.productImgPlaceholder}>
-                  <Ionicons name="cube-outline" size={24} color={C.textTertiary} />
-                </View>
-                <View style={styles.lineInfo}>
-                  <Text style={styles.lineName} numberOfLines={2}>{item.name}</Text>
-                  <Text style={styles.linePrice}>{formatPrice(item.price)}</Text>
-                  <View style={styles.qtyRow}>
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => adjustQty(item.id, -1)}
-                    >
-                      <Ionicons name="remove" size={16} color={C.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.qtyText}>{item.quantity}</Text>
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => adjustQty(item.id, 1)}
-                    >
-                      <Ionicons name="add" size={16} color={C.text} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <View style={styles.lineRight}>
-                  <Text style={styles.lineTotal}>{formatPrice(item.price * item.quantity)}</Text>
-                  <TouchableOpacity
-                    style={styles.deleteBtn}
-                    onPress={() => removeItem(item.id)}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#FF4444" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        ))}
-
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
-
-      {/* Fixed Bottom Bar */}
-      <View style={styles.bottomBar}>
-        <View style={styles.priceBreakdown}>
-          <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Нийт бараа</Text>
-            <Text style={styles.priceValue}>{formatPrice(subtotal)}</Text>
-          </View>
-          <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Хүргэлт</Text>
-            <Text style={styles.priceValue}>{formatPrice(deliveryFee)}</Text>
-          </View>
-          <View style={[styles.priceRow, styles.totalRow]}>
-            <Text style={styles.totalLabel}>Нийт дүн</Text>
-            <Text style={styles.totalValue}>{formatPrice(total)}</Text>
-          </View>
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Сагс</Text>
         </View>
-        <TouchableOpacity
-          style={styles.checkoutBtn}
-          onPress={() => router.push('/checkout' as never)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.checkoutBtnText}>Захиалга өгөх</Text>
-          <Ionicons name="arrow-forward" size={18} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+        <View style={styles.emptyBox}>
+          <ActivityIndicator color={C.primary} size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const isEmpty = !order || order.lines.length === 0;
+
+  if (isEmpty) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Сагс</Text>
+        </View>
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyIcon}>🛒</Text>
+          <Text style={styles.emptyTitle}>Сагс хоосон байна</Text>
+          <Text style={styles.emptySub}>Бүтээгдэхүүн нэмж эхлэцгээе</Text>
+          <TouchableOpacity style={styles.loginBtn} onPress={() => router.push('/(tabs)/' as never)}>
+            <Text style={styles.loginBtnText}>Дэлгүүр үзэх</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const subtotal = order.subTotal;
+  const shippingAmt = order.total - order.subTotal;
+  const total = order.total;
+
+  return (
+    <View style={styles.flex}>
+      <SafeAreaView style={{ backgroundColor: C.bg }} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Сагс</Text>
+          <Text style={styles.headerCount}>{order.lines.length} бараа</Text>
+        </View>
+      </SafeAreaView>
+
+      {mutating && (
+        <View style={styles.mutatingBanner}>
+          <ActivityIndicator color={C.primary} size="small" />
+          <Text style={styles.mutatingText}>Шинэчилж байна...</Text>
+        </View>
+      )}
+
+      <FlatList
+        data={order.lines}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) => (
+          <CartLineRow line={item} onAdjust={handleAdjust} onRemove={handleRemove} />
+        )}
+        ListFooterComponent={
+          <View style={styles.summary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Дэд нийт</Text>
+              <Text style={styles.summaryValue}>{formatPrice(subtotal)}</Text>
+            </View>
+            {shippingAmt > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Хүргэлт</Text>
+                <Text style={styles.summaryValue}>{formatPrice(shippingAmt)}</Text>
+              </View>
+            )}
+            <View style={[styles.summaryRow, styles.totalRow]}>
+              <Text style={styles.totalLabel}>Нийт дүн</Text>
+              <Text style={styles.totalValue}>{formatPrice(total)}</Text>
+            </View>
+          </View>
+        }
+      />
+
+      <SafeAreaView edges={['bottom']} style={styles.bottomBar}>
+        <View style={styles.bottomInner}>
+          <View>
+            <Text style={styles.bottomLabel}>Нийт</Text>
+            <Text style={styles.bottomTotal}>{formatPrice(total)}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.checkoutBtn}
+            onPress={() => router.push('/checkout' as never)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.checkoutBtnText}>Захиалах</Text>
+            <Ionicons name="arrow-forward" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: C.bg },
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row',
@@ -196,118 +289,116 @@ const styles = StyleSheet.create({
   headerTitle: { color: C.text, fontSize: 22, fontWeight: '800' },
   headerCount: { color: C.textSub, fontSize: 13 },
 
-  scroll: { flex: 1 },
-  content: { padding: 16, gap: 16 },
-
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  emptyIcon: { fontSize: 64, marginBottom: 8 },
-  emptyTitle: { color: C.text, fontSize: 20, fontWeight: '700' },
-  emptySubtitle: { color: C.textSub, fontSize: 14, marginBottom: 24 },
-  shopBtn: {
+  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
+  emptyIcon: { fontSize: 56, marginBottom: 8 },
+  emptyTitle: { color: C.text, fontSize: 18, fontWeight: '700' },
+  emptySub: { color: C.textSub, fontSize: 14, textAlign: 'center', marginBottom: 16 },
+  loginBtn: {
     backgroundColor: C.primary,
     borderRadius: 14,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
+    paddingHorizontal: 36,
+    paddingVertical: 13,
   },
-  shopBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  loginBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
-  supplierGroup: {
+  mutatingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    backgroundColor: C.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  mutatingText: { color: C.textSub, fontSize: 12 },
+
+  listContent: { padding: 16, gap: 12 },
+  lineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: C.card,
-    borderRadius: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    gap: 12,
+  },
+  lineImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: C.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineInfo: { flex: 1, gap: 3 },
+  lineName: { color: C.text, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  lineVariant: { color: C.textSub, fontSize: 11 },
+  linePrice: { color: C.primary, fontSize: 14, fontWeight: '700', fontFamily: 'monospace', marginTop: 2 },
+  lineActions: { alignItems: 'flex-end', gap: 8 },
+  deleteBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,68,68,0.1)',
+    borderRadius: 8,
+  },
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: C.border,
     overflow: 'hidden',
   },
-  supplierHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    backgroundColor: C.surface,
-  },
-  supplierIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: C.primaryGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  supplierName: { flex: 1, color: C.text, fontSize: 14, fontWeight: '700' },
-  supplierCount: { color: C.textTertiary, fontSize: 12 },
+  qtyBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  qtyText: { color: C.text, fontSize: 13, fontWeight: '700', minWidth: 28, textAlign: 'center' },
 
-  lineItem: {
-    flexDirection: 'row',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    gap: 10,
-    alignItems: 'flex-start',
-  },
-  productImgPlaceholder: {
-    width: 64,
-    height: 64,
-    backgroundColor: C.surface,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lineInfo: { flex: 1 },
-  lineName: { color: C.text, fontSize: 13, fontWeight: '600', marginBottom: 4, lineHeight: 18 },
-  linePrice: { color: C.textSub, fontSize: 12, marginBottom: 8 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
-  qtyBtn: {
-    width: 30,
-    height: 30,
-    backgroundColor: C.surface,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+  summary: {
+    backgroundColor: C.card,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: C.border,
+    padding: 16,
+    gap: 10,
+    marginBottom: 8,
   },
-  qtyText: {
-    color: C.text,
-    fontSize: 14,
-    fontWeight: '700',
-    minWidth: 32,
-    textAlign: 'center',
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  summaryLabel: { color: C.textSub, fontSize: 14 },
+  summaryValue: { color: C.text, fontSize: 14 },
+  totalRow: {
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    paddingTop: 10,
+    marginTop: 4,
   },
-  lineRight: { alignItems: 'flex-end', gap: 8 },
-  lineTotal: { color: C.primary, fontSize: 14, fontWeight: '700', fontFamily: 'monospace' },
-  deleteBtn: { padding: 4 },
-
-  bottomSpacer: { height: 8 },
+  totalLabel: { color: C.text, fontSize: 16, fontWeight: '700' },
+  totalValue: { color: C.primary, fontSize: 18, fontWeight: '800', fontFamily: 'monospace' },
 
   bottomBar: {
     backgroundColor: C.card,
     borderTopWidth: 1,
     borderTopColor: C.border,
-    padding: 16,
-    paddingBottom: 24,
   },
-  priceBreakdown: { gap: 6, marginBottom: 14 },
-  priceRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  priceLabel: { color: C.textSub, fontSize: 13 },
-  priceValue: { color: C.text, fontSize: 13 },
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    paddingTop: 8,
-    marginTop: 2,
-  },
-  totalLabel: { color: C.text, fontSize: 15, fontWeight: '700' },
-  totalValue: { color: C.primary, fontSize: 17, fontWeight: '800', fontFamily: 'monospace' },
-  checkoutBtn: {
-    backgroundColor: C.primary,
-    borderRadius: 14,
-    paddingVertical: 15,
+  bottomInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    padding: 16,
   },
-  checkoutBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  bottomLabel: { color: C.textTertiary, fontSize: 11, marginBottom: 2 },
+  bottomTotal: { color: C.primary, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
+  checkoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.primary,
+    borderRadius: 14,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+  },
+  checkoutBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

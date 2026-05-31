@@ -1,8 +1,8 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { EmailOtpService } from '../../services/email-otp.service';
+import { generateToken } from '../../utils/auth';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
 
@@ -120,7 +120,7 @@ export class SupplierService {
     supplier.otpExpiresAt = null;
     const saved = await this.supplierRepo.save(supplier);
     console.log('SUPPLIER EMAIL VERIFIED:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
-    return { supplier: saved, token: randomBytes(24).toString('hex') };
+    return { supplier: saved, token: generateToken({ id: String(saved.id), role: 'SUPPLIER' }, '7d') };
   }
 
   getSupplierByEmail(email: string): Promise<Supplier | null> {

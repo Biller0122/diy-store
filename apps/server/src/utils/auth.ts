@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import type { RequestContext } from '@vendure/core';
 
 export type PlatformRole = 'CUSTOMER' | 'SUPPLIER' | 'DRIVER' | 'ADMIN';
 
@@ -57,6 +58,19 @@ export function requireRole(token: string, role: PlatformRole) {
   const decoded = verifyToken(token);
   if (decoded.role !== role) throw new Error('Эрхийн түвшин тохирохгүй байна');
   return decoded;
+}
+
+export function getBearerToken(ctx: RequestContext): string | null {
+  const header = ctx.req?.headers?.authorization;
+  const value = Array.isArray(header) ? header[0] : header;
+  const match = /^Bearer\s+(.+)$/i.exec(value ?? '');
+  return match?.[1] ?? null;
+}
+
+export function requirePlatformRole(ctx: RequestContext, role: PlatformRole) {
+  const token = getBearerToken(ctx);
+  if (!token) throw new Error('Нэвтрэх шаардлагатай');
+  return requireRole(token, role);
 }
 
 export class InMemoryOtpService {

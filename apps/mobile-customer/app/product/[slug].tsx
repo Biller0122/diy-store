@@ -1,114 +1,191 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
+import { useAppStore } from '@/lib/store';
+import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY } from '@/lib/api';
 
-const MOCK_PRODUCT = {
-  name: 'Perforator Bosch GBH 2-26 DRE',
-  price: 145000,
-  supplierName: 'Зочин Буд',
-  rating: 4.8,
-  reviewCount: 124,
-  description:
-    'Bosch GBH 2-26 DRE бол мэргэжлийн зориулалтын цахилгаан перфоратор юм. 800 ватт хүчин чадалтай, SDS-plus систем, 3 горим: өрөмдөх, цохилттой өрөмдөх, цохих. Бетон, чулуу, тоосго зэрэг хатуу материал дээр ажиллахад тохиромжтой. Ergonomik бариул, хэт ачаалал хамгаалалт бүхий.',
-  stock: 'Нөөцтэй',
-  variants: ['800W / Улаан', '1000W / Хар'],
-};
+interface ProductVariant {
+  id: string;
+  name: string;
+  priceWithTax: number;
+  currencyCode: string;
+  stockLevel: string;
+  options: { name: string; code: string }[];
+}
+
+interface Product {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  featuredAsset: { preview: string } | null;
+  variants: ProductVariant[];
+  collections: { id: string; name: string }[];
+}
 
 function formatPrice(price: number) {
-  return '₮' + price.toLocaleString('mn-MN');
+  return '₮' + Math.round(price / 100).toLocaleString('mn-MN');
 }
 
 export default function ProductDetailScreen() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { customer, setCartCount } = useAppStore();
+
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState(0);
 
-  const product = MOCK_PRODUCT;
+  useEffect(() => {
+    if (!slug) return;
+    shopFetch<{ product: Product | null }>(PRODUCT_QUERY, { slug })
+      .then((data) => setProduct(data.product))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [slug]);
 
-  const handleAddToCart = () => {
-    Alert.alert(
-      'Сагсанд нэмлээ ✅',
-      `${product.name} (${quantity} ш) сагсанд нэмэгдлээ`,
-      [{ text: 'OK' }]
-    );
+  const handleAddToCart = async () => {
+    if (!product) return;
+    if (!customer) {
+      Alert.alert('Нэвтэрнэ үү', 'Сагсанд нэмэхийн тулд нэвтэрнэ үү', [
+        { text: 'Болих', style: 'cancel' },
+        { text: 'Нэвтрэх', onPress: () => router.push('/(tabs)/account' as never) },
+      ]);
+      return;
+    }
+    const variant = product.variants[selectedVariant];
+    if (!variant) return;
+    setAdding(true);
+    try {
+      await shopFetch(ADD_TO_CART_MUTATION, {
+        productVariantId: variant.id,
+        quantity,
+      });
+      const orderData = await shopFetch<{ activeOrder: { lines: { quantity: number }[] } | null }>(
+        ACTIVE_ORDER_QUERY
+      );
+      const total = orderData.activeOrder?.lines.reduce((s, l) => s + l.quantity, 0) ?? 0;
+      setCartCount(total);
+      Alert.alert('Амжилттай ✅', `${product.name} (${quantity} ш) сагсанд нэмэгдлээ`, [
+        { text: 'Сагс харах', onPress: () => router.push('/(tabs)/cart' as never) },
+        { text: 'Үргэлжлүүлэх' },
+      ]);
+    } catch (e) {
+      Alert.alert('Алдаа', e instanceof Error ? e.message : 'Сагсанд нэмэх боломжгүй');
+    } finally {
+      setAdding(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
+          <View style={styles.navHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+              <Ionicons name="chevron-back" size={22} color={C.text} />
+            </TouchableOpacity>
+            <Text style={styles.navTitle}>Дэлгэрэнгүй</Text>
+            <View style={styles.shareBtn} />
+          </View>
+        </SafeAreaView>
+        <View style={styles.loadingBox}>
+          <ActivityIndicator color={C.primary} size="large" />
+        </View>
+      </View>
+    );
+  }
+
+  if (!product) {
+    return (
+      <View style={styles.container}>
+        <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
+          <View style={styles.navHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+              <Ionicons name="chevron-back" size={22} color={C.text} />
+            </TouchableOpacity>
+            <Text style={styles.navTitle}>Бүтээгдэхүүн олдсонгүй</Text>
+            <View style={styles.shareBtn} />
+          </View>
+        </SafeAreaView>
+        <View style={styles.loadingBox}>
+          <Text style={styles.notFoundText}>Бүтээгдэхүүн олдсонгүй</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backLink}>
+            <Text style={styles.backLinkText}>Буцах</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const variant = product.variants[selectedVariant] ?? product.variants[0];
+  const price = variant?.priceWithTax ?? 0;
+  const isInStock = variant?.stockLevel !== 'OUT_OF_STOCK';
 
   return (
     <View style={styles.container}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
-        {/* Header */}
         <View style={styles.navHeader}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={22} color={C.text} />
           </TouchableOpacity>
           <Text style={styles.navTitle} numberOfLines={1}>Дэлгэрэнгүй</Text>
-          <TouchableOpacity style={styles.shareBtn}>
-            <Ionicons name="share-outline" size={20} color={C.text} />
-          </TouchableOpacity>
+          <View style={styles.shareBtn} />
         </View>
       </SafeAreaView>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Large Image */}
         <View style={styles.imagePlaceholder}>
           <Ionicons name="cube-outline" size={72} color={C.textTertiary} />
           <Text style={styles.imagePlaceholderLabel}>Зураг</Text>
         </View>
 
         <View style={styles.content}>
-          {/* Title + Price */}
           <Text style={styles.productName}>{product.name}</Text>
-          <Text style={styles.slug} numberOfLines={1}>SKU: {slug}</Text>
+          <Text style={styles.slugText}>SKU: {slug}</Text>
 
           <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatPrice(product.price * quantity)}</Text>
-            <View style={styles.stockBadge}>
-              <View style={styles.stockDot} />
-              <Text style={styles.stockText}>{product.stock}</Text>
+            <Text style={styles.price}>{formatPrice(price * quantity)}</Text>
+            <View style={[styles.stockBadge, { backgroundColor: isInStock ? 'rgba(0,212,170,0.12)' : 'rgba(255,68,68,0.12)' }]}>
+              <View style={[styles.stockDot, { backgroundColor: isInStock ? C.success : '#FF4444' }]} />
+              <Text style={[styles.stockText, { color: isInStock ? C.success : '#FF4444' }]}>
+                {isInStock ? 'Нөөцтэй' : 'Нөөц дууссан'}
+              </Text>
             </View>
           </View>
 
-          {/* Rating */}
-          <View style={styles.ratingRow}>
-            {[1, 2, 3, 4, 5].map((star) => (
-              <Ionicons
-                key={star}
-                name={star <= Math.round(product.rating) ? 'star' : 'star-outline'}
-                size={14}
-                color={C.warning}
-              />
-            ))}
-            <Text style={styles.ratingText}>{product.rating} ({product.reviewCount} сэтгэгдэл)</Text>
-          </View>
+          {product.variants.length > 1 && (
+            <>
+              <Text style={styles.sectionLabel}>Хувилбар</Text>
+              <View style={styles.variantRow}>
+                {product.variants.map((v, i) => (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[styles.variantChip, selectedVariant === i && styles.variantChipActive]}
+                    onPress={() => setSelectedVariant(i)}
+                  >
+                    <Text style={[styles.variantText, selectedVariant === i && styles.variantTextActive]}>
+                      {v.options.map((o) => o.name).join(' / ') || v.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
 
-          {/* Variants */}
-          <Text style={styles.sectionLabel}>Хувилбар</Text>
-          <View style={styles.variantRow}>
-            {product.variants.map((v, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[styles.variantChip, selectedVariant === i && styles.variantChipActive]}
-                onPress={() => setSelectedVariant(i)}
-              >
-                <Text style={[styles.variantText, selectedVariant === i && styles.variantTextActive]}>
-                  {v}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Quantity */}
           <Text style={styles.sectionLabel}>Тоо ширхэг</Text>
           <View style={styles.qtyRow}>
             <TouchableOpacity
@@ -118,52 +195,57 @@ export default function ProductDetailScreen() {
               <Ionicons name="remove" size={20} color={C.text} />
             </TouchableOpacity>
             <Text style={styles.qtyText}>{quantity}</Text>
-            <TouchableOpacity
-              style={styles.qtyBtn}
-              onPress={() => setQuantity((q) => q + 1)}
-            >
+            <TouchableOpacity style={styles.qtyBtn} onPress={() => setQuantity((q) => q + 1)}>
               <Ionicons name="add" size={20} color={C.text} />
             </TouchableOpacity>
           </View>
 
-          {/* Supplier */}
-          <Text style={styles.sectionLabel}>Нийлүүлэгч</Text>
-          <TouchableOpacity style={styles.supplierRow}>
-            <View style={styles.supplierAvatar}>
-              <Text style={styles.supplierAvatarText}>{product.supplierName.charAt(0)}</Text>
-            </View>
-            <View>
-              <Text style={styles.supplierName}>{product.supplierName}</Text>
-              <View style={styles.supplierRatingRow}>
-                <Ionicons name="star" size={11} color={C.warning} />
-                <Text style={styles.supplierRating}>{product.rating}</Text>
+          {product.collections.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>Ангилал</Text>
+              <View style={styles.tagsRow}>
+                {product.collections.map((c) => (
+                  <View key={c.id} style={styles.tag}>
+                    <Text style={styles.tagText}>{c.name}</Text>
+                  </View>
+                ))}
               </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={C.textTertiary} style={{ marginLeft: 'auto' }} />
-          </TouchableOpacity>
+            </>
+          )}
 
-          {/* Description */}
-          <Text style={styles.sectionLabel}>Бүтээгдэхүүний тухай</Text>
-          <Text style={styles.description}>{product.description}</Text>
+          {!!product.description && (
+            <>
+              <Text style={styles.sectionLabel}>Бүтээгдэхүүний тухай</Text>
+              <Text style={styles.description}>{product.description}</Text>
+            </>
+          )}
 
           <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
 
-      {/* Sticky Bottom Bar */}
       <SafeAreaView edges={['bottom']} style={styles.stickyBar}>
         <View style={styles.stickyInner}>
           <View>
             <Text style={styles.stickyLabel}>Нийт дүн</Text>
-            <Text style={styles.stickyPrice}>{formatPrice(product.price * quantity)}</Text>
+            <Text style={styles.stickyPrice}>{formatPrice(price * quantity)}</Text>
           </View>
           <TouchableOpacity
-            style={styles.addToCartBtn}
+            style={[styles.addToCartBtn, (!isInStock || adding) && styles.addToCartBtnDisabled]}
             onPress={handleAddToCart}
+            disabled={!isInStock || adding}
             activeOpacity={0.85}
           >
-            <Ionicons name="cart-outline" size={18} color="#fff" />
-            <Text style={styles.addToCartText}>Сагсанд нэмэх</Text>
+            {adding ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="cart-outline" size={18} color="#fff" />
+                <Text style={styles.addToCartText}>
+                  {isInStock ? 'Сагсанд нэмэх' : 'Нөөц дууссан'}
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -191,16 +273,12 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   navTitle: { flex: 1, color: C.text, fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  shareBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: C.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
+  shareBtn: { width: 38, height: 38 },
+
+  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  notFoundText: { color: C.textSub, fontSize: 16 },
+  backLink: { marginTop: 8 },
+  backLinkText: { color: C.primary, fontSize: 14, fontWeight: '600' },
 
   scroll: { flex: 1 },
   imagePlaceholder: {
@@ -215,24 +293,25 @@ const styles = StyleSheet.create({
 
   content: { padding: 16 },
   productName: { color: C.text, fontSize: 20, fontWeight: '800', marginBottom: 4, lineHeight: 26 },
-  slug: { color: C.textTertiary, fontSize: 11, fontFamily: 'monospace', marginBottom: 14 },
+  slugText: { color: C.textTertiary, fontSize: 11, fontFamily: 'monospace', marginBottom: 14 },
 
-  priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
   price: { color: C.primary, fontSize: 26, fontWeight: '800', fontFamily: 'monospace' },
   stockBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(0,212,170,0.12)',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  stockDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.success },
-  stockText: { color: C.success, fontSize: 12, fontWeight: '600' },
-
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 20 },
-  ratingText: { color: C.textSub, fontSize: 12, marginLeft: 4 },
+  stockDot: { width: 7, height: 7, borderRadius: 4 },
+  stockText: { fontSize: 12, fontWeight: '600' },
 
   sectionLabel: { color: C.textSub, fontSize: 12, fontWeight: '600', marginBottom: 10, marginTop: 16 },
 
@@ -252,7 +331,6 @@ const styles = StyleSheet.create({
   qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 0,
     alignSelf: 'flex-start',
     backgroundColor: C.surface,
     borderRadius: 12,
@@ -269,28 +347,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  supplierRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: C.card,
-    borderRadius: 14,
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: {
+    backgroundColor: C.surface,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: C.border,
-    padding: 12,
   },
-  supplierAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: C.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  supplierAvatarText: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  supplierName: { color: C.text, fontSize: 14, fontWeight: '700' },
-  supplierRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  supplierRating: { color: C.warning, fontSize: 12, fontWeight: '600' },
+  tagText: { color: C.textSub, fontSize: 12 },
 
   description: { color: C.textSub, fontSize: 14, lineHeight: 22 },
   bottomSpacer: { height: 120 },
@@ -316,6 +382,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 24,
     paddingVertical: 14,
+    minWidth: 160,
+    justifyContent: 'center',
   },
+  addToCartBtnDisabled: { opacity: 0.5 },
   addToCartText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

@@ -43,6 +43,7 @@ function makeSlug(value: string) {
 export default function NewProductScreen() {
   const router = useRouter();
   const supplier = useSupplierStore((s) => s.supplier);
+  const token = useSupplierStore((s) => s.token);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
@@ -101,19 +102,23 @@ export default function NewProductScreen() {
 
     setSaving(true);
     try {
-      await shopFetch(CREATE_SUPPLIER_PRODUCT_MUTATION, {
-        input: {
-          supplierId: supplier.id,
-          name: name.trim(),
-          slug,
-          description: description.trim(),
-          category: category.trim(),
-          image,
-          price: parsedPrice * 100,
-          stock: parsedStock,
-          enabled: true,
+      await shopFetch(
+        CREATE_SUPPLIER_PRODUCT_MUTATION,
+        {
+          input: {
+            supplierId: supplier.id,
+            name: name.trim(),
+            slug,
+            description: description.trim(),
+            category: category.trim(),
+            image,
+            price: parsedPrice * 100,
+            stock: parsedStock,
+            enabled: true,
+          },
         },
-      });
+        token,
+      );
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (err) {

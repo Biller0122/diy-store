@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
+import { generateToken } from '../../utils/auth';
 import { Driver, DriverStatus, VehicleType } from './driver.entity';
 
 export interface RegisterDriverInput {
@@ -66,7 +66,11 @@ export class DriverService {
 
   async loginDriverByPassword(emailInput: string, password: string) {
     const email = emailInput.trim().toLowerCase();
-    if (email !== 'starbiller@gmail.com' || password !== 'Odbayar22') {
+    const configuredEmail = process.env.DEMO_DRIVER_EMAIL?.trim().toLowerCase()
+      || (process.env.NODE_ENV !== 'production' ? 'starbiller@gmail.com' : undefined);
+    const configuredPassword = process.env.DEMO_DRIVER_PASSWORD
+      || (process.env.NODE_ENV !== 'production' ? 'Odbayar22' : undefined);
+    if (!configuredEmail || !configuredPassword || email !== configuredEmail || password !== configuredPassword) {
       throw new Error('И-мэйл эсвэл нууц үг буруу байна');
     }
 
@@ -92,7 +96,7 @@ export class DriverService {
     }
 
     const saved = await this.driverRepo.save(driver);
-    return { driver: saved, token: randomBytes(24).toString('hex') };
+    return { driver: saved, token: generateToken({ id: String(saved.id), role: 'DRIVER' }, '7d') };
   }
 
   async verifyOTP(phoneInput: string, otp: string) {
@@ -107,7 +111,7 @@ export class DriverService {
     driver.otpCode = null;
     driver.otpExpiresAt = null;
     const saved = await this.driverRepo.save(driver);
-    return { driver: saved, token: randomBytes(24).toString('hex') };
+    return { driver: saved, token: generateToken({ id: String(saved.id), role: 'DRIVER' }, '7d') };
   }
 
   async updateDriverLocation(driverId: string, lat: number, lng: number) {

@@ -2,6 +2,7 @@ import { Supplier, SupplierStatus } from '../plugins/supplier/supplier.entity';
 import { SupplierProduct } from '../plugins/supplier/supplier-product.entity';
 import { SupplierService } from '../plugins/supplier/supplier.service';
 import { createMockRepository } from './test-repo';
+import { verifyToken } from '../utils/auth';
 
 function createService() {
   const repo = createMockRepository<Supplier>();
@@ -83,6 +84,19 @@ describe('SupplierService', () => {
       const result = await supplierService.getSupplierProducts(String(supplier.id));
       expect(result.total).toBe(1);
       expect(result.items[0].name).toBe('Будгийн сойз');
+    });
+  });
+
+  describe('supplier auth token', () => {
+    test('verified OTP returns signed supplier role token', async () => {
+      const { supplierService } = createService();
+      await supplierService.registerSupplier({ ownerName: 'Батболд', email: 'supplier@example.com' });
+
+      const result = await supplierService.verifyOTP({ email: 'supplier@example.com', otp: '1234' });
+      const decoded = verifyToken(result.token);
+
+      expect(decoded.role).toBe('SUPPLIER');
+      expect(decoded.id).toBe(String(result.supplier.id));
     });
   });
 });

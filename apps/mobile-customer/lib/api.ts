@@ -1,4 +1,4 @@
-const API_URL = 'http://52.77.245.218/shop-api';
+const API_URL = 'http://192.168.0.13:3001/shop-api';
 
 export async function shopFetch<T>(
   query: string,
@@ -307,6 +307,86 @@ export const MY_ORDERS_QUERY = `
         }
       }
       totalItems
+    }
+  }
+`;
+
+export const ELIGIBLE_SHIPPING_METHODS_QUERY = `
+  query EligibleShippingMethods {
+    eligibleShippingMethods {
+      id
+      name
+      description
+      priceWithTax
+    }
+  }
+`;
+
+export const SET_SHIPPING_METHOD_MUTATION = `
+  mutation SetOrderShippingMethod($shippingMethodId: [ID!]!) {
+    setOrderShippingMethod(shippingMethodId: $shippingMethodId) {
+      ... on Order { id state }
+      ... on ErrorResult { errorCode message }
+    }
+  }
+`;
+
+export const TRANSITION_ORDER_MUTATION = `
+  mutation TransitionOrderToState($state: String!) {
+    transitionOrderToState(state: $state) {
+      ... on Order { id code state }
+      ... on OrderStateTransitionError { errorCode message transitionError }
+    }
+  }
+`;
+
+export const CREATE_DELIVERY_REQUEST_MUTATION = `
+  mutation CreateDeliveryRequest(
+    $orderId: String!
+    $customerId: String!
+    $customerName: String!
+    $customerPhone: String!
+    $dropoffAddress: String!
+    $dropoffLat: Float!
+    $dropoffLng: Float!
+    $orderTotal: Int
+    $paymentMethod: String
+  ) {
+    createDeliveryRequest(
+      orderId: $orderId
+      customerId: $customerId
+      customerName: $customerName
+      customerPhone: $customerPhone
+      dropoffAddress: $dropoffAddress
+      dropoffLat: $dropoffLat
+      dropoffLng: $dropoffLng
+      orderTotal: $orderTotal
+      paymentMethod: $paymentMethod
+    ) {
+      id
+      orderNumber
+      status
+    }
+  }
+`;
+
+export const DELIVERY_REQUEST_QUERY = `
+  query DeliveryRequest($orderId: String!) {
+    deliveryRequest(orderId: $orderId) {
+      id
+      orderId
+      orderNumber
+      status
+      driverId
+      driverLat
+      driverLng
+      dropoffAddress
+      dropoffLat
+      dropoffLng
+      estimatedDuration
+      finalFee
+      proposedFee
+      createdAt
     }
   }
 `;

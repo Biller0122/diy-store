@@ -5,12 +5,15 @@ import { Repository } from 'typeorm';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
 import { RegisterSupplierInput, SupplierProductInput, SupplierService, VerifySupplierOtpInput } from './supplier.service';
+import { requirePlatformRole } from '../../utils/auth';
 
 @Resolver()
 export class SupplierResolver {
   constructor(
     @InjectRepository(Supplier)
     private readonly supplierRepo: Repository<Supplier>,
+    @InjectRepository(SupplierProduct)
+    private readonly supplierProductRepo: Repository<SupplierProduct>,
     private readonly supplierService: SupplierService,
     private readonly connection: TransactionalConnection,
   ) {}
@@ -111,7 +114,8 @@ export class SupplierResolver {
 
   @Mutation()
   @Allow(Permission.Public)
-  async createSupplier(@Args('input') input: Partial<Supplier>) {
+  async createSupplier(@Ctx() ctx: RequestContext, @Args('input') input: Partial<Supplier>) {
+    this.requireAdmin(ctx);
     return this.supplierRepo.save(this.supplierRepo.create({
       ...input,
       slug: input.slug || input.businessName?.toLowerCase().replace(/\s+/g, '-') || `supplier-${Date.now()}`,
@@ -126,9 +130,14 @@ export class SupplierResolver {
   @Mutation()
   @Allow(Permission.Public)
   async updateSupplier(
+    @Ctx() ctx: RequestContext,
     @Args('id') id: ID,
     @Args('input') input: Partial<Supplier>,
   ) {
+    this.requireAdminOrSupplier(ctx, String(id));
+    delete (input as Partial<Supplier> & { status?: SupplierStatus }).status;
+    delete (input as Partial<Supplier> & { commissionRate?: number }).commissionRate;
+    delete (input as Partial<Supplier> & { email?: string }).email;
     await this.supplierRepo.update(String(id), input);
     return this.supplierService.getSupplierById(String(id));
   }
@@ -136,10 +145,12 @@ export class SupplierResolver {
   @Mutation()
   @Allow(Permission.Public)
   async updateSupplierStatus(
+    @Ctx() ctx: RequestContext,
     @Args('id') id: ID,
     @Args('status') status: SupplierStatus,
     @Args('reason') reason?: string,
   ) {
+    this.requireAdmin(ctx);
     const saved = await this.supplierService.updateSupplierStatus(String(id), status, reason);
     console.log('[Admin] Supplier status updated:', { id: saved.id, name: saved.ownerName, status: saved.status });
     return saved;
@@ -153,13 +164,17 @@ export class SupplierResolver {
 
   @Mutation()
   @Allow(Permission.Public)
-  async createSupplierProduct(@Args('input') input: SupplierProductInput) {
+  async createSupplierProduct(@Ctx() ctx: RequestContext, @Args('input') input: SupplierProductInput) {
+    this.requireAdminOrSupplier(ctx, String(input.supplierId));
     return this.supplierService.createSupplierProduct(input);
   }
 
   @Mutation()
   @Allow(Permission.Public)
-  async updateSupplierProduct(@Args('id') id: ID, @Args('input') input: Partial<SupplierProduct>) {
+  async updateSupplierProduct(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('input') input: Partial<SupplierProduct>) {
+    const product = await this.supplierProductRepo.findOne({ where: { id: String(id) } });
+    if (!product) throw new Error('Бараа олдсонгүй');
+    this.requireAdminOrSupplier(ctx, product.supplierId);
     return this.supplierService.updateSupplierProduct(String(id), input as Partial<SupplierProductInput>);
   }
 
@@ -180,6 +195,7 @@ export class SupplierResolver {
   @Mutation()
   @Allow(Permission.Public)
   async supplierOrderAction(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID, @Args('action') action: string) {
+    requirePlatformRole(ctx, 'SUPPLIER');
     const repo = this.connection.getRepository(ctx, Order);
     const order = await repo.findOne({
       where: { id: String(orderId) as any },
@@ -201,6 +217,18 @@ export class SupplierResolver {
     await repo.update(order.id, { state: nextState as any });
     order.state = nextState as any;
     return { success: true, message: 'Амжилттай шинэчлэгдлээ', order: this.toSupplierOrder(order) };
+  }
+
+  private requireAdmin(ctx: RequestContext) {
+    if (ctx.apiType !== 'admin' || !ctx.activeUserId) {
+      throw new Error('Админ эрх шаардлагатай');
+    }
+  }
+
+  private requireAdminOrSupplier(ctx: RequestContext, supplierId: string) {
+    if (ctx.apiType === 'admin' && ctx.activeUserId) return;
+    const principal = requirePlatformRole(ctx, 'SUPPLIER');
+    if (principal.id !== supplierId) throw new Error('Өөр нийлүүлэгчийн мэдээлэлд хандах эрхгүй');
   }
 
   private toSupplierOrder(order: Order) {

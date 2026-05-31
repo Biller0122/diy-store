@@ -44,6 +44,7 @@ function formatPrice(cents: number) {
 export default function ProductsScreen() {
   const router = useRouter();
   const supplier = useSupplierStore((s) => s.supplier);
+  const token = useSupplierStore((s) => s.token);
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,7 +84,7 @@ export default function ProductsScreen() {
     const enabled = !product.enabled;
     setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, enabled } : p)));
     try {
-      await shopFetch(UPDATE_SUPPLIER_PRODUCT_MUTATION, { id: product.id, input: { enabled } });
+      await shopFetch(UPDATE_SUPPLIER_PRODUCT_MUTATION, { id: product.id, input: { enabled } }, token);
     } catch {
       setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, enabled: product.enabled } : p)));
     }

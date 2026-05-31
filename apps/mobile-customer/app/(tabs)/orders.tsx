@@ -1,79 +1,46 @@
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/lib/store';
 import { C } from '@/lib/colors';
+import { shopFetch, MY_ORDERS_QUERY } from '@/lib/api';
 
-type OrderStatus = 'Хүлээгдэж буй' | 'Хүргэгдлээ' | 'Цуцлагдсан' | 'Хүргэлтэнд гарсан';
-
-interface MockOrder {
+interface ApiOrder {
   id: string;
   code: string;
-  date: string;
-  status: OrderStatus;
+  state: string;
   total: number;
-  items: string[];
+  createdAt: string;
+  lines: { productVariant: { product: { name: string } } }[];
 }
 
-const MOCK_ORDERS: MockOrder[] = [
-  {
-    id: '1',
-    code: 'DIY-2025-00142',
-    date: '2025-05-26',
-    status: 'Хүргэгдлээ',
-    total: 188000,
-    items: ['Perforator Bosch 800W', 'LED Гэрлийн хавтан'],
-  },
-  {
-    id: '2',
-    code: 'DIY-2025-00139',
-    date: '2025-05-24',
-    status: 'Хүлээгдэж буй',
-    total: 42000,
-    items: ['Цемент М400 50кг'],
-  },
-  {
-    id: '3',
-    code: 'DIY-2025-00128',
-    date: '2025-05-20',
-    status: 'Хүргэлтэнд гарсан',
-    total: 84000,
-    items: ['PVC Хоолой 110мм', 'Боолт M10x50'],
-  },
-  {
-    id: '4',
-    code: 'DIY-2025-00115',
-    date: '2025-05-15',
-    status: 'Цуцлагдсан',
-    total: 68000,
-    items: ['Гар дрель 12В'],
-  },
-  {
-    id: '5',
-    code: 'DIY-2025-00098',
-    date: '2025-05-10',
-    status: 'Хүргэгдлээ',
-    total: 57500,
-    items: ['Будаг цагаан 4л', 'Мод самбар 2x4'],
-  },
-];
-
-const STATUS_STYLES: Record<OrderStatus, { bg: string; color: string }> = {
-  'Хүлээгдэж буй': { bg: 'rgba(255,181,71,0.15)', color: '#FFB547' },
-  'Хүргэгдлээ': { bg: 'rgba(0,212,170,0.15)', color: '#00D4AA' },
-  'Цуцлагдсан': { bg: 'rgba(255,68,68,0.15)', color: '#FF4444' },
-  'Хүргэлтэнд гарсан': { bg: 'rgba(100,130,255,0.15)', color: '#6482FF' },
+const STATE_MAP: Record<string, { label: string; bg: string; color: string }> = {
+  AddingItems: { label: 'Сагсанд', bg: 'rgba(136,136,170,0.15)', color: '#8888AA' },
+  ArrangingPayment: { label: 'Төлбөр хийх', bg: 'rgba(255,181,71,0.15)', color: '#FFB547' },
+  PaymentAuthorized: { label: 'Хүлээгдэж буй', bg: 'rgba(255,181,71,0.15)', color: '#FFB547' },
+  PaymentSettled: { label: 'Баталгаажсан', bg: 'rgba(100,130,255,0.15)', color: '#6482FF' },
+  Shipped: { label: 'Хүргэлтэнд гарсан', bg: 'rgba(100,130,255,0.15)', color: '#6482FF' },
+  Delivered: { label: 'Хүргэгдлээ', bg: 'rgba(0,212,170,0.15)', color: '#00D4AA' },
+  Cancelled: { label: 'Цуцлагдсан', bg: 'rgba(255,68,68,0.15)', color: '#FF4444' },
+  Modifying: { label: 'Өөрчлөгдөж байна', bg: 'rgba(255,181,71,0.15)', color: '#FFB547' },
 };
 
+function getStateInfo(state: string) {
+  return STATE_MAP[state] ?? { label: state, bg: 'rgba(136,136,170,0.15)', color: '#8888AA' };
+}
+
 function formatPrice(price: number) {
-  return '₮' + price.toLocaleString('mn-MN');
+  return '₮' + Math.round(price / 100).toLocaleString('mn-MN');
 }
 
 function formatDate(dateStr: string) {
@@ -81,27 +48,32 @@ function formatDate(dateStr: string) {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function OrderCard({ order, onTrack }: { order: MockOrder; onTrack: () => void }) {
-  const statusStyle = STATUS_STYLES[order.status];
+function OrderCard({ order, onTrack }: { order: ApiOrder; onTrack: () => void }) {
+  const info = getStateInfo(order.state);
+  const items = order.lines.map((l) => l.productVariant.product.name);
+
   return (
     <View style={styles.orderCard}>
       <View style={styles.orderHeader}>
         <Text style={styles.orderCode}>{order.code}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-          <Text style={[styles.statusText, { color: statusStyle.color }]}>{order.status}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: info.bg }]}>
+          <Text style={[styles.statusText, { color: info.color }]}>{info.label}</Text>
         </View>
       </View>
-      <Text style={styles.orderDate}>{formatDate(order.date)}</Text>
+      <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
       <View style={styles.itemsPreview}>
-        {order.items.map((item, i) => (
+        {items.slice(0, 3).map((name, i) => (
           <Text key={i} style={styles.itemName} numberOfLines={1}>
-            • {item}
+            • {name}
           </Text>
         ))}
+        {items.length > 3 && (
+          <Text style={styles.moreItems}>+ {items.length - 3} бараа</Text>
+        )}
       </View>
       <View style={styles.orderFooter}>
         <Text style={styles.orderTotal}>{formatPrice(order.total)}</Text>
-        {order.status === 'Хүргэлтэнд гарсан' && (
+        {(order.state === 'Shipped' || order.state === 'PaymentSettled') && (
           <TouchableOpacity style={styles.trackBtn} onPress={onTrack}>
             <Ionicons name="location-outline" size={14} color={C.primary} />
             <Text style={styles.trackBtnText}>Мөрдөх</Text>
@@ -115,6 +87,31 @@ function OrderCard({ order, onTrack }: { order: MockOrder; onTrack: () => void }
 export default function OrdersScreen() {
   const router = useRouter();
   const customer = useAppStore((s) => s.customer);
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      const data = await shopFetch<{ orders: { items: ApiOrder[] } }>(MY_ORDERS_QUERY);
+      setOrders(data.orders?.items ?? []);
+    } catch {
+      // keep previous state
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (customer) fetchOrders();
+    else setLoading(false);
+  }, [customer, fetchOrders]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchOrders();
+  };
 
   if (!customer) {
     return (
@@ -138,24 +135,59 @@ export default function OrdersScreen() {
     );
   }
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Захиалгууд</Text>
+        </View>
+        <View style={styles.loginPrompt}>
+          <ActivityIndicator color={C.primary} size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Захиалгууд</Text>
-        <Text style={styles.headerCount}>{MOCK_ORDERS.length} захиалга</Text>
+        <Text style={styles.headerCount}>{orders.length} захиалга</Text>
       </View>
-      <FlatList
-        data={MOCK_ORDERS}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <OrderCard
-            order={item}
-            onTrack={() => router.push(`/track/${item.id}` as never)}
-          />
-        )}
-      />
+      {orders.length === 0 ? (
+        <View style={styles.loginPrompt}>
+          <Text style={styles.loginIcon}>📦</Text>
+          <Text style={styles.loginTitle}>Захиалга байхгүй</Text>
+          <Text style={styles.loginSubtitle}>Та одоогоор захиалга хийгээгүй байна</Text>
+          <TouchableOpacity
+            style={styles.loginBtn}
+            onPress={() => router.push('/(tabs)/' as never)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.loginBtnText}>Дэлгүүр үзэх</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={orders}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={C.primary}
+            />
+          }
+          renderItem={({ item }) => (
+            <OrderCard
+              order={item}
+              onTrack={() => router.push(`/track/${item.id}` as never)}
+            />
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -202,15 +234,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   orderCode: { color: C.text, fontSize: 14, fontWeight: '700', fontFamily: 'monospace' },
-  statusBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
+  statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
   statusText: { fontSize: 11, fontWeight: '700' },
   orderDate: { color: C.textTertiary, fontSize: 12, marginBottom: 10 },
   itemsPreview: { gap: 2, marginBottom: 12 },
   itemName: { color: C.textSub, fontSize: 12 },
+  moreItems: { color: C.textTertiary, fontSize: 11, fontStyle: 'italic' },
   orderFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',

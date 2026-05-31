@@ -49,7 +49,7 @@ const VEHICLE_LABEL: Record<string, string> = {
   TRUCK: 'Ачааны машин',
 };
 
-const SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
+const ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? 'http://localhost:3001/admin-api';
 
 const DRIVERS_GQL = `
   query AdminDrivers($status: String) {
@@ -87,7 +87,7 @@ const UPDATE_DRIVER_STATUS_GQL = `
 `;
 
 async function gqlFetch<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(SHOP_API, {
+  const res = await fetch(ADMIN_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

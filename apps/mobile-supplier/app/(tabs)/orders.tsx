@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SupplierOrder, TabFilter } from '@/lib/types';
 import { SUPPLIER_ORDERS_QUERY, SUPPLIER_ORDER_ACTION_MUTATION, shopFetch } from '@/lib/api';
+import { useSupplierStore } from '@/lib/store';
 
 const C = {
   bg: '#08080E',
@@ -227,6 +228,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function OrdersScreen() {
+  const token = useSupplierStore((s) => s.token);
   const [activeTab, setActiveTab] = useState<TabFilter>('pending');
   const [liveOrders, setLiveOrders] = useState<SupplierOrder[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -282,7 +284,7 @@ export default function OrdersScreen() {
     try {
       const data = await shopFetch<{
         supplierOrderAction: { success: boolean; message: string; order?: SupplierOrder | null };
-      }>(SUPPLIER_ORDER_ACTION_MUTATION, { orderId: order.id, action });
+      }>(SUPPLIER_ORDER_ACTION_MUTATION, { orderId: order.id, action }, token);
       if (!data.supplierOrderAction.success || !data.supplierOrderAction.order) {
         Alert.alert('Алдаа', data.supplierOrderAction.message);
         return;
