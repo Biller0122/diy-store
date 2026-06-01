@@ -76,7 +76,7 @@ export default function DriverLoginPage() {
         ) : (
           <div className="space-y-5">
             <OTPInput onComplete={completeOtp} error={error ?? undefined} />
-            {devOtp && <p className="text-center text-xs text-foreground-muted">Туршилтын OTP: {devOtp}</p>}
+            {devOtp && <p data-testid="dev-otp" className="text-center text-xs text-foreground-muted">Туршилтын OTP: {devOtp}</p>}
             <button
               onClick={() => setStep('phone')}
               className="w-full rounded-2xl border border-white/10 py-3 text-sm font-bold text-foreground-muted hover:text-foreground"
