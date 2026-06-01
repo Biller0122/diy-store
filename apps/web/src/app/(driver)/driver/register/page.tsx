@@ -30,7 +30,7 @@ export default function DriverRegisterPage() {
     clearError();
     const nextErrors: typeof fieldErrors = {};
     if (ownerName.trim().length < 2) nextErrors.ownerName = 'Овог нэрээ 2-оос дээш тэмдэгтээр оруулна уу.';
-    if (!/^[6789]\d{7}$/.test(phone.replace(/\D/g, ''))) nextErrors.phone = 'Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой.';
+    if (!/^\d{8}$/.test(phone.replace(/\D/g, ''))) nextErrors.phone = 'Утасны дугаар 8 оронтой байх ёстой.';
     if (vehiclePlate.trim().length < 3) nextErrors.vehiclePlate = 'Улсын дугаараа оруулна уу.';
     if (vehicleModel.trim().length < 2) nextErrors.vehicleModel = 'Тээврийн хэрэгслийн загвараа оруулна уу.';
     setFieldErrors(nextErrors);
@@ -191,7 +191,7 @@ export default function DriverRegisterPage() {
             ) : (
               <div className="space-y-5">
                 <OTPInput onComplete={completeOtp} error={error ?? undefined} />
-                {devOtp && <p className="text-center text-xs text-foreground-muted">Dev код: {devOtp}</p>}
+                {devOtp && <p data-testid="dev-otp" className="text-center text-xs text-foreground-muted">Dev код: {devOtp}</p>}
                 <button
                   onClick={() => setStep('form')}
                   className="w-full rounded-2xl border border-white/10 py-3 text-sm font-bold text-foreground-muted hover:text-foreground"

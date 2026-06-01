@@ -126,6 +126,7 @@ export function Header() {
               <ShoppingCart size={16} className="text-foreground" />
               {cartCount > 0 && (
                 <m.span
+                  data-testid="cart-badge"
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-brand text-white text-[9px] font-bold flex items-center justify-center"

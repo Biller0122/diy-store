@@ -81,7 +81,7 @@ function SuccessContent() {
           </p>
           <p className="text-foreground-muted text-sm">
             Захиалгын дугаар:{' '}
-            <span className="font-mono font-bold text-foreground bg-surface px-2 py-0.5 rounded-lg border border-[var(--glass-border)]">
+            <span data-testid="order-number" className="font-mono font-bold text-foreground bg-surface px-2 py-0.5 rounded-lg border border-[var(--glass-border)]">
               {orderNo}
             </span>
           </p>

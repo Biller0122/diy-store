@@ -2,6 +2,7 @@ import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import gql from 'graphql-tag';
 import { DeliveryRequest } from './delivery-request.entity';
+import { OrderNumberCounter } from './order-number-counter.entity';
 import { DeliveryResolver } from './delivery.resolver';
 
 const DELIVERY_SCHEMA_EXTENSION = `
@@ -30,6 +31,8 @@ const DELIVERY_SCHEMA_EXTENSION = `
   type DeliveryOrderItem {
     supplierId: String!
     supplierName: String!
+    productId: String
+    variantId: String
     name: String!
     sku: String
     qty: Int!
@@ -39,6 +42,8 @@ const DELIVERY_SCHEMA_EXTENSION = `
   input DeliveryOrderItemInput {
     supplierId: String!
     supplierName: String!
+    productId: String
+    variantId: String
     name: String!
     sku: String
     qty: Int!
@@ -76,7 +81,9 @@ const DELIVERY_SCHEMA_EXTENSION = `
   extend type Query {
     deliveryRequest(orderId: String!): DeliveryRequest
     activeDeliveriesForDriver(driverId: String!): [DeliveryRequest!]!
+    deliveryHistoryForDriver(driverId: String!, limit: Int): [DeliveryRequest!]!
     availableDeliveries: [DeliveryRequest!]!
+    getActiveDeliveries: [DeliveryRequest!]!
   }
 
   extend type Mutation {
@@ -101,9 +108,9 @@ const DELIVERY_SCHEMA_EXTENSION = `
 `;
 
 @VendurePlugin({
-  imports: [PluginCommonModule, TypeOrmModule.forFeature([DeliveryRequest])],
+  imports: [PluginCommonModule, TypeOrmModule.forFeature([DeliveryRequest, OrderNumberCounter])],
   providers: [DeliveryResolver],
-  entities: [DeliveryRequest],
+  entities: [DeliveryRequest, OrderNumberCounter],
   shopApiExtensions: {
     schema: gql(DELIVERY_SCHEMA_EXTENSION),
     resolvers: [DeliveryResolver],

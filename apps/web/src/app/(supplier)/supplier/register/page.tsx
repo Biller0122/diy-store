@@ -69,8 +69,8 @@ export default function SupplierRegisterPage() {
       setError('Байгууллагын нэр 2-оос дээш тэмдэгттэй байх ёстой');
       return;
     }
-    if (!/^[6789]\d{7}$/.test(phone.replace(/\D/g, ''))) {
-      setError('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
+    if (!/^\d{8}$/.test(phone.replace(/\D/g, ''))) {
+      setError('Утасны дугаар 8 оронтой байх ёстой');
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
@@ -79,7 +79,7 @@ export default function SupplierRegisterPage() {
     }
     setLoading(true);
     try {
-      const data = await vendureShopFetch<{ registerSupplier: { success: boolean; message: string } }>(
+      const data = await vendureShopFetch<{ registerSupplier: { success: boolean; message: string; otp?: string | null } }>(
         REGISTER_GQL,
         {
           input: {
@@ -97,7 +97,7 @@ export default function SupplierRegisterPage() {
         setError(data.registerSupplier.message || 'Алдаа гарлаа');
         return;
       }
-      setDevOtp('');
+      setDevOtp(data.registerSupplier.otp ?? '');
       setStep('otp');
       setCountdown(60);
     } catch (err) {
@@ -329,7 +329,7 @@ export default function SupplierRegisterPage() {
               {countdown > 0 ? `Дахин код авах (${countdown})` : 'Дахин код авах'}
             </button>
             {devOtp && (
-              <p className="text-center text-[10px] text-foreground-muted">dev OTP: {devOtp}</p>
+              <p data-testid="dev-otp" className="text-center text-[10px] text-foreground-muted">dev OTP: {devOtp}</p>
             )}
           </div>
         )}

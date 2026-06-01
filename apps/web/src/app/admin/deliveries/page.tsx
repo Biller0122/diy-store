@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Navigation, Package, Phone, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { vendureAdminFetch } from '@/lib/vendure';
 
 interface LiveDriver {
   id: string;
@@ -16,14 +17,104 @@ interface LiveDriver {
   eta?: number;
 }
 
-const INITIAL_DRIVERS: LiveDriver[] = [
-  { id: 'd1', name: 'Анхбаяр Дамдин', phone: '8800-1122', vehicleType: 'MOTORCYCLE', vehiclePlate: '2345-УБА', status: 'DELIVERING', lat: 47.920, lng: 106.985, currentOrder: 'DIY-2026-01001', eta: 8 },
-  { id: 'd2', name: 'Болд Ганбаяр',   phone: '9911-2233', vehicleType: 'CAR',        vehiclePlate: '3456-УВА', status: 'DELIVERING', lat: 47.908, lng: 106.920, currentOrder: 'DIY-2026-01002', eta: 15 },
-  { id: 'd3', name: 'Сарнай Батсүх',  phone: '8822-3344', vehicleType: 'MOTORCYCLE', vehiclePlate: '1234-УБА', status: 'ONLINE',     lat: 47.935, lng: 106.910 },
-  { id: 'd4', name: 'Дорж Мөнхбат',   phone: '9933-4455', vehicleType: 'CAR',        vehiclePlate: '5678-УВА', status: 'OFFLINE',    lat: 47.880, lng: 106.870 },
-];
+interface DbDriver {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  vehicleType: string;
+  vehiclePlate: string | null;
+  isOnline: boolean;
+  currentLat: number | null;
+  currentLng: number | null;
+}
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:3002';
+interface ActiveDelivery {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  dropoffAddress: string;
+  orderItems: { name: string; qty: number; price: number }[];
+  driverId: string | null;
+  driverLat: number | null;
+  driverLng: number | null;
+  distance: number;
+  estimatedDuration: number;
+  proposedFee: number;
+  status: string;
+}
+
+const GET_ACTIVE_DELIVERIES_GQL = `
+  query {
+    getActiveDeliveries {
+      id
+      orderId
+      orderNumber
+      customerName
+      customerPhone
+      dropoffAddress
+      orderItems { name qty price }
+      driverId
+      driverLat
+      driverLng
+      distance
+      estimatedDuration
+      proposedFee
+      status
+    }
+  }
+`;
+
+const GET_ACTIVE_DRIVERS_GQL = `
+  query {
+    drivers(status: "ACTIVE") {
+      id
+      firstName
+      lastName
+      phone
+      vehicleType
+      vehiclePlate
+      isOnline
+      currentLat
+      currentLng
+    }
+  }
+`;
+
+const CONFIGURED_SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL;
+
+function getSocketUrl() {
+  if (typeof window === 'undefined') return CONFIGURED_SOCKET_URL || 'http://localhost:3002';
+  const { protocol, hostname, port, origin } = window.location;
+  if ((hostname === 'localhost' || hostname === '127.0.0.1') && ['18080', '18081', '18082', '18083'].includes(port)) {
+    return `${protocol}//${hostname}:13002`;
+  }
+  if (CONFIGURED_SOCKET_URL && !/^https?:\/\/localhost(?::3002)?\/?$/i.test(CONFIGURED_SOCKET_URL)) {
+    return CONFIGURED_SOCKET_URL;
+  }
+  return origin;
+}
+
+function buildDriverList(dbDrivers: DbDriver[], deliveries: ActiveDelivery[]): LiveDriver[] {
+  return dbDrivers.map((d) => {
+    const activeDelivery = deliveries.find((del) => del.driverId === String(d.id));
+    const status: LiveDriver['status'] = activeDelivery ? 'DELIVERING' : d.isOnline ? 'ONLINE' : 'OFFLINE';
+    return {
+      id: String(d.id),
+      name: `${d.firstName} ${d.lastName}`.trim(),
+      phone: d.phone,
+      vehicleType: d.vehicleType,
+      vehiclePlate: d.vehiclePlate ?? '',
+      status,
+      lat: activeDelivery?.driverLat ?? d.currentLat ?? 47.9185,
+      lng: activeDelivery?.driverLng ?? d.currentLng ?? 106.9257,
+      currentOrder: activeDelivery?.orderNumber,
+      eta: activeDelivery ? Math.round(activeDelivery.estimatedDuration * 0.6) : undefined,
+    };
+  });
+}
 
 function DriverMap({ drivers }: { drivers: LiveDriver[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -68,7 +159,6 @@ function DriverMap({ drivers }: { drivers: LiveDriver[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update markers when driver positions change
   useEffect(() => {
     const L = markersRef.current;
     drivers.forEach((d) => {
@@ -98,16 +188,37 @@ const STATUS_LABEL: Record<LiveDriver['status'], string> = {
 };
 
 export default function AdminDeliveriesPage() {
-  const [drivers, setDrivers] = useState<LiveDriver[]>(INITIAL_DRIVERS);
+  const [drivers, setDrivers] = useState<LiveDriver[]>([]);
+  const [deliveries, setDeliveries] = useState<ActiveDelivery[]>([]);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [socketConnected, setSocketConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Connect to WebSocket for live driver positions
+  async function loadData() {
+    try {
+      const [deliveriesResult, driversResult] = await Promise.all([
+        vendureAdminFetch<{ getActiveDeliveries: ActiveDelivery[] }>(GET_ACTIVE_DELIVERIES_GQL),
+        vendureAdminFetch<{ drivers: DbDriver[] }>(GET_ACTIVE_DRIVERS_GQL),
+      ]);
+      setDeliveries(deliveriesResult.getActiveDeliveries);
+      setDrivers(buildDriverList(driversResult.drivers, deliveriesResult.getActiveDeliveries));
+      setLastRefresh(new Date());
+    } catch {
+      // keep previous state on error
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
   useEffect(() => {
     let socket: import('socket.io-client').Socket | null = null;
 
     import('socket.io-client').then(({ io }) => {
-      socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+      socket = io(getSocketUrl(), { transports: ['websocket', 'polling'] });
 
       socket.on('connect', () => setSocketConnected(true));
       socket.on('disconnect', () => setSocketConnected(false));
@@ -126,7 +237,7 @@ export default function AdminDeliveriesPage() {
       socket.on('driver:online', (payload: { driverId: string }) => {
         setDrivers((prev) =>
           prev.map((d) =>
-            d.id === payload.driverId ? { ...d, status: 'ONLINE' } : d,
+            d.id === payload.driverId ? { ...d, status: d.currentOrder ? 'DELIVERING' : 'ONLINE' } : d,
           ),
         );
       });
@@ -138,11 +249,16 @@ export default function AdminDeliveriesPage() {
           ),
         );
       });
+
+      socket.on('order:status', () => {
+        void loadData();
+      });
     });
 
     return () => {
       socket?.disconnect();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const delivering = drivers.filter((d) => d.status === 'DELIVERING').length;
@@ -151,7 +267,6 @@ export default function AdminDeliveriesPage() {
 
   return (
     <div className="flex flex-col gap-5 h-full">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-foreground">Шууд хүргэлтийн газрын зураг</h1>
@@ -164,18 +279,18 @@ export default function AdminDeliveriesPage() {
             socketConnected ? 'bg-success/10 text-success' : 'bg-foreground-muted/10 text-foreground-muted'
           }`}>
             {socketConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
-            {socketConnected ? 'Шууд холболт' : 'Туршилтын өгөгдөл'}
+            {socketConnected ? 'Шууд холболт' : 'Офлайн'}
           </div>
           <button
-            onClick={() => { setDrivers(INITIAL_DRIVERS); setLastRefresh(new Date()); }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-[var(--glass-border)] text-sm text-foreground-muted hover:text-foreground transition-colors"
+            onClick={() => { setLoading(true); void loadData(); }}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-[var(--glass-border)] text-sm text-foreground-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
-            <RefreshCw size={14} /> Шинэчлэх
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Шинэчлэх
           </button>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Хүргэж байна', value: delivering, color: 'text-brand' },
@@ -189,7 +304,6 @@ export default function AdminDeliveriesPage() {
         ))}
       </div>
 
-      {/* Map + list */}
       <div className="flex-1 grid lg:grid-cols-[1fr_300px] gap-4 min-h-0">
         <div className="bg-card rounded-2xl border border-[var(--glass-border)] overflow-hidden min-h-[400px]">
           <DriverMap drivers={drivers} />
@@ -200,6 +314,12 @@ export default function AdminDeliveriesPage() {
             <p className="text-sm font-semibold text-foreground">Жолоочид ({drivers.length})</p>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-[var(--glass-border)]">
+            {loading && drivers.length === 0 && (
+              <div className="p-4 text-center text-xs text-foreground-muted">Уншиж байна...</div>
+            )}
+            {!loading && drivers.length === 0 && (
+              <div className="p-4 text-center text-xs text-foreground-muted">Идэвхтэй жолооч байхгүй</div>
+            )}
             {drivers.map((d) => (
               <div key={d.id} className="p-3 hover:bg-surface/50">
                 <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -228,6 +348,31 @@ export default function AdminDeliveriesPage() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--glass-border)] bg-card">
+        <div className="flex items-center justify-between border-b border-[var(--glass-border)] px-4 py-3">
+          <p className="text-sm font-semibold text-foreground">Идэвхтэй хүргэлтүүд ({deliveries.length})</p>
+          <span className="text-xs text-foreground-muted">DB-с шууд татсан</span>
+        </div>
+        <div className="divide-y divide-[var(--glass-border)]">
+          {deliveries.length === 0 ? (
+            <div className="p-4 text-center text-xs text-foreground-muted">Идэвхтэй хүргэлт алга</div>
+          ) : deliveries.map((delivery) => (
+            <div key={delivery.id} className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_1fr_1.4fr_auto] md:items-center">
+              <div>
+                <p className="font-mono font-bold text-brand">{delivery.orderNumber || delivery.orderId}</p>
+                <p className="text-xs text-foreground-muted">{delivery.customerName || 'Хэрэглэгч'} · {delivery.customerPhone}</p>
+              </div>
+              <p className="truncate text-xs text-foreground-muted">{delivery.orderItems.map((item) => `${item.name} × ${item.qty}`).join(', ') || '-'}</p>
+              <p className="truncate text-xs text-foreground-muted">{delivery.dropoffAddress}</p>
+              <div className="text-right">
+                <p className="text-xs font-bold text-foreground">{delivery.status}</p>
+                <p className="text-xs text-foreground-muted">{delivery.distance.toFixed(1)} км · ₮{Math.round(delivery.proposedFee / 100).toLocaleString('mn-MN')}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

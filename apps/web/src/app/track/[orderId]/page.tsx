@@ -265,7 +265,7 @@ function StatusPanel({ orderId, data, sheetOpen, onToggleSheet }: {
               {vehicleEmoji}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm text-foreground">{driver.name}</p>
+              <p data-testid="driver-name" className="font-semibold text-sm text-foreground">{driver.name}</p>
               <p className="text-xs text-foreground-muted">{driver.vehiclePlate}</p>
               <div className="flex items-center gap-1 mt-0.5">
                 <Star size={11} className="text-amber fill-amber" />

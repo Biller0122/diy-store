@@ -3,7 +3,166 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, Navigation, Phone } from 'lucide-react';
-import { useDriverStore } from '@/lib/driver-store';
+import { getDriverAuthToken, useDriverStore } from '@/lib/driver-store';
+
+const SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
+
+const REFRESH_DRIVER_TOKEN_GQL = `
+  mutation RefreshDriverToken($id: ID!, $phone: String!) {
+    refreshDriverToken(id: $id, phone: $phone) {
+      success
+      message
+      driverId
+      token
+    }
+  }
+`;
+
+const UPDATE_DELIVERY_STATUS_GQL = `
+  mutation UpdateDeliveryStatus($deliveryId: ID!, $status: String!) {
+    updateDeliveryStatus(deliveryId: $deliveryId, status: $status) {
+      id
+      status
+    }
+  }
+`;
+
+const ACTIVE_DELIVERIES_GQL = `
+  query ActiveDeliveriesForDriver($driverId: String!) {
+    activeDeliveriesForDriver(driverId: $driverId) {
+      id
+      orderId
+      orderNumber
+      customerName
+      customerPhone
+      dropoffAddress
+      dropoffLat
+      dropoffLng
+      pickupStops {
+        supplierId
+        supplierName
+        address
+        phone
+        lat
+        lng
+        status
+      }
+      orderItems {
+        supplierId
+        name
+        qty
+      }
+      distance
+      estimatedDuration
+      proposedFee
+      status
+    }
+  }
+`;
+
+async function refreshDriverToken(driverId: string, phone: string): Promise<string> {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ query: REFRESH_DRIVER_TOKEN_GQL, variables: { id: driverId, phone } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as {
+    data?: { refreshDriverToken: { success: boolean; message: string; token?: string | null } };
+    errors?: Array<{ message: string }>;
+  };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+  const result = json.data?.refreshDriverToken;
+  if (!result?.success || !result.token) throw new Error(result?.message ?? 'Дахин нэвтрэх шаардлагатай');
+  return result.token;
+}
+
+async function updateDeliveryStatus(deliveryId: string, status: string, token: string | null) {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({ query: UPDATE_DELIVERY_STATUS_GQL, variables: { deliveryId, status } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as { errors?: Array<{ message: string }> };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+}
+
+type ActiveDeliveryResponse = {
+  id: string;
+  orderId: string;
+  orderNumber?: string;
+  customerName: string;
+  customerPhone: string;
+  dropoffAddress: string;
+  dropoffLat: number;
+  dropoffLng: number;
+  pickupStops: Array<{
+    supplierId: string;
+    supplierName: string;
+    address: string;
+    phone?: string | null;
+    lat: number;
+    lng: number;
+    status: 'PENDING' | 'ARRIVED' | 'PICKED_UP';
+  }>;
+  orderItems: Array<{ supplierId: string; name: string; qty: number }>;
+  distance: number;
+  estimatedDuration: number;
+  proposedFee: number;
+  status: string;
+};
+
+async function fetchActiveDelivery(driverId: string, token: string | null) {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({ query: ACTIVE_DELIVERIES_GQL, variables: { driverId } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as {
+    data?: { activeDeliveriesForDriver: ActiveDeliveryResponse[] };
+    errors?: Array<{ message: string }>;
+  };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+  const delivery = json.data?.activeDeliveriesForDriver?.[0];
+  if (!delivery) return null;
+  return {
+    id: delivery.id,
+    orderId: delivery.orderId,
+    orderNumber: delivery.orderNumber,
+    customerName: delivery.customerName || 'Хэрэглэгч',
+    customerPhone: delivery.customerPhone || '',
+    dropoffAddress: delivery.dropoffAddress,
+    dropoffLat: delivery.dropoffLat,
+    dropoffLng: delivery.dropoffLng,
+    pickupStops: delivery.pickupStops.map((stop) => ({
+      supplierId: stop.supplierId,
+      supplierName: stop.supplierName,
+      address: stop.address,
+      phone: stop.phone ?? '',
+      lat: stop.lat,
+      lng: stop.lng,
+      status: stop.status,
+      items: delivery.orderItems
+        .filter((item) => item.supplierId === stop.supplierId)
+        .map((item) => ({ name: item.name, qty: item.qty })),
+    })),
+    distance: delivery.distance,
+    estimatedDuration: delivery.estimatedDuration,
+    fee: delivery.proposedFee,
+    status: delivery.status,
+  };
+}
 
 function DeliveryMap({
   driverLat,
@@ -94,10 +253,12 @@ function DeliveryMap({
 }
 
 export default function ActiveDeliveryPage() {
-  const { activeDelivery, setActiveDelivery } = useDriverStore();
+  const { activeDelivery, authToken, driver, setActiveDelivery, setAuthToken } = useDriverStore();
   const delivery = activeDelivery;
   const [driverPos, setDriverPos] = useState({ lat: 47.932, lng: 106.905 });
   const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -108,6 +269,31 @@ export default function ActiveDeliveryPage() {
     }, 3000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!driver) return;
+    const driverId = driver.id;
+    let mounted = true;
+    async function loadCurrentDelivery() {
+      const token = await getToken();
+      try {
+        const current = await fetchActiveDelivery(driverId, token);
+        if (!mounted) return;
+        if (current) {
+          setActiveDelivery(current);
+          setError('');
+        } else if (activeDelivery) {
+          setActiveDelivery(null);
+          setError('Энэ хүргэлт DB дээр олдсонгүй. Самбар руу буцаад шинэ захиалга авна уу.');
+        }
+      } catch {
+        // Keep local delivery if the network briefly fails.
+      }
+    }
+    void loadCurrentDelivery();
+    return () => { mounted = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driver?.id]);
 
   if (!delivery) {
     return (
@@ -139,12 +325,46 @@ export default function ActiveDeliveryPage() {
   ];
   const buttonLabels = ['Дэлгүүрт ирлээ', 'Бараа авлаа', 'Бараа авлаа', 'Хүргэж байна', 'Хүргэлт дууслаа'];
 
-  function nextStep() {
+  async function getToken(): Promise<string | null> {
+    let token = authToken || getDriverAuthToken();
+    if (!token && driver) {
+      try {
+        token = await refreshDriverToken(driver.id, driver.phone);
+        setAuthToken(token);
+      } catch {
+        // proceed without token — server will return auth error
+      }
+    }
+    return token;
+  }
+
+  async function nextStep() {
+    if (!delivery || saving) return;
+    setSaving(true);
+    setError('');
+    const token = await getToken();
     if (step >= buttonLabels.length - 1) {
-      setActiveDelivery(null);
+      try {
+        await updateDeliveryStatus(delivery.id, 'COMPLETED', token);
+        setActiveDelivery(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Хүргэлт дуусгахад алдаа гарлаа');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    try {
+      if (step === 0) {
+        await updateDeliveryStatus(delivery.id, 'IN_PROGRESS', token);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Хүргэлтийн төлөв шинэчлэхэд алдаа гарлаа');
+      setSaving(false);
       return;
     }
     setStep((current) => current + 1);
+    setSaving(false);
   }
 
   return (
@@ -217,12 +437,14 @@ export default function ActiveDeliveryPage() {
           </div>
 
           <div className="flex gap-2">
+            {error && <p className="absolute -top-8 left-4 right-4 text-center text-xs font-semibold text-error">{error}</p>}
             <button
-              onClick={nextStep}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-brand py-4 text-sm font-black text-white shadow-lg shadow-brand/20"
+              onClick={() => void nextStep()}
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-brand py-4 text-sm font-black text-white shadow-lg shadow-brand/20 disabled:opacity-60"
             >
               {step >= buttonLabels.length - 1 ? <CheckCircle2 size={17} /> : <Navigation size={17} />}
-              {buttonLabels[step] ?? 'Дараагийн алхам'}
+              {saving ? 'Хадгалж байна...' : buttonLabels[step] ?? 'Дараагийн алхам'}
             </button>
             <Link href="/driver/dashboard" className="rounded-2xl border border-white/10 px-4 py-4 text-sm font-bold text-foreground-muted">
               Буцах

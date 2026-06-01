@@ -24,6 +24,12 @@ export interface ProductCardData {
   badge?: 'ШИНЭ' | 'ХЯМДРАЛ' | 'ТОП' | 'ДУУССАН';
   inStock?: boolean;
   sku?: string;
+  supplierId?: string;
+  supplierName?: string;
+  supplierSlug?: string;
+  supplierDistrict?: string;
+  supplierLat?: number;
+  supplierLng?: number;
 }
 
 interface ProductCardProps {
@@ -78,6 +84,12 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       mode: 'delivery',
       storeId: null,
       sku: product.sku ?? '',
+      supplierId: product.supplierId,
+      supplierName: product.supplierName,
+      supplierSlug: product.supplierSlug,
+      supplierDistrict: product.supplierDistrict,
+      supplierLat: product.supplierLat,
+      supplierLng: product.supplierLng,
     });
     trackAddToCart({ id: product.id, variantId: product.variantId, name: product.name, price: product.price, qty: 1 });
     addToast({ type: 'success', title: 'Сагсанд нэмлээ', message: product.name });
@@ -115,6 +127,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   return (
     <m.div
       ref={cardRef}
+      data-testid="product-card"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: index * 0.06, ease: 'easeOut' }}

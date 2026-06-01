@@ -383,7 +383,7 @@ export default function CartPage() {
               {/* Items */}
               <div className="divide-y divide-[var(--glass-border)]">
                 {group.items.map((item) => (
-                  <div key={item.id} className="flex gap-3 p-4">
+                  <div key={item.id} data-testid="cart-item" className="flex gap-3 p-4">
                     <Link href={`/product/${item.slug}`} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-surface">
                       {item.image ? (
                         <Image src={`${item.image}?preset=thumb`} alt={item.name} fill sizes="80px" className="object-cover" />

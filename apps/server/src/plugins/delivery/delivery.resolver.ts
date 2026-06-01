@@ -1,23 +1,30 @@
 import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
 import { Ctx, RequestContext } from '@vendure/core';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { DeliveryOrderItem, DeliveryRequest, DeliveryStatus, PickupStop } from './delivery-request.entity';
-import { generateOrderNumber, dispatchOrder, type DispatchPickupStop } from '../../services/order-dispatch.service';
+import { dispatchOrder, type DispatchPickupStop } from '../../services/order-dispatch.service';
+import { generateOrderNumber } from '../../services/order-number.service';
 import { calculateDeliveryFee } from '../../services/delivery-fee.service';
-import { emitToOrder } from '../realtime.plugin';
+import { emitToOrder, handleDriverOfferDecision } from '../realtime.plugin';
 import { requirePlatformRole } from '../../utils/auth';
+import { Driver, DriverStatus } from '../driver/driver.entity';
+import { SupplierProduct } from '../supplier/supplier-product.entity';
 
 @Resolver()
 export class DeliveryResolver {
   constructor(
     @InjectRepository(DeliveryRequest)
     private deliveryRepo: Repository<DeliveryRequest>,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
   @Query()
   async deliveryRequest(@Args('orderId') orderId: string) {
-    return this.deliveryRepo.findOne({ where: { orderId } });
+    return this.deliveryRepo.findOne({
+      where: [{ orderId }, { orderNumber: orderId }],
+    });
   }
 
   @Query()
@@ -30,9 +37,28 @@ export class DeliveryResolver {
   }
 
   @Query()
+  async deliveryHistoryForDriver(@Args('driverId') driverId: string, @Args('limit', { nullable: true }) limit = 50) {
+    const { In } = await import('typeorm');
+    return this.deliveryRepo.find({
+      where: { driverId, status: In([DeliveryStatus.COMPLETED, DeliveryStatus.CANCELLED]) as any },
+      order: { updatedAt: 'DESC' },
+      take: Math.max(1, Math.min(100, limit || 50)),
+    });
+  }
+
+  @Query()
   async availableDeliveries() {
     return this.deliveryRepo.find({
       where: { status: DeliveryStatus.SEARCHING },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  @Query()
+  async getActiveDeliveries() {
+    const { In } = await import('typeorm');
+    return this.deliveryRepo.find({
+      where: { status: In([DeliveryStatus.SEARCHING, DeliveryStatus.ACCEPTED, DeliveryStatus.IN_PROGRESS]) as any },
       order: { createdAt: 'DESC' },
     });
   }
@@ -51,7 +77,7 @@ export class DeliveryResolver {
     @Args('orderTotal', { nullable: true }) orderTotal = 0,
     @Args('paymentMethod', { nullable: true }) paymentMethod?: string,
   ) {
-    const orderNumber = generateOrderNumber();
+    const orderNumber = await generateOrderNumber(this.dataSource);
 
     const pickupLat = pickupStops[0]?.lat ?? 47.9185;
     const pickupLng = pickupStops[0]?.lng ?? 106.917;
@@ -59,6 +85,8 @@ export class DeliveryResolver {
       pickupStops.length > 0 ? pickupStops : [{ lat: pickupLat, lng: pickupLng }],
       { lat: dropoffLat, lng: dropoffLng },
     );
+
+    await this.reserveSupplierStock(orderItems);
 
     const request = this.deliveryRepo.create({
       orderId,
@@ -102,6 +130,19 @@ export class DeliveryResolver {
       district: dropoffAddress.split(',')[0]?.trim() ?? 'Улаанбаатар',
       khoroo: dropoffAddress.split(',')[1]?.trim(),
     } : undefined;
+    const onlineDriversFromDb = (await this.dataSource.getRepository(Driver).find({
+      where: { status: DriverStatus.ACTIVE, isOnline: true },
+    })).map((driver) => ({
+      id: String(driver.id),
+      firstName: driver.firstName,
+      lastName: driver.lastName,
+      phone: driver.phone,
+      vehicleType: driver.vehicleType,
+      vehiclePlate: driver.vehiclePlate ?? '',
+      rating: driver.rating,
+      lat: driver.currentLat ?? pickupLat,
+      lng: driver.currentLng ?? pickupLng,
+    }));
 
     void dispatchOrder(
       String(saved.id),
@@ -114,15 +155,22 @@ export class DeliveryResolver {
       feeResult.fee,
       feeResult.breakdown.totalDistanceKm,
       feeResult.estimatedMinutes,
+      onlineDriversFromDb,
     )
       .then(async (result) => {
         if (result.status === 'ACCEPTED' && result.driver) {
-          await this.deliveryRepo.update(saved.id, {
-            driverId: result.driver.id,
-            status: DeliveryStatus.ACCEPTED,
-          });
+          const current = await this.deliveryRepo.findOne({ where: { id: saved.id } });
+          if (current?.status === DeliveryStatus.SEARCHING) {
+            await this.deliveryRepo.update(saved.id, {
+              driverId: result.driver.id,
+              status: DeliveryStatus.ACCEPTED,
+            });
+          }
         } else if (result.status === 'TIMEOUT') {
-          await this.deliveryRepo.update(saved.id, { status: DeliveryStatus.CANCELLED });
+          const current = await this.deliveryRepo.findOne({ where: { id: saved.id } });
+          if (current?.status === DeliveryStatus.SEARCHING) {
+            await this.deliveryRepo.update(saved.id, { status: DeliveryStatus.CANCELLED });
+          }
         }
       })
       .catch((err) => {
@@ -144,11 +192,15 @@ export class DeliveryResolver {
     if (![DeliveryStatus.SEARCHING, DeliveryStatus.ACCEPTED].includes(current.status)) {
       throw new Error('Энэ хүргэлтийг авах боломжгүй байна');
     }
+    handleDriverOfferDecision('accept', { driverId, orderId: deliveryId });
     await this.deliveryRepo.update(deliveryId, {
       driverId,
-      status: DeliveryStatus.IN_PROGRESS,
+      status: DeliveryStatus.ACCEPTED,
     });
-    emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status: DeliveryStatus.IN_PROGRESS });
+    emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status: DeliveryStatus.ACCEPTED });
+    if (current.orderNumber) {
+      emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status: DeliveryStatus.ACCEPTED });
+    }
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
@@ -164,6 +216,7 @@ export class DeliveryResolver {
     if (current.driverId && current.driverId !== driverId) {
       throw new Error('Өөр жолоочид оноогдсон хүргэлт байна');
     }
+    handleDriverOfferDecision('reject', { driverId, orderId: deliveryId });
     await this.deliveryRepo.update(deliveryId, {
       driverId: current?.driverId ?? driverId,
       status: DeliveryStatus.CANCELLED,
@@ -184,6 +237,9 @@ export class DeliveryResolver {
     if (current.driverId) this.requireDriverOwner(ctx, current.driverId);
     await this.deliveryRepo.update(deliveryId, { status });
     emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status });
+    if (current.orderNumber) {
+      emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status });
+    }
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
@@ -206,5 +262,36 @@ export class DeliveryResolver {
   private requireDriverOwner(ctx: RequestContext, driverId: string) {
     const principal = requirePlatformRole(ctx, 'DRIVER');
     if (principal.id !== driverId) throw new Error('Өөр жолоочийн хүргэлтэд хандах эрхгүй');
+  }
+
+  private async reserveSupplierStock(orderItems: DeliveryOrderItem[]) {
+    const supplierItems = orderItems.filter((item) =>
+      item.supplierId &&
+      item.supplierId !== 'diy-store' &&
+      Number.isFinite(item.qty) &&
+      item.qty > 0,
+    );
+    if (supplierItems.length === 0) return;
+
+    const repo = this.dataSource.getRepository(SupplierProduct);
+    for (const item of supplierItems) {
+      const where = [
+        item.productId ? { id: item.productId, supplierId: item.supplierId } : null,
+        item.variantId ? { id: item.variantId, supplierId: item.supplierId } : null,
+        item.sku ? { slug: item.sku, supplierId: item.supplierId } : null,
+      ].filter(Boolean) as Array<{ id?: string; slug?: string; supplierId: string }>;
+      if (where.length === 0) continue;
+      const product = await repo.findOne({
+        where: where as any,
+      });
+      if (!product) continue;
+      const qty = Math.max(1, Math.round(item.qty));
+      if (product.stock < qty) {
+        throw new Error(`${product.name} барааны үлдэгдэл хүрэлцэхгүй байна`);
+      }
+      product.stock -= qty;
+      if (product.stock === 0) product.enabled = false;
+      await repo.save(product);
+    }
   }
 }

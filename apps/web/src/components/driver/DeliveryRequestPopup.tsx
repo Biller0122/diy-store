@@ -52,6 +52,7 @@ export default function DeliveryRequestPopup({
           className="fixed inset-0 z-[80] flex items-end justify-center bg-black/75 px-4 pb-4 backdrop-blur-sm sm:items-center sm:pb-0"
         >
           <m.div
+            data-testid="order-popup"
             initial={{ y: 90, opacity: 0, scale: 0.96 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 90, opacity: 0, scale: 0.96 }}
@@ -69,7 +70,7 @@ export default function DeliveryRequestPopup({
                 </div>
                 <h2 className="text-2xl font-black text-foreground">Хүргэлт ирлээ!</h2>
                 {delivery.orderNumber && (
-                  <p className="mt-0.5 font-mono text-xs text-foreground-muted">{delivery.orderNumber}</p>
+                  <p data-testid="popup-order-number" className="mt-0.5 font-mono text-xs text-foreground-muted">{delivery.orderNumber}</p>
                 )}
               </div>
               <div className="relative h-14 w-14 shrink-0">
