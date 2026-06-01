@@ -1,5 +1,13 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { PluginCommonModule, VendurePlugin } from '@vendure/core';
+import {
+  deleteJsonState,
+  listJsonState,
+  publishJsonMessage,
+  setJsonState,
+  subscribeJsonMessages,
+} from '../services/redis-state.service';
 
 type DriverLocationPayload = {
   orderId?: string;
@@ -54,6 +62,14 @@ type DriverAssignedPayload = {
   estimatedMinutes: number;
 };
 
+type RealtimeBridgeMessage = {
+  room: string;
+  event: string;
+  payload: unknown;
+};
+
+const REALTIME_EVENTS_CHANNEL = 'diy:realtime:events';
+
 // Track which drivers are currently online and their last known location
 interface OnlineDriverInfo {
   id: string;
@@ -69,6 +85,7 @@ interface OnlineDriverInfo {
 }
 
 const onlineDrivers = new Map<string, OnlineDriverInfo>();
+const ONLINE_DRIVER_TTL_SECONDS = 120;
 let driverOfferHandlers: {
   accept?: (payload: DriverOrderDecisionPayload) => boolean;
   reject?: (payload: DriverOrderDecisionPayload) => boolean;
@@ -78,12 +95,26 @@ export function getOnlineDrivers(): Map<string, OnlineDriverInfo> {
   return onlineDrivers;
 }
 
+export async function getOnlineDriversSnapshot(): Promise<OnlineDriverInfo[]> {
+  const persisted = await listJsonState<OnlineDriverInfo>('diy:realtime:drivers:*');
+  return persisted && persisted.length > 0 ? persisted : Array.from(onlineDrivers.values());
+}
+
 export function getOnlineDriverIds(): string[] {
   return Array.from(onlineDrivers.keys());
 }
 
+async function persistOnlineDriver(driver: OnlineDriverInfo) {
+  await setJsonState(`diy:realtime:drivers:${driver.id}`, driver, ONLINE_DRIVER_TTL_SECONDS);
+}
+
+async function removePersistedOnlineDriver(driverId: string) {
+  await deleteJsonState(`diy:realtime:drivers:${driverId}`);
+}
+
 let _io: Server | null = null;
 let realtimeServerStarted = false;
+let realtimeBridgeStarted = false;
 
 const ROOM_ID_RE = /^[A-Za-z0-9:_-]{1,80}$/;
 
@@ -107,19 +138,70 @@ export function getIO(): Server | null {
 }
 
 export function emitToDriver(driverId: string, event: string, payload: unknown) {
-  _io?.to(`driver:${driverId}`).emit(event, payload);
+  emitToRoom(`driver:${driverId}`, event, payload);
 }
 
 export function emitToOrder(orderId: string, event: string, payload: unknown) {
-  _io?.to(`order:${orderId}`).emit(event, payload);
+  emitToRoom(`order:${orderId}`, event, payload);
 }
 
 export function emitToCustomer(customerId: string, event: string, payload: unknown) {
-  _io?.to(`customer:${customerId}`).emit(event, payload);
+  emitToRoom(`customer:${customerId}`, event, payload);
 }
 
 export function registerDriverOfferHandlers(handlers: typeof driverOfferHandlers) {
   driverOfferHandlers = handlers;
+}
+
+export function handleDriverOfferDecision(type: 'accept' | 'reject', payload: DriverOrderDecisionPayload): boolean {
+  return driverOfferHandlers[type]?.(payload) ?? false;
+}
+
+function emitToRoom(room: string, event: string, payload: unknown) {
+  if (_io) {
+    _io.to(room).emit(event, payload);
+    return;
+  }
+
+  void publishJsonMessage(REALTIME_EVENTS_CHANNEL, { room, event, payload });
+}
+
+async function forwardDriverDecision(type: 'accept' | 'reject', payload: DriverOrderDecisionPayload): Promise<boolean> {
+  const localResult = handleDriverOfferDecision(type, payload);
+  if (localResult) return true;
+
+  const webhookUrl = process.env.REALTIME_DECISION_WEBHOOK_URL;
+  if (!webhookUrl) return false;
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(process.env.REALTIME_WEBHOOK_SECRET ? { 'x-realtime-secret': process.env.REALTIME_WEBHOOK_SECRET } : {}),
+      },
+      body: JSON.stringify({ type, ...payload }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json() as { ok?: boolean };
+    return result.ok === true;
+  } catch (err) {
+    console.warn('[realtime] driver decision webhook failed:', err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+async function startRealtimeBridge(io: Server) {
+  if (realtimeBridgeStarted) return;
+  realtimeBridgeStarted = true;
+
+  const subscribed = await subscribeJsonMessages<RealtimeBridgeMessage>(REALTIME_EVENTS_CHANNEL, (message) => {
+    if (!validRoomId(message.room) || typeof message.event !== 'string') return;
+    io.to(message.room).emit(message.event, message.payload);
+  });
+  if (subscribed) {
+    console.log('[realtime] Redis event bridge subscribed');
+  }
 }
 
 export function startRealtimeServer() {
@@ -139,6 +221,7 @@ export function startRealtimeServer() {
     },
   });
   _io = io;
+  void startRealtimeBridge(io);
 
   io.on('connection', (socket) => {
     // Track which driverIds this socket owns (for cleanup on disconnect)
@@ -168,6 +251,7 @@ export function startRealtimeServer() {
       if (existing) {
         existing.lat = payload.lat;
         existing.lng = payload.lng;
+        void persistOnlineDriver(existing);
       }
 
       if (validRoomId(payload.orderId)) {
@@ -182,17 +266,17 @@ export function startRealtimeServer() {
       io.to(`order:${payload.orderId}`).emit('order:status', payload);
     });
 
-    socket.on('driver:accept_order', (payload: DriverOrderDecisionPayload) => {
+    socket.on('driver:accept_order', async (payload: DriverOrderDecisionPayload) => {
       if (!validRoomId(payload?.driverId) || !validRoomId(payload?.orderId)) return;
-      const accepted = driverOfferHandlers.accept?.(payload) ?? false;
+      const accepted = await forwardDriverDecision('accept', payload);
       if (!accepted) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_accepted', payload);
       io.to(`order:${payload.orderId}`).emit('order:status', { orderId: payload.orderId, status: 'ACCEPTED' });
     });
 
-    socket.on('driver:reject_order', (payload: DriverOrderDecisionPayload) => {
+    socket.on('driver:reject_order', async (payload: DriverOrderDecisionPayload) => {
       if (!validRoomId(payload?.driverId) || !validRoomId(payload?.orderId)) return;
-      const rejected = driverOfferHandlers.reject?.(payload) ?? false;
+      const rejected = await forwardDriverDecision('reject', payload);
       if (!rejected) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_rejected', payload);
       io.to(`order:${payload.orderId}`).emit('order:status', { orderId: payload.orderId, status: 'REJECTED' });
@@ -206,7 +290,7 @@ export function startRealtimeServer() {
       socketDriverIds.add(driverId);
       socket.join(`driver:${driverId}`);
       // Register as online with default UB center coords
-      onlineDrivers.set(driverId, {
+      const driverInfo = {
         id: driverId,
         lat: typeof payload === 'string' ? 47.9185 : payload.lat ?? 47.9185,
         lng: typeof payload === 'string' ? 106.917 : payload.lng ?? 106.917,
@@ -217,7 +301,9 @@ export function startRealtimeServer() {
         vehicleType: typeof payload === 'string' ? undefined : payload.vehicleType,
         vehiclePlate: typeof payload === 'string' ? undefined : payload.vehiclePlate,
         rating: typeof payload === 'string' ? undefined : payload.rating,
-      });
+      };
+      onlineDrivers.set(driverId, driverInfo);
+      void persistOnlineDriver(driverInfo);
       io.emit('driver:online', { driverId, isOnline: true });
     });
 
@@ -225,6 +311,7 @@ export function startRealtimeServer() {
       if (!validRoomId(driverId)) return;
       console.log('[realtime] driver offline', driverId);
       onlineDrivers.delete(driverId);
+      void removePersistedOnlineDriver(driverId);
       socketDriverIds.delete(driverId);
       io.emit('driver:offline', { driverId, isOnline: false });
     });
@@ -233,6 +320,7 @@ export function startRealtimeServer() {
     socket.on('disconnect', () => {
       socketDriverIds.forEach((driverId) => {
         onlineDrivers.delete(driverId);
+        void removePersistedOnlineDriver(driverId);
         console.log('[realtime] driver disconnected, removed from online:', driverId);
       });
     });
@@ -242,3 +330,8 @@ export function startRealtimeServer() {
     console.log(`✅ Realtime socket server started on :${port}`);
   });
 }
+
+@VendurePlugin({
+  imports: [PluginCommonModule],
+})
+export class RealtimePlugin {}

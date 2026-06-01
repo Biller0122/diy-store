@@ -36,7 +36,7 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center gap-4 h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0 group">
+          <Link href="/" data-testid="logo" className="flex items-center gap-2 shrink-0 group">
             <m.div
               whileHover={{ rotate: [0, -12, 12, 0] }}
               transition={{ duration: 0.4 }}
@@ -71,6 +71,7 @@ export function Header() {
 
           {/* Search bar (desktop) */}
           <button
+            data-testid="search-trigger"
             onClick={openSearch}
             className="hidden md:flex flex-1 max-w-xs items-center gap-2 glass glass-hover rounded-full px-4 py-2 text-sm text-foreground-muted hover:text-foreground transition-all"
           >
@@ -87,6 +88,7 @@ export function Header() {
           <div className="flex items-center gap-1">
             {/* Search icon (mobile) */}
             <button
+              data-testid="search-trigger-mobile"
               onClick={openSearch}
               className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
             >
@@ -120,6 +122,7 @@ export function Header() {
 
             {/* Cart */}
             <button
+              data-testid="cart-icon"
               onClick={openCart}
               className="relative flex items-center gap-2 glass glass-hover rounded-xl px-3 py-2 transition-all"
             >
@@ -141,6 +144,7 @@ export function Header() {
 
             {/* Mobile menu */}
             <button
+              data-testid="mobile-menu"
               onClick={() => setMobileOpen((v) => !v)}
               className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
             >

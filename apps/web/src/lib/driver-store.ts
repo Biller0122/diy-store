@@ -51,6 +51,7 @@ export interface ActiveDelivery {
 
 interface DriverState {
   driver: DriverUser | null;
+  authToken: string | null;
   isOnline: boolean;
   activeDelivery: ActiveDelivery | null;
   isLoading: boolean;
@@ -62,6 +63,7 @@ interface DriverState {
   verifyOtp: (phone: string, otp: string) => Promise<boolean>;
   logout: () => void;
   setDriver: (driver: DriverUser) => void;
+  setAuthToken: (token: string | null) => void;
   setOnlineStatus: (isOnline: boolean) => void;
   setStatus: (status: 'OFFLINE' | 'ONLINE' | 'BUSY') => void;
   setActiveDelivery: (delivery: ActiveDelivery | null) => void;
@@ -79,6 +81,7 @@ export interface DriverRegisterInput {
 }
 
 const DEV_OTP = '1234';
+const DRIVER_AUTH_TOKEN_KEY = 'diy-driver-auth-token';
 
 const REGISTER_DRIVER_MUTATION = `
   mutation RegisterDriver($input: RegisterDriverInput!) {
@@ -86,6 +89,7 @@ const REGISTER_DRIVER_MUTATION = `
       success
       message
       phone
+      otp
     }
   }
 `;
@@ -96,6 +100,7 @@ const LOGIN_DRIVER_MUTATION = `
       success
       message
       phone
+      otp
     }
   }
 `;
@@ -247,10 +252,22 @@ function setDriverCookies(driver: DriverUser | null) {
   document.cookie = `diy-driver-status=${driver.status}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
 }
 
+function setDriverAuthToken(token?: string | null) {
+  if (typeof window === 'undefined') return;
+  if (token) window.localStorage.setItem(DRIVER_AUTH_TOKEN_KEY, token);
+  else window.localStorage.removeItem(DRIVER_AUTH_TOKEN_KEY);
+}
+
+export function getDriverAuthToken() {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(DRIVER_AUTH_TOKEN_KEY);
+}
+
 export const useDriverStore = create<DriverState>()(
   persist(
     (set, get) => ({
       driver: null,
+      authToken: null,
       isOnline: false,
       activeDelivery: null,
       isLoading: false,
@@ -269,7 +286,7 @@ export const useDriverStore = create<DriverState>()(
 
         try {
           const data = await vendureShopFetch<{
-            registerDriver: { success: boolean; message: string; phone?: string | null };
+            registerDriver: { success: boolean; message: string; phone?: string | null; otp?: string | null };
           }>(REGISTER_DRIVER_MUTATION, {
             input: {
               ...input,
@@ -283,7 +300,7 @@ export const useDriverStore = create<DriverState>()(
             return false;
           }
 
-          set({ isLoading: false, devOtp: null });
+          set({ isLoading: false, devOtp: data.registerDriver.otp ?? null });
           return true;
         } catch (err) {
           if (!(process.env.NODE_ENV === 'development' && isNetworkError(err))) {
@@ -327,7 +344,7 @@ export const useDriverStore = create<DriverState>()(
         const phone = normalizePhone(phoneInput);
         try {
           const data = await vendureShopFetch<{
-            loginDriver: { success: boolean; message: string; phone?: string | null };
+            loginDriver: { success: boolean; message: string; phone?: string | null; otp?: string | null };
           }>(LOGIN_DRIVER_MUTATION, { phone });
 
           if (!data.loginDriver.success) {
@@ -335,7 +352,7 @@ export const useDriverStore = create<DriverState>()(
             return false;
           }
 
-          set({ isLoading: false, devOtp: null });
+          set({ isLoading: false, devOtp: data.loginDriver.otp ?? null });
           return true;
         } catch (err) {
           if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
@@ -363,7 +380,7 @@ export const useDriverStore = create<DriverState>()(
         const phone = normalizePhone(phoneInput);
         try {
           const data = await vendureShopFetch<{
-            verifyDriverOTP: { success: boolean; message: string; driverId?: string | null };
+            verifyDriverOTP: { success: boolean; message: string; driverId?: string | null; token?: string | null };
           }>(VERIFY_DRIVER_OTP_MUTATION, { phone, otp });
 
           if (!data.verifyDriverOTP.success || !data.verifyDriverOTP.driverId) {
@@ -378,7 +395,8 @@ export const useDriverStore = create<DriverState>()(
           }
 
           setDriverCookies(driver);
-          set({ driver, isOnline: driver.isOnline, isLoading: false, devOtp: null });
+          setDriverAuthToken(data.verifyDriverOTP.token);
+          set({ driver, authToken: data.verifyDriverOTP.token ?? null, isOnline: driver.isOnline, isLoading: false, devOtp: null });
           return true;
         } catch (err) {
           if (!(process.env.NODE_ENV === 'development' && isNetworkError(err))) {
@@ -398,19 +416,26 @@ export const useDriverStore = create<DriverState>()(
           };
           saveDriverToRegistry(nextDriver);
           setDriverCookies(nextDriver);
-          set({ driver: nextDriver, isOnline: false, isLoading: false, devOtp: null });
+          setDriverAuthToken(null);
+          set({ driver: nextDriver, authToken: null, isOnline: false, isLoading: false, devOtp: null });
           return true;
         }
       },
 
       logout: () => {
         setDriverCookies(null);
-        set({ driver: null, activeDelivery: null, isOnline: false });
+        setDriverAuthToken(null);
+        set({ driver: null, authToken: null, activeDelivery: null, isOnline: false });
       },
 
       setDriver: (driver) => {
         setDriverCookies(driver);
         set({ driver, isOnline: driver.isOnline });
+      },
+
+      setAuthToken: (token) => {
+        setDriverAuthToken(token);
+        set({ authToken: token });
       },
 
       setOnlineStatus: (isOnline) =>
@@ -430,11 +455,13 @@ export const useDriverStore = create<DriverState>()(
       name: 'diy-driver-auth-v2',
       partialize: (state) => ({
         driver: state.driver,
+        authToken: state.authToken,
         isOnline: state.isOnline,
         activeDelivery: state.activeDelivery,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.driver) setDriverCookies(state.driver);
+        if (state?.authToken) setDriverAuthToken(state.authToken);
         if (state) state.hasHydrated = true;
       },
     },

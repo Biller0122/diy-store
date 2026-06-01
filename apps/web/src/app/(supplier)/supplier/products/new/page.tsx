@@ -71,6 +71,34 @@ function normalizePrice(value: string) {
   return Number(value.replace(/[^\d]/g, ''));
 }
 
+function resizeImage(file: File, maxSize = 900, quality = 0.78): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Зураг уншихад алдаа гарлаа'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Зургийн формат буруу байна'));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Зураг боловсруулах боломжгүй байна'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = String(reader.result ?? '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function NewSupplierProductPage() {
   const router = useRouter();
   const { supplier } = useSupplierStore();
@@ -89,28 +117,32 @@ export default function NewSupplierProductPage() {
     setErrors((prev) => ({ ...prev, [key]: '' }));
   }
 
-  function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setErrors((prev) => ({ ...prev, image: 'Зөвхөн зураг файл сонгоно уу' }));
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
-      setErrors((prev) => ({ ...prev, image: 'Зураг 4MB-аас бага байх ёстой' }));
+    if (file.size > 12 * 1024 * 1024) {
+      setErrors((prev) => ({ ...prev, image: 'Зураг 12MB-аас бага байх ёстой' }));
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
+    try {
+      const image = await resizeImage(file);
       setForm((prev) => ({
         ...prev,
-        image: String(reader.result ?? ''),
+        image,
         imageName: file.name,
       }));
       setErrors((prev) => ({ ...prev, image: '' }));
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setErrors((prev) => ({
+        ...prev,
+        image: err instanceof Error ? err.message : 'Зураг боловсруулахад алдаа гарлаа',
+      }));
+    }
   }
 
   function clearImage() {

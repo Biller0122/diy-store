@@ -1,15 +1,17 @@
+name: diy-store
+
 services:
   postgres-vendure:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-vendure}
+      POSTGRES_USER: ${DB_USERNAME:-vendure}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-vendure}
     volumes:
       - vendure-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_NAME}']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-vendure} -d ${DB_NAME:-vendure}']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -36,16 +38,16 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      SOCKET_PORT: 3002
+      REALTIME_EMBEDDED: 'false'
       DB_TYPE: postgres
       DB_HOST: postgres-vendure
       DB_PORT: 5432
+      REDIS_URL: redis://redis:6379
       DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
       VENDURE_DISABLE_TELEMETRY: 'true'
       FIREBASE_MOCK_MODE: 'true'
+      OTP_MOCK_MODE: ${OTP_MOCK_MODE:-true}
       NODE_OPTIONS: --max-old-space-size=1024
-    ports:
-      - '3002:3002'
     depends_on:
       postgres-vendure:
         condition: service_healthy
@@ -55,32 +57,180 @@ services:
       - vendure-assets:/app/apps/server/static/assets
       - vendure-emails:/app/apps/server/static/email/test-emails
 
-  web:
+  realtime-server:
+    build:
+      context: .
+      dockerfile: apps/realtime-server/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      SOCKET_PORT: 3002
+      REDIS_URL: redis://redis:6379
+      REALTIME_DECISION_WEBHOOK_URL: http://server:3001/realtime/driver-decision
+      NODE_OPTIONS: --max-old-space-size=512
+    depends_on:
+      redis:
+        condition: service_healthy
+      server:
+        condition: service_started
+
+  web-customer:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
         NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
-        NEXT_PUBLIC_SITE_URL: http://${SITE_DOMAIN}
-        NEXT_PUBLIC_SOCKET_URL: http://${SITE_DOMAIN}:3002
+        NEXT_PUBLIC_SITE_URL: https://${CUSTOMER_DOMAIN:-localhost}
+        NEXT_PUBLIC_SOCKET_URL: https://${CUSTOMER_DOMAIN:-localhost}
+        NEXT_PUBLIC_APP_PORTAL: customer
+        APP_PORTAL: customer
+        INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+        INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+        INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+        INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
     restart: unless-stopped
-    ports:
-      - '8080:3000'
     environment:
       NODE_ENV: production
       PORT: 3000
+      APP_PORTAL: customer
       INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
       INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
       INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
       INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
       NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
       NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
-      NEXT_PUBLIC_SITE_URL: http://${SITE_DOMAIN}
-      NEXT_PUBLIC_SOCKET_URL: http://${SITE_DOMAIN}:3002
+      NEXT_PUBLIC_SITE_URL: https://${CUSTOMER_DOMAIN:-localhost}
+      NEXT_PUBLIC_SOCKET_URL: https://${CUSTOMER_DOMAIN:-localhost}
+      NEXT_PUBLIC_APP_PORTAL: customer
       NODE_OPTIONS: --max-old-space-size=1024
     depends_on:
       - server
+      - realtime-server
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "fetch(''http://127.0.0.1:3000/api/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  web-admin:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+        NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+        NEXT_PUBLIC_SITE_URL: https://${ADMIN_DOMAIN:-localhost}
+        NEXT_PUBLIC_SOCKET_URL: https://${ADMIN_DOMAIN:-localhost}
+        NEXT_PUBLIC_APP_PORTAL: admin
+        APP_PORTAL: admin
+        INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+        INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+        INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+        INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_PORTAL: admin
+      INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+      INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+      INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+      INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
+      NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+      NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+      NEXT_PUBLIC_SITE_URL: https://${ADMIN_DOMAIN:-localhost}
+      NEXT_PUBLIC_SOCKET_URL: https://${ADMIN_DOMAIN:-localhost}
+      NEXT_PUBLIC_APP_PORTAL: admin
+      NODE_OPTIONS: --max-old-space-size=1024
+    depends_on:
+      - server
+      - realtime-server
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "fetch(''http://127.0.0.1:3000/api/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  web-driver:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+        NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+        NEXT_PUBLIC_SITE_URL: https://${DRIVER_DOMAIN:-localhost}
+        NEXT_PUBLIC_SOCKET_URL: https://${DRIVER_DOMAIN:-localhost}
+        NEXT_PUBLIC_APP_PORTAL: driver
+        APP_PORTAL: driver
+        INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+        INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+        INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+        INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_PORTAL: driver
+      INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+      INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+      INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+      INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
+      NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+      NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+      NEXT_PUBLIC_SITE_URL: https://${DRIVER_DOMAIN:-localhost}
+      NEXT_PUBLIC_SOCKET_URL: https://${DRIVER_DOMAIN:-localhost}
+      NEXT_PUBLIC_APP_PORTAL: driver
+      NODE_OPTIONS: --max-old-space-size=1024
+    depends_on:
+      - server
+      - realtime-server
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "fetch(''http://127.0.0.1:3000/api/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  web-merchant:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+        NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+        NEXT_PUBLIC_SITE_URL: https://${MERCHANT_DOMAIN:-localhost}
+        NEXT_PUBLIC_SOCKET_URL: https://${MERCHANT_DOMAIN:-localhost}
+        NEXT_PUBLIC_APP_PORTAL: merchant
+        APP_PORTAL: merchant
+        INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+        INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+        INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+        INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_PORTAL: merchant
+      INTERNAL_VENDURE_SHOP_API: http://server:3001/shop-api
+      INTERNAL_VENDURE_ADMIN_API: http://server:3001/admin-api
+      INTERNAL_VENDURE_ASSETS: http://server:3001/assets/:path*
+      INTERNAL_VENDURE_MAILBOX: http://server:3001/mailbox/:path*
+      NEXT_PUBLIC_VENDURE_SHOP_API: /shop-api
+      NEXT_PUBLIC_VENDURE_ADMIN_API: /admin-api
+      NEXT_PUBLIC_SITE_URL: https://${MERCHANT_DOMAIN:-localhost}
+      NEXT_PUBLIC_SOCKET_URL: https://${MERCHANT_DOMAIN:-localhost}
+      NEXT_PUBLIC_APP_PORTAL: merchant
+      NODE_OPTIONS: --max-old-space-size=1024
+    depends_on:
+      - server
+      - realtime-server
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "fetch(''http://127.0.0.1:3000/api/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
   caddy:
     image: caddy:2-alpine
@@ -95,13 +245,23 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - web
+      - web-customer
+      - web-admin
+      - web-driver
+      - web-merchant
       - server
+      - realtime-server
 
 volumes:
   vendure-db-data:
+    name: diy-store_vendure-db-data
   redis-data:
+    name: diy-store_redis-data
   vendure-assets:
+    name: diy-store_vendure-assets
   vendure-emails:
+    name: diy-store_vendure-emails
   caddy-data:
+    name: diy-store_caddy-data
   caddy-config:
+    name: diy-store_caddy-config

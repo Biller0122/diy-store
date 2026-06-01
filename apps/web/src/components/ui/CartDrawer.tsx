@@ -33,6 +33,7 @@ export function CartDrawer() {
 
           {/* Drawer */}
           <m.div
+            data-testid="cart-drawer"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -50,7 +51,7 @@ export function CartDrawer() {
                   </span>
                 )}
               </div>
-              <button onClick={closeCart} className="text-foreground-muted hover:text-foreground transition-colors">
+              <button data-testid="cart-drawer-close" onClick={closeCart} className="text-foreground-muted hover:text-foreground transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -58,7 +59,7 @@ export function CartDrawer() {
             {/* Items */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
               {items.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-4 py-16">
+                <div data-testid="empty-cart" className="flex flex-col items-center justify-center h-full gap-4 py-16">
                   <div className="w-20 h-20 rounded-2xl glass flex items-center justify-center text-4xl">🛒</div>
                   <div className="text-center">
                     <p className="font-semibold text-foreground">Сагс хоосон байна</p>
@@ -73,6 +74,7 @@ export function CartDrawer() {
                   {items.map((item) => (
                     <m.div
                       key={item.id}
+                      data-testid="cart-item"
                       layout
                       initial={{ opacity: 0, x: 40 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -104,13 +106,15 @@ export function CartDrawer() {
                         <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-1">
                             <button
+                              data-testid="cart-qty-decrease"
                               onClick={() => item.qty > 1 ? updateQty(item.id, item.qty - 1) : removeItem(item.id)}
                               className="w-6 h-6 rounded-lg glass flex items-center justify-center text-foreground-muted hover:text-foreground transition-colors"
                             >
                               <Minus size={10} />
                             </button>
-                            <span className="text-sm font-mono w-6 text-center">{item.qty}</span>
+                            <span data-testid="cart-qty" className="text-sm font-mono w-6 text-center">{item.qty}</span>
                             <button
+                              data-testid="cart-qty-increase"
                               onClick={() => updateQty(item.id, item.qty + 1)}
                               className="w-6 h-6 rounded-lg glass flex items-center justify-center text-foreground-muted hover:text-foreground transition-colors"
                             >
@@ -125,6 +129,7 @@ export function CartDrawer() {
 
                       {/* Delete */}
                       <button
+                        data-testid="cart-item-remove"
                         onClick={() => removeItem(item.id)}
                         className="text-foreground-muted hover:text-error transition-colors self-start mt-0.5"
                       >

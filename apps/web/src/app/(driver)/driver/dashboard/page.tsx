@@ -4,16 +4,125 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Navigation, Star, Wallet } from 'lucide-react';
 import DeliveryRequestPopup from '@/components/driver/DeliveryRequestPopup';
-import { useDriverStore, VEHICLE_LABEL, type ActiveDelivery } from '@/lib/driver-store';
+import { getDriverAuthToken, useDriverStore, VEHICLE_LABEL, type ActiveDelivery, type DriverUser } from '@/lib/driver-store';
 
 const RECENT_DELIVERIES: { id: string; address: string; amount: number; time: string }[] = [];
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:3002';
+const CONFIGURED_SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL;
+const SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
+
+const SET_ONLINE_STATUS_GQL = `
+  mutation SetOnlineStatus($id: ID!, $isOnline: Boolean!) {
+    setOnlineStatus(id: $id, isOnline: $isOnline) {
+      id
+      isOnline
+    }
+  }
+`;
+
+const REFRESH_DRIVER_TOKEN_GQL = `
+  mutation RefreshDriverToken($id: ID!, $phone: String!) {
+    refreshDriverToken(id: $id, phone: $phone) {
+      success
+      message
+      driverId
+      token
+    }
+  }
+`;
+
+const ACCEPT_DELIVERY_GQL = `
+  mutation AcceptDelivery($deliveryId: ID!, $driverId: String!) {
+    acceptDelivery(deliveryId: $deliveryId, driverId: $driverId) {
+      id
+      orderId
+      orderNumber
+      status
+      driverId
+    }
+  }
+`;
+
+async function refreshDriverToken(driverId: string, phone: string) {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ query: REFRESH_DRIVER_TOKEN_GQL, variables: { id: driverId, phone } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as {
+    data?: { refreshDriverToken: { success: boolean; message: string; token?: string | null } };
+    errors?: Array<{ message: string }>;
+  };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+  const result = json.data?.refreshDriverToken;
+  if (!result?.success || !result.token) throw new Error(result?.message ?? 'Дахин нэвтрэх шаардлагатай');
+  return result.token;
+}
+
+async function updateDriverOnlineStatus(driverId: string, isOnline: boolean, token: string | null) {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({ query: SET_ONLINE_STATUS_GQL, variables: { id: driverId, isOnline } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as { errors?: Array<{ message: string }> };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+}
+
+async function acceptDeliveryRequest(deliveryId: string, driverId: string, token: string | null) {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({ query: ACCEPT_DELIVERY_GQL, variables: { deliveryId, driverId } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as { errors?: Array<{ message: string }> };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+}
+
+function getSocketUrl() {
+  if (typeof window === 'undefined') return CONFIGURED_SOCKET_URL || 'http://localhost:3002';
+  const { protocol, hostname, port, origin } = window.location;
+  if ((hostname === 'localhost' || hostname === '127.0.0.1') && ['18080', '18081', '18082', '18083'].includes(port)) {
+    return `${protocol}//${hostname}:13002`;
+  }
+  if (CONFIGURED_SOCKET_URL && !/^https?:\/\/localhost(?::3002)?\/?$/i.test(CONFIGURED_SOCKET_URL)) {
+    return CONFIGURED_SOCKET_URL;
+  }
+  return origin;
+}
+
+function toDriverOnlinePayload(driver: DriverUser) {
+  return {
+    driverId: driver.id,
+    firstName: driver.firstName,
+    lastName: driver.lastName,
+    phone: driver.phone,
+    vehicleType: driver.vehicleType,
+    vehiclePlate: driver.vehiclePlate,
+    rating: driver.rating,
+    lat: 47.9185,
+    lng: 106.917,
+  };
+}
 
 export default function DriverDashboardPage() {
-  const { driver, isOnline, activeDelivery, setOnlineStatus, setActiveDelivery } = useDriverStore();
+  const { driver, authToken, isOnline, activeDelivery, setAuthToken, setOnlineStatus, setActiveDelivery } = useDriverStore();
   const [showRequest, setShowRequest] = useState(false);
   const [pendingRequest, setPendingRequest] = useState<ActiveDelivery | undefined>(undefined);
+  const [onlineError, setOnlineError] = useState('');
+  const [onlineSaving, setOnlineSaving] = useState(false);
 
   const socketRef = useRef<import('socket.io-client').Socket | null>(null);
   // Refs to avoid stale closures inside socket event handlers
@@ -31,7 +140,7 @@ export default function DriverDashboardPage() {
 
     async function connect() {
       const { io } = await import('socket.io-client');
-      const socket = io(SOCKET_URL, {
+      const socket = io(getSocketUrl(), {
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: 10,
@@ -44,9 +153,10 @@ export default function DriverDashboardPage() {
         console.log('[socket] connected', socket.id);
         // Re-join driver room after reconnect
         const driverId = driverIdRef.current;
-        if (driverId && isOnlineRef.current) {
+        const currentDriver = useDriverStore.getState().driver;
+        if (driverId && currentDriver && isOnlineRef.current) {
           socket.emit('driver:join', driverId);
-          socket.emit('driver:online', driverId);
+          socket.emit('driver:online', toDriverOnlinePayload(currentDriver));
         }
       });
 
@@ -70,7 +180,7 @@ export default function DriverDashboardPage() {
         const stops = Array.isArray(payload.pickupStops) ? payload.pickupStops : [];
         const dropoff = payload.dropoff ?? { district: 'Улаанбаатар' };
         const request: ActiveDelivery = {
-          id: `req-${payload.orderId}`,
+          id: payload.orderId,
           orderId: payload.orderId,
           orderNumber: payload.orderNumber,
           customerName: dropoff.customerName ?? 'Хэрэглэгч',
@@ -115,7 +225,7 @@ export default function DriverDashboardPage() {
 
     if (isOnline) {
       socket.emit('driver:join', driver.id);
-      socket.emit('driver:online', driver.id);
+      socket.emit('driver:online', toDriverOnlinePayload(driver));
     } else {
       socket.emit('driver:offline', driver.id);
     }
@@ -126,6 +236,44 @@ export default function DriverDashboardPage() {
     setShowRequest(false);
     setPendingRequest(undefined);
   }, []);
+
+  const acceptRequest = useCallback(async (delivery: ActiveDelivery) => {
+    if (!driver) return;
+    setOnlineError('');
+    try {
+      let token = authToken || getDriverAuthToken();
+      if (!token) {
+        token = await refreshDriverToken(driver.id, driver.phone);
+        setAuthToken(token);
+      }
+      await acceptDeliveryRequest(delivery.id, driver.id, token);
+      setActiveDelivery({ ...delivery, status: 'ACCEPTED' });
+      setShowRequest(false);
+      setPendingRequest(undefined);
+    } catch (err) {
+      setOnlineError(err instanceof Error ? err.message : 'Хүргэлт хүлээн авахад алдаа гарлаа');
+    }
+  }, [authToken, driver, setActiveDelivery, setAuthToken]);
+
+  const toggleOnline = useCallback(async () => {
+    if (!driver || onlineSaving) return;
+    const next = !isOnline;
+    setOnlineSaving(true);
+    setOnlineError('');
+    try {
+      let token = authToken || getDriverAuthToken();
+      if (!token) {
+        token = await refreshDriverToken(driver.id, driver.phone);
+        setAuthToken(token);
+      }
+      await updateDriverOnlineStatus(driver.id, next, token);
+      setOnlineStatus(next);
+    } catch (err) {
+      setOnlineError(err instanceof Error ? err.message : 'Онлайн төлөв солиход алдаа гарлаа');
+    } finally {
+      setOnlineSaving(false);
+    }
+  }, [authToken, driver, isOnline, onlineSaving, setAuthToken, setOnlineStatus]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -146,13 +294,15 @@ export default function DriverDashboardPage() {
           {isOnline ? 'Шинэ хүргэлт ирэхэд дэлгэц дээр шууд мэдэгдэнэ.' : 'Захиалга авахын тулд онлайн болно уу'}
         </p>
         <button
-          onClick={() => setOnlineStatus(!isOnline)}
+          onClick={() => void toggleOnline()}
+          disabled={onlineSaving}
           className={`mt-6 rounded-2xl px-8 py-4 text-base font-black text-white transition ${
             isOnline ? 'bg-foreground-muted hover:bg-foreground-muted/80' : 'bg-success shadow-lg shadow-success/20 hover:brightness-110'
-          }`}
+          } disabled:opacity-60`}
         >
-          {isOnline ? 'Офлайн болох' : 'Онлайн болох'}
+          {onlineSaving ? 'Хадгалж байна...' : isOnline ? 'Офлайн болох' : 'Онлайн болох'}
         </button>
+        {onlineError && <p className="mt-3 text-sm text-error">{onlineError}</p>}
       </section>
 
       <section className="grid grid-cols-3 gap-3">
@@ -219,11 +369,7 @@ export default function DriverDashboardPage() {
         open={showRequest && isOnline && !activeDelivery}
         request={pendingRequest}
         onReject={rejectRequest}
-        onAccept={(delivery) => {
-          setActiveDelivery(delivery);
-          setShowRequest(false);
-          setPendingRequest(undefined);
-        }}
+        onAccept={(delivery) => void acceptRequest(delivery)}
       />
     </div>
   );

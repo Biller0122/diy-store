@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   useReactTable, getCoreRowModel, getSortedRowModel,
@@ -9,6 +9,55 @@ import {
 } from '@tanstack/react-table';
 import { Plus, Search, Download, Package, ArrowUpDown, Pencil, Trash2, Eye, CheckCircle, XCircle } from 'lucide-react';
 import { MOCK_PRODUCTS, type AdminProduct } from '@/lib/admin-data';
+import { vendureAdminFetch } from '@/lib/vendure';
+
+type AdminProductRow = AdminProduct & {
+  supplierId?: string;
+  supplierName?: string;
+};
+
+type SupplierProductApi = {
+  id: string;
+  supplierId: string;
+  name: string;
+  slug: string;
+  category?: string | null;
+  image?: string | null;
+  price: number;
+  stock: number;
+  enabled: boolean;
+};
+
+type SupplierApi = {
+  id: string;
+  businessName: string;
+  ownerName: string;
+};
+
+const SUPPLIER_PRODUCTS_QUERY = `
+  query AdminSupplierProducts {
+    supplierProducts {
+      items {
+        id
+        supplierId
+        name
+        slug
+        category
+        image
+        price
+        stock
+        enabled
+      }
+    }
+    getAllSuppliers {
+      items {
+        id
+        businessName
+        ownerName
+      }
+    }
+  }
+`;
 
 const STOCK_BADGE: Record<string, string> = {
   IN_STOCK:     'bg-emerald-500/15 text-emerald-400',
@@ -24,22 +73,72 @@ export default function AdminProductsPage() {
   const [globalFilter, setGlobalFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [dbProducts, setDbProducts] = useState<AdminProductRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [syncError, setSyncError] = useState('');
 
   const categories = useMemo(
-    () => Array.from(new Set(MOCK_PRODUCTS.flatMap((p) => p.collections.map((c) => c.name)))),
-    [],
+    () => Array.from(new Set([...MOCK_PRODUCTS, ...dbProducts].flatMap((p) => p.collections.map((c) => c.name)))),
+    [dbProducts],
   );
 
-  const products = useMemo(
-    () => MOCK_PRODUCTS.filter((product) => {
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    vendureAdminFetch<{
+      supplierProducts: { items: SupplierProductApi[] };
+      getAllSuppliers: { items: SupplierApi[] };
+    }>(SUPPLIER_PRODUCTS_QUERY)
+      .then((data) => {
+        if (!mounted) return;
+        const suppliers = new Map(data.getAllSuppliers.items.map((supplier) => [
+          String(supplier.id),
+          supplier.businessName || supplier.ownerName || 'Нийлүүлэгч',
+        ]));
+        setDbProducts(data.supplierProducts.items.map((product): AdminProductRow => {
+          const stockLevel = product.stock <= 0 ? 'OUT_OF_STOCK' : product.stock <= 5 ? 'LOW_STOCK' : 'IN_STOCK';
+          return {
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            description: '',
+            enabled: product.enabled,
+            supplierId: product.supplierId,
+            supplierName: suppliers.get(String(product.supplierId)) ?? product.supplierId,
+            featuredAsset: product.image ? { preview: product.image } : undefined,
+            variants: [{
+              id: product.id,
+              sku: product.slug,
+              priceWithTax: product.price,
+              stockOnHand: product.stock,
+              stockLevel,
+            }],
+            collections: product.category ? [{ id: product.category, name: product.category }] : [],
+          };
+        }));
+        setSyncError('');
+      })
+      .catch((err) => {
+        if (mounted) setSyncError(err instanceof Error ? err.message : 'Supplier бараа татахад алдаа гарлаа');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const products = useMemo<AdminProductRow[]>(
+    () => [...dbProducts, ...MOCK_PRODUCTS].filter((product) => {
       const categoryOk = !categoryFilter || product.collections.some((c) => c.name === categoryFilter);
       const statusOk = !statusFilter || (statusFilter === 'active' ? product.enabled : !product.enabled);
       return categoryOk && statusOk;
     }),
-    [categoryFilter, statusFilter],
+    [categoryFilter, dbProducts, statusFilter],
   );
 
-  const columns = useMemo<ColumnDef<AdminProduct>[]>(() => [
+  const columns = useMemo<ColumnDef<AdminProductRow>[]>(() => [
     {
       id: 'select',
       header: ({ table }) => (
@@ -81,6 +180,12 @@ export default function AdminProductsPage() {
           </div>
         </div>
       ),
+    },
+    {
+      id: 'supplier',
+      header: 'Нийлүүлэгч',
+      accessorFn: (r) => r.supplierName ?? 'DIY Store',
+      cell: ({ getValue }) => <span className="text-xs font-semibold text-foreground-muted">{getValue() as string}</span>,
     },
     {
       id: 'sku',
@@ -180,10 +285,10 @@ export default function AdminProductsPage() {
   });
 
   const handleExportCSV = () => {
-    const rows = MOCK_PRODUCTS.map(p =>
-      [p.name, p.variants[0]?.sku, Math.round((p.variants[0]?.priceWithTax ?? 0) / 100), p.variants[0]?.stockOnHand, p.enabled].join(',')
+    const rows = products.map(p =>
+      [p.name, p.supplierName ?? 'DIY Store', p.variants[0]?.sku, Math.round((p.variants[0]?.priceWithTax ?? 0) / 100), p.variants[0]?.stockOnHand, p.enabled].join(',')
     );
-    const csv = ['Нэр,SKU,Үнэ,Нөөц,Идэвхтэй', ...rows].join('\n');
+    const csv = ['Нэр,Нийлүүлэгч,SKU,Үнэ,Нөөц,Идэвхтэй', ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -196,7 +301,7 @@ export default function AdminProductsPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-foreground-muted">{products.length} бараа</p>
+        <p className="text-xs text-foreground-muted">{loading ? 'Синк хийж байна...' : `${products.length} бараа`}</p>
         <div className="flex items-center gap-2">
           <button className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-[var(--glass-border)] text-xs text-foreground-muted hover:text-foreground transition-colors">
             <CheckCircle size={13} /> Идэвхжүүлэх
@@ -221,6 +326,13 @@ export default function AdminProductsPage() {
           </Link>
         </div>
       </div>
+
+      {/* Search */}
+      {syncError && (
+        <div className="rounded-xl border border-error/20 bg-error/10 px-3 py-2 text-xs text-error">
+          {syncError}
+        </div>
+      )}
 
       {/* Search */}
       <div className="grid gap-2 md:grid-cols-[1fr_180px_160px]">

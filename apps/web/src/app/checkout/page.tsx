@@ -37,7 +37,7 @@ const STORES = [
 ];
 
 type DeliveryType  = 'delivery' | 'pickup';
-type PaymentMethod = 'qpay' | 'monpay' | 'card';
+type PaymentMethod = 'qpay' | 'monpay' | 'card' | 'testpay';
 
 function fmt(minor: number) {
   return `₮${Math.round(minor / 100).toLocaleString('mn-MN')}`;
@@ -175,11 +175,11 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground-muted">Холбоо барих</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Нэр" required error={errors.name}>
-            <input className={inputCls} placeholder="Овог Нэр" value={data.name}
+            <input data-testid="input-name" className={inputCls} placeholder="Овог Нэр" value={data.name}
               onChange={(e) => onChange({ name: e.target.value })} />
           </Field>
           <Field label="Утасны дугаар" required error={errors.phone}>
-            <input className={inputCls} placeholder="8800 0000" value={data.phone}
+            <input data-testid="input-phone" className={inputCls} placeholder="8800 0000" value={data.phone}
               onChange={(e) => onChange({ phone: e.target.value })} />
           </Field>
           <Field label="И-мэйл" className="sm:col-span-2">
@@ -236,22 +236,22 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
             </Field>
             <Field label="Дүүрэг / Сум" required error={errors.district}>
               {districts.length > 0 ? (
-                <select className={inputCls} value={data.district}
+              <select data-testid="district-select" className={inputCls} value={data.district}
                   onChange={(e) => onChange({ district: e.target.value })}>
                   <option value="">Сонгох...</option>
                   {districts.map((d) => <option key={d}>{d} дүүрэг</option>)}
                 </select>
               ) : (
-                <input className={inputCls} placeholder="Сум/дүүрэг" value={data.district}
+                <input data-testid="district-select" className={inputCls} placeholder="Сум/дүүрэг" value={data.district}
                   onChange={(e) => onChange({ district: e.target.value })} />
               )}
             </Field>
             <Field label="Хороо / Баг">
-              <input className={inputCls} placeholder="1-р хороо" value={data.khoroo}
+              <input data-testid="input-khoroo" className={inputCls} placeholder="1-р хороо" value={data.khoroo}
                 onChange={(e) => onChange({ khoroo: e.target.value })} />
             </Field>
             <Field label="Дэлгэрэнгүй хаяг" required error={errors.address}>
-              <input className={inputCls} placeholder="Байр, давхар, тоот" value={data.address}
+              <input data-testid="input-address" className={inputCls} placeholder="Байр, давхар, тоот" value={data.address}
                 onChange={(e) => onChange({ address: e.target.value })} />
             </Field>
             <Field label="Хаалганы код">
@@ -284,7 +284,7 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
         )}
       </section>
 
-      <button onClick={() => { if (validate()) onNext(); }}
+      <button data-testid="checkout-next" onClick={() => { if (validate()) onNext(); }}
         className="w-full rounded-xl bg-brand py-3.5 text-sm font-bold text-white hover:bg-brand-hover">
         Үргэлжлүүлэх →
       </button>
@@ -305,6 +305,7 @@ const METHOD_INFO: { id: PaymentMethod; icon: string; label: string; desc: strin
   { id: 'qpay',   icon: '📱', label: 'QPay',   desc: 'QR кодоор төлнө',      color: 'border-brand/40 bg-brand/5' },
   { id: 'monpay', icon: '💳', label: 'MonPay', desc: 'MonPay апп-аар төлнө', color: 'border-sky-500/40 bg-sky-500/5' },
   { id: 'card',   icon: '🏦', label: 'Карт',   desc: 'Дебит / Кредит карт',  color: 'border-purple-500/40 bg-purple-500/5' },
+  { id: 'testpay', icon: '✅', label: 'Тест төлбөр', desc: 'Шууд төлөгдсөн болгоно', color: 'border-success/40 bg-success/5' },
 ];
 
 function StepPayment({ data, total, onChange, onBack, onNext }: {
@@ -325,9 +326,9 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
     <div className="space-y-6">
       <section>
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground-muted">Төлбөрийн арга</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           {METHOD_INFO.map((m) => (
-            <button key={m.id} onClick={() => onChange({ method: m.id })}
+            <button data-testid={`payment-${m.id}`} key={m.id} onClick={() => onChange({ method: m.id })}
               className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition ${
                 data.method === m.id ? m.color : 'border-[var(--glass-border)] hover:border-[var(--glass-border)]'
               }`}>
@@ -346,6 +347,7 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
             {data.method === 'qpay'   && <><span className="text-foreground font-semibold">QPay</span> — Дараа QR код харагдана. Банкны аппаа бэлдээрэй.</>}
             {data.method === 'monpay' && <><span className="text-foreground font-semibold">MonPay</span> — Дараа QR код харагдана. MonPay апп-аа бэлдээрэй.</>}
             {data.method === 'card'   && <><span className="text-foreground font-semibold">Карт</span> — Дараагийн хуудсанд картын мэдээлэл оруулна уу.</>}
+            {data.method === 'testpay' && <><span className="text-foreground font-semibold">Тест төлбөр</span> — Дармагц төлбөр төлөгдсөн гэж үзээд захиалга үүсгэнэ.</>}
           </div>
         </div>
       )}
@@ -382,7 +384,7 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
           className="flex-1 rounded-xl border border-[var(--glass-border)] py-3 text-sm font-semibold text-foreground-muted hover:bg-dark">
           ← Буцах
         </button>
-        <button onClick={handleConfirm}
+        <button data-testid="pay-btn" onClick={handleConfirm}
           className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold text-white hover:bg-brand-hover">
           Төлбөр хийх ✓
         </button>
@@ -592,6 +594,8 @@ export default function CheckoutPage() {
         orderItems: items.map((item) => ({
           supplierId: item.supplierId ?? 'diy-store',
           supplierName: item.supplierName ?? 'DIY Store',
+          productId: item.productId,
+          variantId: item.variantId,
           name: item.name,
           sku: item.sku,
           qty: item.qty,
@@ -654,8 +658,8 @@ export default function CheckoutPage() {
   function handlePaymentConfirm() {
     const sessionId = `session-${Date.now()}`;
 
-    const methodLabel = payment.method === 'qpay' ? 'QPay' : payment.method === 'monpay' ? 'MonPay' : 'Card';
-    trackAddPaymentInfo(methodLabel as 'QPay' | 'MonPay' | 'Card');
+    const methodLabel = payment.method === 'qpay' ? 'QPay' : payment.method === 'monpay' ? 'MonPay' : payment.method === 'testpay' ? 'TestPay' : 'Card';
+    trackAddPaymentInfo((methodLabel === 'TestPay' ? 'Card' : methodLabel) as 'QPay' | 'MonPay' | 'Card');
 
     if (payment.method === 'qpay') {
       setShowQPay(true);
@@ -670,11 +674,14 @@ export default function CheckoutPage() {
       createOrder(fallback);
       clearCart();
       router.push(`/checkout/mock-psp?session=MOCK-CARD-${sessionId}&order=${fallback}&amount=${Math.round(total / 100)}`);
+    } else if (payment.method === 'testpay') {
+      setOrderNo(sessionId);
+      handlePaymentSuccess(sessionId);
     }
   }
 
-  function handlePaymentSuccess() {
-    const sessionId = orderNo || `session-${Date.now()}`;
+  function handlePaymentSuccess(forcedSessionId?: string) {
+    const sessionId = forcedSessionId || orderNo || `session-${Date.now()}`;
     const savedDeliveryType = contact.deliveryType;
     const savedAddress = contact.address;
     const savedAddressId = selectedAddressId;

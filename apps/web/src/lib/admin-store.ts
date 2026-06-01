@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { clearVendureAdminAuthToken, vendureAdminFetch } from './vendure';
 
 export interface AdminUser {
   id: string;
@@ -19,20 +20,6 @@ interface AdminState {
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
-}
-
-const ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? 'http://localhost:3001/admin-api';
-
-async function adminFetch<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const res = await fetch(ADMIN_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, variables }),
-    credentials: 'include',
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors[0]?.message ?? 'Admin API error');
-  return json.data as T;
 }
 
 const ADMIN_LOGIN = `
@@ -86,7 +73,7 @@ export const useAdminStore = create<AdminState>()(
             return true;
           }
 
-          const data = await adminFetch<{ login: any }>(ADMIN_LOGIN, { username, password });
+          const data = await vendureAdminFetch<{ login: any }>(ADMIN_LOGIN, { username, password });
           const result = data.login;
           if (result.id) {
             const admin: AdminUser = {
@@ -117,8 +104,9 @@ export const useAdminStore = create<AdminState>()(
 
       logout: () => {
         set({ admin: null, token: null });
+        clearVendureAdminAuthToken();
         clearAdminSession();
-        try { adminFetch(ADMIN_LOGOUT); } catch { /* ignore */ }
+        try { vendureAdminFetch(ADMIN_LOGOUT); } catch { /* ignore */ }
       },
 
       clearError: () => set({ error: null }),

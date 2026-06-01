@@ -43,6 +43,7 @@ export default function AdminLoginPage() {
                 Нэвтрэх нэр
               </label>
               <input
+                data-testid="admin-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -56,6 +57,7 @@ export default function AdminLoginPage() {
                 Нууц үг
               </label>
               <input
+                data-testid="admin-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -72,6 +74,7 @@ export default function AdminLoginPage() {
             )}
 
             <button
+              data-testid="admin-login-submit"
               type="submit"
               disabled={isLoading}
               className="w-full py-3 rounded-xl bg-brand text-white font-bold text-sm hover:bg-brand-hover transition-colors disabled:opacity-60 flex items-center justify-center gap-2"

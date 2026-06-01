@@ -8,7 +8,7 @@ export function AnnouncementBar() {
   if (announcementDismissed) return null;
 
   return (
-    <div className="relative bg-brand text-white text-xs sm:text-sm py-2 px-4 text-center font-medium z-50">
+    <div data-testid="announcement-bar" className="relative bg-brand text-white text-xs sm:text-sm py-2 px-4 text-center font-medium z-50">
       <div className="flex items-center justify-center gap-2 max-w-5xl mx-auto">
         <Truck size={14} className="shrink-0" />
         <span>
@@ -19,6 +19,7 @@ export function AnnouncementBar() {
         </span>
       </div>
       <button
+        data-testid="announcement-close"
         onClick={dismissAnnouncement}
         className="absolute right-3 top-1/2 -translate-y-1/2 opacity-70 hover:opacity-100 transition-opacity"
         aria-label="Хаах"

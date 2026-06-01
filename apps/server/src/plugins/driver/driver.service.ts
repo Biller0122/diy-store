@@ -25,7 +25,7 @@ export class DriverService {
     const name = input.ownerName.trim();
     const phone = this.normalizePhone(input.phone);
     if (name.length < 2) throw new Error('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
-    if (!/^[6789]\d{7}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
+    if (!/^\d{8}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой байх ёстой');
     if (await this.driverRepo.findOne({ where: { phone } })) throw new Error('Энэ дугаар бүртгэлтэй байна');
 
     const [firstName, ...rest] = name.split(/\s+/);
@@ -49,6 +49,7 @@ export class DriverService {
     });
     const saved = await this.driverRepo.save(driver);
     console.log(`[Driver OTP] ${phone}: ${saved.otpCode}`);
+    console.log(`DRIVER REGISTERED: id=${saved.id} name=${saved.firstName} ${saved.lastName}`.trim());
     return saved;
   }
 
@@ -114,6 +115,14 @@ export class DriverService {
     return { driver: saved, token: generateToken({ id: String(saved.id), role: 'DRIVER' }, '7d') };
   }
 
+  async refreshToken(id: string, phoneInput: string) {
+    const phone = this.normalizePhone(phoneInput);
+    const driver = await this.driverRepo.findOne({ where: { id, phone } });
+    if (!driver) throw new Error('Жолоочийн session олдсонгүй');
+    if (driver.status === DriverStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
+    return { driver, token: generateToken({ id: String(driver.id), role: 'DRIVER' }, '7d') };
+  }
+
   async updateDriverLocation(driverId: string, lat: number, lng: number) {
     await this.driverRepo.update(driverId, { currentLat: lat, currentLng: lng });
     return this.getDriverById(driverId);
@@ -126,6 +135,7 @@ export class DriverService {
       throw new Error('Зөвхөн идэвхтэй жолооч онлайн болох боломжтой');
     }
     await this.driverRepo.update(driverId, { isOnline });
+    console.log(`DRIVER ONLINE STATUS: id=${driverId} online=${isOnline}`);
     return this.getDriverById(driverId);
   }
 
@@ -158,7 +168,7 @@ export class DriverService {
   }
 
   private generateOtp() {
-    if (process.env.NODE_ENV !== 'production') return '1234';
+    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') return '1234';
     return String(Math.floor(1000 + Math.random() * 9000));
   }
 

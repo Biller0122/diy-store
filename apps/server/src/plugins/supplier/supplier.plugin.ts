@@ -166,6 +166,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     success: Boolean!
     message: String!
     email: String
+    otp: String
   }
 
   type SupplierOTPResult {
@@ -223,6 +224,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
   extend type Mutation {
     createSupplier(input: CreateSupplierInput!): Supplier!
     updateSupplier(id: ID!, input: UpdateSupplierInput!): Supplier!
+    deleteSupplier(id: ID!): Boolean!
     registerSupplier(input: RegisterSupplierInput!): SupplierRegistrationResult!
     loginSupplier(email: String!): SupplierRegistrationResult!
     verifySupplierOTP(input: VerifySupplierOTPInput!): SupplierOTPResult!

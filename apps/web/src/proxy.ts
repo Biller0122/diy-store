@@ -1,6 +1,23 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+type Portal = 'customer' | 'admin' | 'driver' | 'merchant';
+
+const portal = (process.env.APP_PORTAL || process.env.NEXT_PUBLIC_APP_PORTAL) as Portal | undefined;
+
+const sharedPrefixes = [
+  '/_next',
+  '/api',
+  '/assets',
+  '/favicon.ico',
+  '/robots.txt',
+  '/sitemap.xml',
+  '/shop-api',
+  '/admin-api',
+  '/mailbox',
+  '/socket.io',
+];
+
 function redirectTo(request: NextRequest, path: string, withRedirect = true) {
   // Use the forwarded host from the reverse proxy (Caddy) to avoid embedding
   // the internal container hostname in redirect Location headers.
@@ -16,8 +33,42 @@ function redirectTo(request: NextRequest, path: string, withRedirect = true) {
   return NextResponse.redirect(url);
 }
 
+function isSharedPath(pathname: string) {
+  return sharedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function portalGuard(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (!portal || isSharedPath(pathname)) return null;
+
+  if (portal === 'customer') {
+    const blocked = ['/admin', '/driver', '/supplier'];
+    return blocked.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+      ? redirectTo(request, '/', false)
+      : null;
+  }
+
+  if (portal === 'admin') {
+    return pathname === '/' ? redirectTo(request, '/admin', false) : pathname.startsWith('/admin') ? null : redirectTo(request, '/admin', false);
+  }
+
+  if (portal === 'driver') {
+    return pathname === '/' ? redirectTo(request, '/driver', false) : pathname.startsWith('/driver') ? null : redirectTo(request, '/driver', false);
+  }
+
+  if (portal === 'merchant') {
+    return pathname === '/' ? redirectTo(request, '/supplier', false) : pathname.startsWith('/supplier') ? null : redirectTo(request, '/supplier', false);
+  }
+
+  return null;
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (isSharedPath(pathname)) return NextResponse.next();
+
+  const portalRedirect = portalGuard(request);
+  if (portalRedirect) return portalRedirect;
 
   // ─── Admin ─────────────────────────────────────────────────────────────
   if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
@@ -83,5 +134,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/account/:path*', '/supplier/:path*', '/driver/:path*', '/admin/:path*'],
+  matcher: ['/((?!_next/static|_next/image|.*\\..*).*)', '/favicon.ico'],
 };

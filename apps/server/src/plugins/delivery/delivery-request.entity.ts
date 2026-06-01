@@ -24,6 +24,8 @@ export interface PickupStop {
 export interface DeliveryOrderItem {
   supplierId: string;
   supplierName: string;
+  productId?: string;
+  variantId?: string;
   name: string;
   sku?: string;
   qty: number;

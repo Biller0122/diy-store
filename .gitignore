@@ -6,5 +6,8 @@ dist
 .env.local
 *.log
 coverage/
+apps/web/e2e-report/
+apps/web/playwright-report/
+apps/web/test-results/
 .claude/
 .vendure/

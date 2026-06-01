@@ -123,10 +123,11 @@ function LoginForm() {
 
           {/* Login */}
           {tab === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form data-testid="login-form" onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">И-мэйл</label>
                 <input
+                  data-testid="login-email"
                   type="email"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
@@ -139,6 +140,7 @@ function LoginForm() {
                 <label className="block text-xs font-medium text-foreground mb-1">Нууц үг</label>
                 <div className="relative">
                   <input
+                    data-testid="login-password"
                     type={showLoginPwd ? 'text' : 'password'}
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
@@ -156,6 +158,7 @@ function LoginForm() {
                 </div>
               </div>
               <button
+                data-testid="login-submit"
                 type="submit"
                 disabled={isLoading}
                 className="w-full py-3 bg-brand text-white rounded-xl font-semibold hover:bg-brand-hover transition-colors disabled:opacity-50"
@@ -167,13 +170,14 @@ function LoginForm() {
 
           {/* Register */}
           {tab === 'register' && !regSuccess && (
-            <form onSubmit={handleRegister} className="space-y-4">
+            <form data-testid="register-form" onSubmit={handleRegister} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">
                     Нэр <span className="text-error">*</span>
                   </label>
                   <input
+                    data-testid="reg-firstname"
                     value={regFirstName}
                     onChange={(e) => setRegFirstName(e.target.value)}
                     placeholder="Болд"
@@ -185,6 +189,7 @@ function LoginForm() {
                     Овог <span className="text-error">*</span>
                   </label>
                   <input
+                    data-testid="reg-lastname"
                     value={regLastName}
                     onChange={(e) => setRegLastName(e.target.value)}
                     placeholder="Баатар"
@@ -198,6 +203,7 @@ function LoginForm() {
                   И-мэйл <span className="text-error">*</span>
                 </label>
                 <input
+                  data-testid="reg-email"
                   type="email"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}

@@ -142,6 +142,7 @@ export default function ProductTabs({
       <div className="flex overflow-x-auto border-b border-[var(--glass-border)] scrollbar-none">
         {TABS.map((tab) => (
           <button
+            data-testid={`tab-${tab.id}`}
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`shrink-0 border-b-2 px-5 py-3.5 text-sm font-semibold transition ${
@@ -157,11 +158,13 @@ export default function ProductTabs({
 
       {/* Tab content */}
       <div className="py-6">
-        {activeTab === 'features' && <FeaturesTab description={description} />}
-        {activeTab === 'specs' && <SpecsTab facetValues={facetValues} variants={variants} />}
-        {activeTab === 'docs' && <DocsTab />}
-        {activeTab === 'warranty' && <WarrantyTab />}
-        {activeTab === 'reviews' && <ReviewsTab productId={productId} />}
+        <div data-testid={`tab-content-${activeTab}`}>
+          {activeTab === 'features' && <FeaturesTab description={description} />}
+          {activeTab === 'specs' && <SpecsTab facetValues={facetValues} variants={variants} />}
+          {activeTab === 'docs' && <DocsTab />}
+          {activeTab === 'warranty' && <WarrantyTab />}
+          {activeTab === 'reviews' && <ReviewsTab productId={productId} />}
+        </div>
       </div>
     </div>
   );

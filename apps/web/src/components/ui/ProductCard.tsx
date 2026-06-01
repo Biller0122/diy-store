@@ -167,6 +167,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
 
           {/* Wishlist button */}
           <button
+            data-testid="wishlist-btn"
             onClick={handleWishlist}
             className={cn(
               'absolute top-3 right-3 w-8 h-8 rounded-full glass flex items-center justify-center transition-all duration-200',
@@ -237,6 +238,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       <div className="px-3 pb-3">
         <AnimatePresence>
           <m.button
+            data-testid="add-to-cart-btn"
             onClick={handleAddToCart}
             disabled={product.inStock === false}
             animate={{ opacity: hovered ? 1 : 0.7, y: hovered ? 0 : 4 }}

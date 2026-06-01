@@ -87,10 +87,11 @@ export default function DriverRegisterPage() {
             </div>
 
             {step === 'form' ? (
-              <form onSubmit={submitInfo} className="space-y-4">
+              <form data-testid="driver-reg-form" onSubmit={submitInfo} className="space-y-4">
                 <div>
                   <label className="mb-2 block text-xs font-bold text-foreground-muted">Овог нэр</label>
                   <input
+                    data-testid="input-driver-name"
                     value={ownerName}
                     onChange={(event) => setOwnerName(event.target.value)}
                     placeholder="Батболд"
@@ -103,6 +104,7 @@ export default function DriverRegisterPage() {
                 <div>
                   <label className="mb-2 block text-xs font-bold text-foreground-muted">Утасны дугаар</label>
                   <input
+                    data-testid="input-phone"
                     value={phone}
                     onChange={(event) => setPhone(formatPhone(event.target.value))}
                     inputMode="numeric"
@@ -184,7 +186,7 @@ export default function DriverRegisterPage() {
                   <div className="rounded-2xl bg-white/[0.04] p-3">📱<br />Апп-аар удирдах</div>
                 </div>
 
-                <button disabled={isLoading} className="w-full rounded-2xl bg-brand py-4 text-sm font-black text-white shadow-lg shadow-brand/20 disabled:opacity-60">
+                <button data-testid="driver-reg-submit" disabled={isLoading} className="w-full rounded-2xl bg-brand py-4 text-sm font-black text-white shadow-lg shadow-brand/20 disabled:opacity-60">
                   {isLoading ? 'Илгээж байна...' : 'Үргэлжлүүлэх'}
                 </button>
               </form>

@@ -173,7 +173,11 @@ export const useAuthStore = create<AuthState>()(
           if (result.success) {
             const loginOk = await get().login(input.emailAddress, input.password);
             if (!loginOk) {
-              set({ isLoading: false, error: null });
+              set((state) => ({
+                isLoading: false,
+                error: state.error ?? 'Бүртгэл үүслээ, гэхдээ автоматаар нэвтрэхэд алдаа гарлаа. Нэвтрэх хэсгээс дахин оролдоно уу.',
+              }));
+              return false;
             }
             return true;
           } else {

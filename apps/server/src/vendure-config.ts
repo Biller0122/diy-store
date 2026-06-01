@@ -8,27 +8,41 @@ import { AssetServerPlugin } from '@vendure/asset-server-plugin';
 import { AdminUiPlugin } from '@vendure/admin-ui-plugin';
 import { defaultEmailHandlers, EmailPlugin } from '@vendure/email-plugin';
 import { config as loadEnv } from 'dotenv';
+import { json } from 'body-parser';
 import path from 'path';
 import { qpayPaymentHandler, monpayPaymentHandler } from './plugins/payment';
 import { ReviewPlugin } from './plugins/review/review.plugin';
 import { SupplierPlugin } from './plugins/supplier/supplier.plugin';
 import { DriverPlugin } from './plugins/driver/driver.plugin';
 import { DeliveryPlugin } from './plugins/delivery/delivery.plugin';
+import { RealtimePlugin } from './plugins/realtime.plugin';
+import { AdminStatsPlugin } from './plugins/admin-stats/admin-stats.plugin';
+import { DeviceTokenPlugin } from './plugins/device-token/device-token.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
 
 const useSqliteDevDb = process.env.DB_TYPE === 'sqlite' || process.env.DB_TYPE === 'better-sqlite3';
+const corsOrigins = [
+  process.env.STOREFRONT_URL || 'http://localhost:3000',
+  'http://localhost:3002',
+  ...(process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+];
 
 export const config: VendureConfig = {
   apiOptions: {
     port: parseInt(process.env.PORT || '3001'),
     adminApiPath: 'admin-api',
     shopApiPath: 'shop-api',
+    middleware: [{
+      handler: json({ limit: process.env.API_JSON_LIMIT || '10mb' }),
+      route: '*splat',
+      beforeListen: true,
+    }],
     cors: {
-      origin: [
-        process.env.STOREFRONT_URL || 'http://localhost:3000',
-        'http://localhost:3002',
-      ],
+      origin: corsOrigins,
       credentials: true,
     },
   },
@@ -93,6 +107,9 @@ export const config: VendureConfig = {
     SupplierPlugin,
     DriverPlugin,
     DeliveryPlugin,
+    RealtimePlugin,
+    AdminStatsPlugin,
+    DeviceTokenPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),

@@ -178,7 +178,7 @@ export default function BuyBox({
 
         {/* Name + SKU */}
         <div>
-          <h1 className="text-xl font-bold leading-snug text-foreground">{productName}</h1>
+          <h1 data-testid="product-name" className="text-xl font-bold leading-snug text-foreground">{productName}</h1>
           {activeVariant?.sku && (
             <p className="mt-1 text-xs text-foreground-muted">Код: {activeVariant.sku}</p>
           )}
@@ -189,7 +189,7 @@ export default function BuyBox({
 
         {/* Price */}
         <div className="flex items-baseline gap-3">
-          <span className="text-3xl font-extrabold text-foreground">{formatMNT(price)}</span>
+          <span data-testid="product-price" className="text-3xl font-extrabold text-foreground">{formatMNT(price)}</span>
           {/* Strike-through shown when a sale price exists; stubbed for now */}
         </div>
 
@@ -308,14 +308,16 @@ export default function BuyBox({
           <span className="text-sm font-semibold text-foreground-muted">Тоо хэмжээ</span>
           <div className="flex items-center overflow-hidden rounded-xl border border-[var(--glass-border)]">
             <button
+              data-testid="qty-decrease"
               onClick={() => setQty((q) => Math.max(1, q - 1))}
               className="flex h-10 w-10 items-center justify-center text-lg font-bold text-foreground-muted hover:bg-surface disabled:text-foreground-muted/30"
               disabled={qty <= 1}
             >
               −
             </button>
-            <span className="w-10 text-center text-sm font-semibold text-foreground">{qty}</span>
+            <span data-testid="qty-value" className="w-10 text-center text-sm font-semibold text-foreground">{qty}</span>
             <button
+              data-testid="qty-increase"
               onClick={() => setQty((q) => q + 1)}
               className="flex h-10 w-10 items-center justify-center text-lg font-bold text-foreground-muted hover:bg-surface"
             >
@@ -330,6 +332,7 @@ export default function BuyBox({
         {/* CTA buttons */}
         <div className="flex gap-3">
           <button
+            data-testid="add-to-cart-btn"
             ref={addBtnRef}
             onClick={handleAddToCart}
             disabled={!inStock}
@@ -338,6 +341,7 @@ export default function BuyBox({
             {addedToCart ? '✅ Нэмэгдлээ!' : inStock ? 'Сагсанд нэмэх' : 'Захиалгаар'}
           </button>
           <button
+            data-testid="wishlist-btn"
             onClick={() => {
               const v = activeVariant ?? variants[0];
               if (!v) return;

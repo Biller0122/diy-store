@@ -162,6 +162,7 @@ export function SearchBar() {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-x-0 top-0 bottom-16 md:inset-0 z-[200] flex items-start justify-center pt-4 md:pt-20 px-0 md:px-4"
+        data-testid="search-dropdown"
       >
         {/* Backdrop — clicking closes search */}
         <div
@@ -193,6 +194,7 @@ export function SearchBar() {
             <Search size={18} className="hidden md:block text-foreground-muted shrink-0" />
 
             <input
+              data-testid="search-input"
               ref={inputRef}
               value={query}
               onChange={(e) => handleInput(e.target.value)}
@@ -207,6 +209,7 @@ export function SearchBar() {
               {/* X button — clears text and closes on mobile, only clears on desktop when has text */}
               {showX && (
                 <button
+                  data-testid="search-clear"
                   onMouseDown={(e) => {
                     e.preventDefault(); // prevent input blur before click fires
                     handleClose();
@@ -241,7 +244,7 @@ export function SearchBar() {
             )}
 
             {!loading && results.length > 0 && (
-              <div className="p-3">
+              <div className="p-3" data-testid="search-results">
                 <p className="text-[10px] text-foreground-muted font-semibold uppercase tracking-wider mb-2 px-2">
                   Хайлтын үр дүн
                 </p>
@@ -284,7 +287,7 @@ export function SearchBar() {
             )}
 
             {!loading && query && results.length === 0 && (
-              <div className="p-8 text-center">
+              <div className="p-8 text-center" data-testid="no-results">
                 <p className="text-foreground-muted text-sm mb-3">"{query}" илэрц олдсонгүй</p>
                 <button
                   onClick={handleSubmit}
@@ -298,7 +301,7 @@ export function SearchBar() {
             {!query && (
               <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {recent.length > 0 && (
-                  <div>
+                  <div data-testid="recent-searches">
                     <p className="text-[10px] text-foreground-muted font-semibold uppercase tracking-wider mb-2 px-2">
                       Сүүлийн хайлт
                     </p>

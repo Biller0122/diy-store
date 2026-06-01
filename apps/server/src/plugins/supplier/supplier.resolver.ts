@@ -62,12 +62,14 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
+        otp: this.exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Алдаа гарлаа. Дахин оролдоно уу.',
         email: null,
+        otp: null,
       };
     }
   }
@@ -81,12 +83,14 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
+        otp: this.exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Алдаа гарлаа. Дахин оролдоно уу.',
         email: null,
+        otp: null,
       };
     }
   }
@@ -135,11 +139,22 @@ export class SupplierResolver {
     @Args('input') input: Partial<Supplier>,
   ) {
     this.requireAdminOrSupplier(ctx, String(id));
-    delete (input as Partial<Supplier> & { status?: SupplierStatus }).status;
-    delete (input as Partial<Supplier> & { commissionRate?: number }).commissionRate;
-    delete (input as Partial<Supplier> & { email?: string }).email;
+    if (ctx.apiType !== 'admin') {
+      delete (input as Partial<Supplier> & { status?: SupplierStatus }).status;
+      delete (input as Partial<Supplier> & { commissionRate?: number }).commissionRate;
+      delete (input as Partial<Supplier> & { email?: string }).email;
+    }
     await this.supplierRepo.update(String(id), input);
     return this.supplierService.getSupplierById(String(id));
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  async deleteSupplier(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+    this.requireAdmin(ctx);
+    await this.supplierProductRepo.delete({ supplierId: String(id) });
+    const result = await this.supplierRepo.delete(String(id));
+    return (result.affected ?? 0) > 0;
   }
 
   @Mutation()
@@ -250,5 +265,9 @@ export class SupplierResolver {
         },
       })),
     };
+  }
+
+  private exposeOtp(otp: string | null) {
+    return process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true' ? otp : null;
   }
 }

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Save, Percent, TrendingUp, Store } from 'lucide-react';
+import { vendureAdminFetch } from '@/lib/vendure';
 
 interface CommissionTier {
   id: string;
@@ -28,6 +29,15 @@ function fmt(n: number) {
 }
 
 const COMMISSION_STORAGE_KEY = 'diy-admin-commission-tiers';
+const COMMISSION_GQL = `
+  query CommissionStats {
+    getCommissionStats {
+      thisMonthGMV
+      thisMonthCommission
+      totalSuppliers
+    }
+  }
+`;
 
 function loadTiers() {
   if (typeof window === 'undefined') return DEFAULT_TIERS;
@@ -42,6 +52,33 @@ function loadTiers() {
 export default function AdminCommissionPage() {
   const [tiers, setTiers] = useState<CommissionTier[]>(loadTiers);
   const [saved, setSaved] = useState(false);
+  const [stats, setStats] = useState({
+    thisMonthGMV: 125_000_000_00,
+    thisMonthCommission: 12_500_000_00,
+    totalSuppliers: DEFAULT_TIERS.reduce((s, t) => s + t.supplierCount, 0),
+  });
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    function loadStats() {
+    vendureAdminFetch<{ getCommissionStats: typeof stats }>(COMMISSION_GQL)
+      .then((data) => {
+        if (!mounted) return;
+        setStats(data.getCommissionStats);
+        setIsLive(true);
+      })
+      .catch(() => {
+        if (mounted) setIsLive(false);
+      });
+    }
+    loadStats();
+    const interval = window.setInterval(loadStats, 5_000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   function updateRate(id: string, rate: number) {
     setTiers((prev) => prev.map((t) => t.id === id ? { ...t, rate: Math.max(0, Math.min(50, rate)) } : t));
@@ -57,15 +94,14 @@ export default function AdminCommissionPage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const totalRevenue = 125_000_000_00; // mock
-  const totalCommission = totalRevenue * 0.12;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-foreground">Комиссийн тохиргоо</h1>
-          <p className="text-sm text-foreground-muted mt-0.5">Нийлүүлэгчдийн борлуулалтаас авах хувиас тохируулна уу.</p>
+          <p className="text-sm text-foreground-muted mt-0.5">
+            Нийлүүлэгчдийн борлуулалтаас авах хувиас тохируулна уу. {isLive ? 'Шууд өгөгдөл' : 'Туршилтын өгөгдөл'}
+          </p>
         </div>
         <button
           onClick={save}
@@ -78,9 +114,9 @@ export default function AdminCommissionPage() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: TrendingUp, label: 'Энэ сарын нийт орлого', value: fmt(totalRevenue), color: 'text-brand' },
-          { icon: Percent,    label: 'Нийт комисс',           value: fmt(totalCommission), color: 'text-success' },
-          { icon: Store,      label: 'Нийт нийлүүлэгч',       value: `${DEFAULT_TIERS.reduce((s, t) => s + t.supplierCount, 0)}`, color: 'text-foreground' },
+          { icon: TrendingUp, label: 'Энэ сарын нийт орлого', value: fmt(stats.thisMonthGMV), color: 'text-brand' },
+          { icon: Percent,    label: 'Нийт комисс (10%)',     value: fmt(stats.thisMonthCommission), color: 'text-success' },
+          { icon: Store,      label: 'Идэвхтэй нийлүүлэгч',   value: `${stats.totalSuppliers}`, color: 'text-foreground' },
         ].map(({ icon: Icon, label, value, color }) => (
           <div key={label} className="bg-card rounded-2xl border border-[var(--glass-border)] p-5 flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-brand/10 flex items-center justify-center shrink-0">

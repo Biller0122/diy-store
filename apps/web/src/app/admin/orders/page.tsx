@@ -1,235 +1,164 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import {
-  useReactTable, getCoreRowModel, getSortedRowModel,
-  getFilteredRowModel, flexRender, type ColumnDef, type SortingState,
-} from '@tanstack/react-table';
-import { Search, ArrowUpDown, ChevronRight, Download, Wifi, WifiOff } from 'lucide-react';
-import { type AdminOrder } from '@/lib/admin-data';
-import { useAdminOrders } from '@/lib/use-admin-data';
+import { ChevronRight, RefreshCw, Search } from 'lucide-react';
+import { vendureAdminFetch } from '@/lib/vendure';
 
-const TABS = [
-  { key: '', label: 'Бүгд' },
-  { key: 'PaymentAuthorized', label: 'Хүлээгдэж буй' },
-  { key: 'PaymentSettled',    label: 'Боловсруулж буй' },
-  { key: 'Shipped',           label: 'Илгээсэн' },
-  { key: 'Delivered',         label: 'Хүргэгдсэн' },
-  { key: 'Cancelled',         label: 'Цуцлагдсан' },
-];
+interface AdminOrderSummary {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  total: number;
+  status: string;
+  createdAt: string;
+  source: string;
+  itemSummary?: string | null;
+}
 
-const STATE_BADGE: Record<string, string> = {
-  PaymentAuthorized: 'bg-blue-500/15 text-blue-400',
-  PaymentSettled:    'bg-green-500/15 text-green-400',
-  Shipped:           'bg-purple-500/15 text-purple-400',
-  Delivered:         'bg-emerald-500/15 text-emerald-400',
-  Cancelled:         'bg-red-500/15 text-red-400',
+const ORDERS_GQL = `
+  query AdminOrders($page: Int, $limit: Int) {
+    getAllOrders(page: $page, limit: $limit) {
+      total
+      items {
+        id
+        orderNumber
+        customerName
+        total
+        status
+        createdAt
+        source
+        itemSummary
+      }
+    }
+  }
+`;
+
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  PaymentAuthorized: { label: 'Хүлээгдэж буй', cls: 'bg-blue-500/15 text-blue-400' },
+  PaymentSettled: { label: 'Боловсруулж буй', cls: 'bg-green-500/15 text-green-400' },
+  Shipped: { label: 'Илгээсэн', cls: 'bg-purple-500/15 text-purple-400' },
+  Delivered: { label: 'Хүргэгдсэн', cls: 'bg-emerald-500/15 text-emerald-400' },
+  Cancelled: { label: 'Цуцлагдсан', cls: 'bg-red-500/15 text-red-400' },
+  SEARCHING: { label: 'Жолооч хайж байна', cls: 'bg-amber-500/15 text-amber-400' },
+  IN_PROGRESS: { label: 'Хүргэж байна', cls: 'bg-purple-500/15 text-purple-400' },
+  COMPLETED: { label: 'Хүргэгдсэн', cls: 'bg-emerald-500/15 text-emerald-400' },
+  CANCELLED: { label: 'Цуцлагдсан', cls: 'bg-red-500/15 text-red-400' },
 };
-const STATE_LABEL: Record<string, string> = {
-  PaymentAuthorized: 'Хүлээгдэж буй',
-  PaymentSettled:    'Боловсруулж буй',
-  Shipped:           'Илгээсэн',
-  Delivered:         'Хүргэгдсэн',
-  Cancelled:         'Цуцлагдсан',
-};
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' });
+function money(amount: number) {
+  return `₮${Math.round(amount / 100).toLocaleString('mn-MN')}`;
 }
 
 export default function AdminOrdersPage() {
-  const [tab, setTab] = useState('');
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [orders, setOrders] = useState<AdminOrderSummary[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const { orders, totalItems, isLoading, isLive } = useAdminOrders(1, 200, tab || undefined, search || undefined);
+  const load = useCallback(async () => {
+    try {
+      const data = await vendureAdminFetch<{ getAllOrders: { total: number; items: AdminOrderSummary[] } }>(
+        ORDERS_GQL,
+        { page: 1, limit: 100 },
+      );
+      setOrders(data.getAllOrders.items);
+      setTotal(data.getAllOrders.total);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Захиалга татахад алдаа гарлаа');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const columns = useMemo<ColumnDef<AdminOrder>[]>(() => [
-    {
-      accessorKey: 'code',
-      header: ({ column }) => (
-        <button className="flex items-center gap-1 text-xs font-semibold text-foreground-muted hover:text-foreground" onClick={() => column.toggleSorting()}>
-          Дугаар <ArrowUpDown size={11} />
-        </button>
-      ),
-      cell: ({ getValue }) => <span className="text-xs font-mono font-bold text-brand">{getValue() as string}</span>,
-    },
-    {
-      id: 'customer',
-      header: 'Хэрэглэгч',
-      accessorFn: (r) => `${r.customer?.firstName ?? ''} ${r.customer?.lastName ?? ''}`.trim(),
-      cell: ({ row, getValue }) => (
-        <div>
-          <p className="text-xs font-semibold text-foreground">{getValue() as string}</p>
-          <p className="text-[10px] text-foreground-muted">{row.original.customer?.phoneNumber}</p>
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'paymentState',
-      header: 'Төлбөр',
-      cell: ({ getValue }) => (
-        <span className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-400">
-          {getValue() as string}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'state',
-      header: 'Гүйцэтгэл',
-      cell: ({ getValue }) => {
-        const s = getValue() as string;
-        return (
-          <span className={`text-[10px] px-2 py-0.5 rounded-lg ${STATE_BADGE[s] ?? 'bg-white/10 text-foreground-muted'}`}>
-            {STATE_LABEL[s] ?? s}
-          </span>
-        );
-      },
-    },
-    {
-      accessorKey: 'itemCount',
-      header: 'Тоо',
-      cell: ({ getValue }) => <span className="text-xs text-foreground-muted">{getValue() as number} ш</span>,
-    },
-    {
-      accessorKey: 'totalWithTax',
-      header: ({ column }) => (
-        <button className="flex items-center gap-1 text-xs font-semibold text-foreground-muted hover:text-foreground" onClick={() => column.toggleSorting()}>
-          Нийт <ArrowUpDown size={11} />
-        </button>
-      ),
-      cell: ({ getValue }) => (
-        <span className="text-xs font-bold text-foreground">
-          ₮{Math.round((getValue() as number) / 100).toLocaleString('mn-MN')}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'createdAt',
-      header: 'Огноо',
-      cell: ({ getValue }) => <span className="text-xs text-foreground-muted">{formatDate(getValue() as string)}</span>,
-    },
-    {
-      id: 'actions',
-      header: '',
-      cell: ({ row }) => (
-        <Link href={`/admin/orders/${row.original.id}`} className="p-1.5 rounded-lg hover:bg-white/10 text-foreground-muted hover:text-foreground transition-colors inline-flex">
-          <ChevronRight size={14} />
-        </Link>
-      ),
-      size: 44,
-    },
-  ], []);
+  useEffect(() => {
+    void load();
+    const interval = window.setInterval(() => void load(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [load]);
 
-  const table = useReactTable({
-    data: orders,
-    columns,
-    state: { sorting },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  });
-
-  const handleExportCSV = () => {
-    const rows = orders.map((o) =>
-      [o.code, `${o.customer?.firstName} ${o.customer?.lastName}`, o.state, Math.round(o.totalWithTax / 100), formatDate(o.createdAt)].join(',')
-    );
-    const csv = ['Дугаар,Хэрэглэгч,Төлөв,Нийт,Огноо', ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'orders.csv';
-    a.click();
-  };
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return orders;
+    return orders.filter((order) => (
+      order.orderNumber.toLowerCase().includes(needle) ||
+      order.customerName.toLowerCase().includes(needle) ||
+      order.status.toLowerCase().includes(needle)
+    ));
+  }, [orders, search]);
 
   return (
     <div className="space-y-4">
-      {/* Live indicator */}
-      <div className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl w-fit ${
-        isLive ? 'bg-success/10 text-success' : 'bg-foreground-muted/10 text-foreground-muted'
-      }`}>
-        {isLive ? <Wifi size={12} /> : <WifiOff size={12} />}
-        {isLive ? 'Шууд өгөгдөл' : 'Туршилтын өгөгдөл'}
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-              tab === t.key ? 'bg-brand text-white' : 'bg-card text-foreground-muted hover:text-foreground border border-[var(--glass-border)]'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Search + export */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground-muted" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Захиалгын дугаар эсвэл утас хайх..."
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[var(--glass-border)] bg-card text-sm text-foreground placeholder:text-foreground-muted/50 focus:outline-none focus:border-brand/50"
-          />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black text-foreground">Захиалгууд</h2>
+          <p className="text-sm text-foreground-muted">Нийт {total} захиалга</p>
         </div>
         <button
-          onClick={handleExportCSV}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-[var(--glass-border)] text-xs text-foreground-muted hover:text-foreground transition-colors"
+          onClick={() => { setLoading(true); void load(); }}
+          className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] px-3 py-2 text-xs text-foreground-muted hover:text-foreground"
         >
-          <Download size={13} /> CSV
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          Шинэчлэх
         </button>
       </div>
 
-      {/* Table */}
-      <div className="bg-card border border-[var(--glass-border)] rounded-2xl overflow-hidden">
-        {isLoading && (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
-          </div>
-        )}
-        {!isLoading && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                {table.getHeaderGroups().map((hg) => (
-                  <tr key={hg.id} className="border-b border-[var(--glass-border)]">
-                    {hg.headers.map((header) => (
-                      <th key={header.id} className="px-4 py-3 text-left">
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="border-b border-[var(--glass-border)] last:border-0 hover:bg-white/[0.02] transition-colors">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {!isLoading && table.getRowModel().rows.length === 0 && (
-          <div className="py-12 text-center text-foreground-muted text-sm">Захиалга олдсонгүй</div>
-        )}
+      <div className="relative max-w-md">
+        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground-muted" />
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Захиалгын дугаар, хэрэглэгч, төлөв хайх..."
+          className="w-full rounded-xl border border-[var(--glass-border)] bg-card py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-brand"
+        />
       </div>
 
-      <p className="text-xs text-foreground-muted text-right">{totalItems} захиалга нийт</p>
+      {error && <div className="rounded-xl bg-error/10 px-4 py-3 text-sm text-error">{error}</div>}
+
+      <div className="overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-card">
+        <div className="grid grid-cols-[1fr_1.2fr_1.5fr_1fr_1fr_1fr_40px] gap-3 border-b border-[var(--glass-border)] px-4 py-3 text-xs font-bold text-foreground-muted">
+          <span>Дугаар</span>
+          <span>Хэрэглэгч</span>
+          <span>Бараа</span>
+          <span>Нийт</span>
+          <span>Төлөв</span>
+          <span>Огноо</span>
+          <span />
+        </div>
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand/30 border-t-brand" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-10 text-center text-sm text-foreground-muted">Захиалга олдсонгүй</div>
+        ) : (
+          <div className="divide-y divide-[var(--glass-border)]">
+            {filtered.map((order) => {
+              const meta = STATUS_META[order.status] ?? { label: order.status, cls: 'bg-white/10 text-foreground-muted' };
+              return (
+                <Link
+                  key={order.id}
+                  href={order.source === 'delivery' ? '/admin/deliveries' : `/admin/orders/${order.id}`}
+                  className="grid grid-cols-1 gap-2 px-4 py-4 text-sm hover:bg-white/[0.02] md:grid-cols-[1fr_1.2fr_1.5fr_1fr_1fr_1fr_40px] md:items-center"
+                >
+                  <span className="font-mono font-bold text-brand">
+                    {order.orderNumber}
+                    {order.source === 'delivery' && <span className="ml-2 rounded bg-brand/10 px-1.5 py-0.5 text-[10px] text-brand">delivery</span>}
+                  </span>
+                  <span className="text-foreground-muted">{order.customerName || '-'}</span>
+                  <span className="truncate text-xs text-foreground-muted">{order.itemSummary || '-'}</span>
+                  <span className="font-bold text-foreground">{money(order.total)}</span>
+                  <span className={`w-fit rounded-full px-2 py-1 text-[11px] font-bold ${meta.cls}`}>{meta.label}</span>
+                  <span className="text-xs text-foreground-muted">{new Date(order.createdAt).toLocaleString('mn-MN')}</span>
+                  <ChevronRight size={15} className="hidden text-foreground-muted md:block" />
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

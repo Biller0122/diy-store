@@ -1,5 +1,6 @@
 import { haversineDistance } from './delivery-fee.service';
-import { emitToDriver, emitToOrder, getOnlineDrivers, registerDriverOfferHandlers } from '../plugins/realtime.plugin';
+import { emitToDriver, emitToOrder, getOnlineDriversSnapshot, registerDriverOfferHandlers } from '../plugins/realtime.plugin';
+import { deleteJsonState, getJsonState, setJsonState } from './redis-state.service';
 import {
   sendDriverNewOrderNotification,
   sendCustomerDriverAssignedNotification,
@@ -29,6 +30,8 @@ export interface DispatchResult {
 const SEARCH_RADIUS_KM_FIRST = 5;
 const SEARCH_RADIUS_KM_EXPAND = 10;
 const OFFER_TIMEOUT_MS = 30_000;
+const DISPATCH_STATE_TTL_SECONDS = 60 * 60 * 24;
+const PENDING_OFFER_TTL_SECONDS = 60 * 5;
 
 // In-memory dispatch state for the active realtime offer lifecycle.
 const dispatchState = new Map<string, DispatchResult>();
@@ -41,20 +44,37 @@ const pendingOffers = new Map<string, {
   timeout: ReturnType<typeof setTimeout>;
 }>();
 
-// FIX 4 — Order number counter (resets on restart; real impl uses DB sequence)
-let orderCounter = 1000;
-
-export function generateOrderNumber(): string {
-  orderCounter += 1;
+function createFallbackOrderNumber(): string {
   const year = new Date().getFullYear();
-  return `DIY-${year}-${String(orderCounter).padStart(5, '0')}`;
+  return `DIY-${year}-${Date.now().toString(36).toUpperCase()}`;
 }
 
-function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineDriver[] {
-  const online = getOnlineDrivers();
-  if (online.size === 0) return [];
-  const realOnline: OnlineDriver[] = Array.from(online.entries()).map(([driverId, info]) => ({
-    id: driverId,
+async function setDispatchState(orderId: string, result: DispatchResult) {
+  dispatchState.set(orderId, result);
+  await setJsonState(`diy:dispatch:state:${orderId}`, result, DISPATCH_STATE_TTL_SECONDS);
+}
+
+async function setPendingOfferState(
+  orderId: string,
+  offer: Pick<DispatchResult, 'driver' | 'orderNumber'> & { expiresAt: string },
+) {
+  await setJsonState(`diy:dispatch:pending:${orderId}`, offer, PENDING_OFFER_TTL_SECONDS);
+}
+
+async function clearPendingOfferState(orderId: string) {
+  await deleteJsonState(`diy:dispatch:pending:${orderId}`);
+}
+
+async function findNearestDrivers(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  fallbackDrivers: OnlineDriver[] = [],
+): Promise<OnlineDriver[]> {
+  const online = await getOnlineDriversSnapshot();
+  if (online.length === 0 && fallbackDrivers.length === 0) return [];
+  const realOnline: OnlineDriver[] = online.map((info) => ({
+    id: info.id,
     firstName: info.firstName ?? 'Жолооч',
     lastName: info.lastName ?? '',
     phone: info.phone ?? '',
@@ -64,7 +84,8 @@ function findNearestDrivers(lat: number, lng: number, radiusKm: number): OnlineD
     lat: info.lat,
     lng: info.lng,
   }));
-  return realOnline
+  const candidates = realOnline.length > 0 ? realOnline : fallbackDrivers;
+  return candidates
     .map((d) => ({ driver: d, dist: haversineDistance(lat, lng, d.lat, d.lng) }))
     .filter(({ dist }) => dist <= radiusKm)
     .sort((a, b) => a.dist - b.dist)
@@ -99,25 +120,26 @@ export async function dispatchOrder(
   deliveryFee = 0,
   routeDistanceKm = 0,
   estimatedMinutes = 0,
+  fallbackDrivers: OnlineDriver[] = [],
 ): Promise<DispatchResult> {
-  const resolvedOrderNumber = orderNumber ?? generateOrderNumber();
-  dispatchState.set(orderId, { status: 'SEARCHING', orderNumber: resolvedOrderNumber });
+  const resolvedOrderNumber = orderNumber ?? createFallbackOrderNumber();
+  await setDispatchState(orderId, { status: 'SEARCHING', orderNumber: resolvedOrderNumber });
 
   // Find nearest drivers within 5km, expand to 10km if none
-  let candidates = findNearestDrivers(pickupLat, pickupLng, SEARCH_RADIUS_KM_FIRST);
+  let candidates = await findNearestDrivers(pickupLat, pickupLng, SEARCH_RADIUS_KM_FIRST, fallbackDrivers);
   if (candidates.length === 0) {
-    candidates = findNearestDrivers(pickupLat, pickupLng, SEARCH_RADIUS_KM_EXPAND);
+    candidates = await findNearestDrivers(pickupLat, pickupLng, SEARCH_RADIUS_KM_EXPAND, fallbackDrivers);
   }
 
   if (candidates.length === 0) {
     const result: DispatchResult = { status: 'TIMEOUT', orderNumber: resolvedOrderNumber };
-    dispatchState.set(orderId, result);
+    await setDispatchState(orderId, result);
     return result;
   }
 
   const offered = candidates[0];
   const offeredResult: DispatchResult = { status: 'OFFERED', driver: offered, orderNumber: resolvedOrderNumber, offeredAt: new Date() };
-  dispatchState.set(orderId, offeredResult);
+  await setDispatchState(orderId, offeredResult);
 
   // Notify the chosen driver via WebSocket + FCM
   const distance = haversineDistance(pickupLat, pickupLng, offered.lat, offered.lng);
@@ -161,9 +183,10 @@ export async function dispatchOrder(
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
       pendingOffers.delete(orderId);
+      void clearPendingOfferState(orderId);
       if (dispatchState.get(orderId)?.status !== 'ACCEPTED') {
         const timeout: DispatchResult = { status: 'TIMEOUT', orderNumber: resolvedOrderNumber };
-        dispatchState.set(orderId, timeout);
+        void setDispatchState(orderId, timeout);
 
         if (customerId) {
           void sendCustomerStatusNotification(customerId, resolvedOrderNumber, 'CANCELLED');
@@ -172,6 +195,11 @@ export async function dispatchOrder(
         resolve(timeout);
       }
     }, OFFER_TIMEOUT_MS);
+    void setPendingOfferState(orderId, {
+      driver: offered,
+      orderNumber: resolvedOrderNumber,
+      expiresAt: new Date(Date.now() + OFFER_TIMEOUT_MS).toISOString(),
+    });
     pendingOffers.set(orderId, { driver: offered, orderNumber: resolvedOrderNumber, customerId, customer, resolve, timeout });
   });
 }
@@ -181,13 +209,14 @@ function acceptDispatchOffer({ driverId, orderId }: { driverId: string; orderId:
   if (!offer || offer.driver.id !== driverId) return false;
   clearTimeout(offer.timeout);
   pendingOffers.delete(orderId);
+  void clearPendingOfferState(orderId);
   const accepted: DispatchResult = {
     status: 'ACCEPTED',
     driver: offer.driver,
     orderNumber: offer.orderNumber,
     acceptedAt: new Date(),
   };
-  dispatchState.set(orderId, accepted);
+  void setDispatchState(orderId, accepted);
   emitToOrder(orderId, 'order:driver_assigned', {
     orderId,
     orderNumber: offer.orderNumber,
@@ -218,8 +247,9 @@ function rejectDispatchOffer({ driverId, orderId }: { driverId: string; orderId:
   if (!offer || offer.driver.id !== driverId) return false;
   clearTimeout(offer.timeout);
   pendingOffers.delete(orderId);
+  void clearPendingOfferState(orderId);
   const timeout: DispatchResult = { status: 'TIMEOUT', orderNumber: offer.orderNumber };
-  dispatchState.set(orderId, timeout);
+  void setDispatchState(orderId, timeout);
   if (offer.customerId) {
     void sendCustomerStatusNotification(offer.customerId, offer.orderNumber, 'CANCELLED');
   }
@@ -232,14 +262,15 @@ registerDriverOfferHandlers({
   reject: rejectDispatchOffer,
 });
 
-export function getDispatchStatus(orderId: string): DispatchResult {
-  return dispatchState.get(orderId) ?? { status: 'SEARCHING' };
+export async function getDispatchStatus(orderId: string): Promise<DispatchResult> {
+  const persisted = await getJsonState<DispatchResult>(`diy:dispatch:state:${orderId}`);
+  return persisted ?? dispatchState.get(orderId) ?? { status: 'SEARCHING' };
 }
 
-export function updateDispatchStatus(orderId: string, status: DispatchResult['status'], customerId?: string) {
-  const current = dispatchState.get(orderId);
+export async function updateDispatchStatus(orderId: string, status: DispatchResult['status'], customerId?: string) {
+  const current = await getDispatchStatus(orderId);
   if (!current) return;
-  dispatchState.set(orderId, { ...current, status });
+  await setDispatchState(orderId, { ...current, status });
 
   emitToOrder(orderId, 'order:status', { orderId, status });
 

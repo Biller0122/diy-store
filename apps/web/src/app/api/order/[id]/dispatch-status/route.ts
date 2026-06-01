@@ -2,63 +2,112 @@ import { NextRequest, NextResponse } from 'next/server';
 
 type DispatchStatus = 'SEARCHING' | 'OFFERED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
-interface MockDriver {
+interface DriverSummary {
   id: string;
   name: string;
   phone: string;
   vehicleType: string;
   vehiclePlate: string;
   rating: number;
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
 }
 
-interface PickupStop {
-  supplierName: string;
-  address: string;
-  status: 'PENDING' | 'PICKED_UP';
-}
-
-interface DispatchResponse {
+interface DeliveryRequestResult {
+  id: string;
+  orderId: string;
+  orderNumber: string;
   status: DispatchStatus;
-  orderNumber?: string;
-  driver?: MockDriver;
-  estimatedArrivalMinutes?: number;
-  driverLat?: number;
-  driverLng?: number;
-  pickupStops?: PickupStop[];
+  driverId?: string | null;
+  driverLat?: number | null;
+  driverLng?: number | null;
+  estimatedDuration?: number | null;
+  pickupStops?: Array<{
+    supplierName: string;
+    address: string;
+    status: 'PENDING' | 'PICKED_UP';
+  }>;
 }
 
-const MOCK_DRIVER: MockDriver = {
-  id: 'drv-001',
-  name: 'Анхбаяр Дамдин',
-  phone: '8800-1122',
-  vehicleType: 'MOTORCYCLE',
-  vehiclePlate: '2345-УБА',
-  rating: 4.9,
-  lat: 47.9180,
-  lng: 106.9900,
-};
+const SHOP_API = process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
 
-const MOCK_STOPS: PickupStop[] = [
-  { supplierName: 'БудагМаркет ХХК', address: 'Баянзүрх, Барилгачдын гудамж 15', status: 'PICKED_UP' },
-  { supplierName: 'Тоног Хэрэгсэл ХХК', address: 'Сүхбаатар, Гэгээн Өндөр 22', status: 'PENDING' },
-];
-
-// Per-order first-seen timestamp (resets on server restart)
-const orderFirstSeen = new Map<string, number>();
-// Per-order generated number (DIY-YYYY-XXXXX)
-const orderNumbers = new Map<string, string>();
-
-let counter = 1000;
-
-function getOrCreateOrderNumber(id: string): string {
-  if (!orderNumbers.has(id)) {
-    counter += 1;
-    const year = new Date().getFullYear();
-    orderNumbers.set(id, `DIY-${year}-${String(counter).padStart(5, '0')}`);
+const DELIVERY_STATUS_GQL = `
+  query DeliveryStatus($orderId: String!) {
+    deliveryRequest(orderId: $orderId) {
+      id
+      orderId
+      orderNumber
+      status
+      driverId
+      driverLat
+      driverLng
+      estimatedDuration
+      pickupStops {
+        supplierName
+        address
+        status
+      }
+    }
   }
-  return orderNumbers.get(id)!;
+`;
+
+const DRIVER_GQL = `
+  query DriverProfile($id: ID!) {
+    getDriverProfile(id: $id) {
+      id
+      firstName
+      lastName
+      phone
+      vehicleType
+      vehiclePlate
+      rating
+      currentLat
+      currentLng
+    }
+  }
+`;
+
+async function vendureFetch<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables }),
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`Vendure API ${response.status}`);
+  const json = await response.json() as { data?: T; errors?: Array<{ message: string }> };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+  if (!json.data) throw new Error('Vendure API returned no data');
+  return json.data;
+}
+
+async function getDriver(driverId?: string | null): Promise<DriverSummary | undefined> {
+  if (!driverId) return undefined;
+  const data = await vendureFetch<{
+    getDriverProfile: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+      vehicleType: string;
+      vehiclePlate?: string | null;
+      rating: number;
+      currentLat?: number | null;
+      currentLng?: number | null;
+    } | null;
+  }>(DRIVER_GQL, { id: driverId });
+  const driver = data.getDriverProfile;
+  if (!driver) return undefined;
+  return {
+    id: driver.id,
+    name: `${driver.firstName} ${driver.lastName}`.trim() || 'Жолооч',
+    phone: driver.phone,
+    vehicleType: driver.vehicleType,
+    vehiclePlate: driver.vehiclePlate ?? '',
+    rating: driver.rating,
+    lat: driver.currentLat,
+    lng: driver.currentLng,
+  };
 }
 
 export async function GET(
@@ -67,58 +116,30 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const now = Date.now();
-  if (!orderFirstSeen.has(id)) {
-    orderFirstSeen.set(id, now);
+  try {
+    const data = await vendureFetch<{ deliveryRequest: DeliveryRequestResult | null }>(
+      DELIVERY_STATUS_GQL,
+      { orderId: id },
+    );
+    const delivery = data.deliveryRequest;
+    if (!delivery) {
+      return NextResponse.json({ status: 'SEARCHING', orderNumber: id });
+    }
+
+    const driver = await getDriver(delivery.driverId);
+    return NextResponse.json({
+      status: delivery.status,
+      orderNumber: delivery.orderNumber,
+      driver,
+      estimatedArrivalMinutes: delivery.estimatedDuration ?? undefined,
+      driverLat: delivery.driverLat ?? driver?.lat,
+      driverLng: delivery.driverLng ?? driver?.lng,
+      pickupStops: delivery.pickupStops ?? [],
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { status: 'SEARCHING', orderNumber: id, error: err instanceof Error ? err.message : 'Dispatch status unavailable' },
+      { status: 502 },
+    );
   }
-  const elapsed = (now - orderFirstSeen.get(id)!) / 1000;
-
-  const orderNumber = getOrCreateOrderNumber(id);
-  let response: DispatchResponse;
-
-  if (elapsed < 5) {
-    response = { status: 'SEARCHING', orderNumber };
-  } else if (elapsed < 10) {
-    response = {
-      status: 'OFFERED',
-      orderNumber,
-      driver: MOCK_DRIVER,
-      estimatedArrivalMinutes: 18,
-      pickupStops: MOCK_STOPS,
-    };
-  } else if (elapsed < 15) {
-    response = {
-      status: 'ACCEPTED',
-      orderNumber,
-      driver: MOCK_DRIVER,
-      estimatedArrivalMinutes: 15,
-      driverLat: MOCK_DRIVER.lat,
-      driverLng: MOCK_DRIVER.lng,
-      pickupStops: MOCK_STOPS,
-    };
-  } else {
-    const progress = Math.min((elapsed - 15) / 60, 1);
-    const targetLat = 47.9200;
-    const targetLng = 106.9500;
-    const driverLat = MOCK_DRIVER.lat + (targetLat - MOCK_DRIVER.lat) * progress;
-    const driverLng = MOCK_DRIVER.lng + (targetLng - MOCK_DRIVER.lng) * progress;
-    const eta = Math.max(0, Math.round(15 - progress * 15));
-
-    const stops: PickupStop[] = [
-      { ...MOCK_STOPS[0], status: 'PICKED_UP' },
-      { ...MOCK_STOPS[1], status: progress > 0.5 ? 'PICKED_UP' : 'PENDING' },
-    ];
-
-    response = {
-      status: elapsed > 75 ? 'COMPLETED' : 'IN_PROGRESS',
-      orderNumber,
-      driver: MOCK_DRIVER,
-      estimatedArrivalMinutes: eta,
-      driverLat,
-      driverLng,
-      pickupStops: stops,
-    };
-  }
-
-  return NextResponse.json(response);
 }

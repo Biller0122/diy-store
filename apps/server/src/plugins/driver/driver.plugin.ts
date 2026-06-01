@@ -32,6 +32,7 @@ const DRIVER_SCHEMA_EXTENSION = gql`
     success: Boolean!
     message: String!
     phone: String
+    otp: String
   }
 
   type DriverOTPResult {
@@ -51,6 +52,32 @@ const DRIVER_SCHEMA_EXTENSION = gql`
     bankAccount: String
   }
 
+  input AdminDriverInput {
+    firstName: String!
+    lastName: String
+    phone: String!
+    vehicleType: String
+    vehiclePlate: String
+    vehicleModel: String
+    bankName: String
+    bankAccount: String
+    status: String
+    isOnline: Boolean
+  }
+
+  input AdminDriverUpdateInput {
+    firstName: String
+    lastName: String
+    phone: String
+    vehicleType: String
+    vehiclePlate: String
+    vehicleModel: String
+    bankName: String
+    bankAccount: String
+    status: String
+    isOnline: Boolean
+  }
+
   extend type Query {
     drivers(status: String): [Driver!]!
     driver(id: ID!): Driver
@@ -63,9 +90,13 @@ const DRIVER_SCHEMA_EXTENSION = gql`
     loginDriver(phone: String!): DriverAuthResult!
     loginDriverByPassword(email: String!, password: String!): DriverOTPResult!
     verifyDriverOTP(phone: String!, otp: String!): DriverOTPResult!
+    refreshDriverToken(id: ID!, phone: String!): DriverOTPResult!
     updateDriverLocation(id: ID!, lat: Float!, lng: Float!): Driver
     setOnlineStatus(id: ID!, isOnline: Boolean!): Driver
     updateDriverStatus(id: ID!, status: String!): Driver
+    adminCreateDriver(input: AdminDriverInput!): Driver!
+    adminUpdateDriver(id: ID!, input: AdminDriverUpdateInput!): Driver!
+    adminDeleteDriver(id: ID!): Boolean!
   }
 `;
 

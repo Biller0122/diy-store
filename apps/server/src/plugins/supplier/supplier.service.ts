@@ -53,7 +53,7 @@ export class SupplierService {
     if (ownerName.length < 2) throw new Error('Овог нэр 2-оос дээш тэмдэгттэй байх ёстой');
     if (businessName.length < 2) throw new Error('Байгууллагын нэр 2-оос дээш тэмдэгттэй байх ёстой');
     if (!this.isValidEmail(email)) throw new Error('И-мэйл хаяг буруу байна');
-    if (phone && !/^[6789]\d{7}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
+    if (phone && !/^\d{8}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой байх ёстой');
     if (await this.getSupplierByEmail(email)) throw new Error('Энэ и-мэйл хаяг бүртгэлтэй байна');
     if (phone && await this.getSupplierByPhone(phone)) throw new Error('Энэ дугаар бүртгэлтэй байна');
 
@@ -82,6 +82,7 @@ export class SupplierService {
     const saved = await this.supplierRepo.save(supplier);
     console.log(`[Supplier Email OTP] ${email}: ${otpCode}`);
     await this.emailOtpService?.sendSupplierOtp(email, otpCode, 'register');
+    console.log(`SUPPLIER REGISTERED: id=${saved.id} name=${saved.ownerName}`);
     console.log('[Supplier] NEW REGISTRATION:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
     return saved;
   }
@@ -139,6 +140,15 @@ export class SupplierService {
     const [items, total] = await this.supplierRepo.findAndCount({ order: { createdAt: 'DESC' } });
     console.log('Total suppliers in DB:', total);
     return { items, total };
+  }
+
+  async getSuppliersByStatus(status?: SupplierStatus): Promise<Supplier[]> {
+    const suppliers = await this.supplierRepo.find({
+      where: status ? { status } : {},
+      order: { createdAt: 'DESC' },
+    });
+    console.log(`SUPPLIERS FOUND: count=${suppliers.length}`);
+    return suppliers;
   }
 
   async updateSupplierStatus(id: string, status: SupplierStatus, reason?: string): Promise<Supplier> {
@@ -216,7 +226,7 @@ export class SupplierService {
   }
 
   private generateOtp() {
-    if (process.env.NODE_ENV !== 'production') return '1234';
+    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') return '1234';
     return String(Math.floor(1000 + Math.random() * 9000));
   }
 

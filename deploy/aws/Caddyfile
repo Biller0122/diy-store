@@ -2,41 +2,60 @@
 	email {$ACME_EMAIL}
 }
 
-{$SITE_DOMAIN} {
-	encode gzip zstd
-
+(platform_backends) {
 	handle /shop-api* {
-		reverse_proxy server:3001 {
-			header_up X-Forwarded-Host {host}
-			header_up X-Forwarded-Proto {scheme}
-		}
+		reverse_proxy server:3001
 	}
 
 	handle /admin-api* {
-		reverse_proxy server:3001 {
-			header_up X-Forwarded-Host {host}
-			header_up X-Forwarded-Proto {scheme}
-		}
+		reverse_proxy server:3001
 	}
 
 	handle /assets* {
-		reverse_proxy server:3001 {
-			header_up X-Forwarded-Host {host}
-			header_up X-Forwarded-Proto {scheme}
-		}
+		reverse_proxy server:3001
 	}
 
 	handle /mailbox* {
-		reverse_proxy server:3001 {
-			header_up X-Forwarded-Host {host}
-			header_up X-Forwarded-Proto {scheme}
-		}
+		reverse_proxy server:3001
 	}
 
+	handle /socket.io* {
+		reverse_proxy realtime-server:3002
+	}
+}
+
+{$CUSTOMER_DOMAIN} {
+	encode gzip zstd
+	import platform_backends
+
 	handle {
-		reverse_proxy web:3000 {
-			header_up X-Forwarded-Host {host}
-			header_up X-Forwarded-Proto {scheme}
-		}
+		reverse_proxy web-customer:3000
+	}
+}
+
+{$ADMIN_DOMAIN} {
+	encode gzip zstd
+	import platform_backends
+
+	handle {
+		reverse_proxy web-admin:3000
+	}
+}
+
+{$DRIVER_DOMAIN} {
+	encode gzip zstd
+	import platform_backends
+
+	handle {
+		reverse_proxy web-driver:3000
+	}
+}
+
+{$MERCHANT_DOMAIN} {
+	encode gzip zstd
+	import platform_backends
+
+	handle {
+		reverse_proxy web-merchant:3000
 	}
 }
