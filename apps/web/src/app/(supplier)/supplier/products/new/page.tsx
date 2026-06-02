@@ -1,11 +1,17 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ImagePlus, Package, Save } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { vendureShopFetch } from '@/lib/vendure';
+import {
+  buildCategoryGroups,
+  getCategoryDisplayName,
+  isRootCollection,
+  type ProductCategoryOption,
+} from '@/lib/category-options';
 
 type FormState = {
   name: string;
@@ -57,6 +63,20 @@ const CREATE_SUPPLIER_PRODUCT_MUTATION = `
   }
 `;
 
+const PRODUCT_CATEGORIES_QUERY = `
+  query ProductCategories {
+    collections(options: { take: 100, sort: { position: ASC } }) {
+      items {
+        id
+        name
+        slug
+        parentId
+        parent { id name slug }
+      }
+    }
+  }
+`;
+
 function makeSlug(value: string) {
   return value
     .toLowerCase()
@@ -104,9 +124,36 @@ export default function NewSupplierProductPage() {
   const { supplier } = useSupplierStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const storageKey = useMemo(() => `diy-supplier-products:${supplier?.id ?? 'guest'}`, [supplier?.id]);
+
+  useEffect(() => {
+    let mounted = true;
+    vendureShopFetch<{ collections: { items: ProductCategoryOption[] } }>(
+      PRODUCT_CATEGORIES_QUERY,
+      undefined,
+      { revalidate: 0 },
+    )
+      .then((data) => {
+        if (!mounted) return;
+        const items = data.collections.items.filter((item) => !isRootCollection(item));
+        setCategories(items);
+      })
+      .catch(() => {
+        if (mounted) setCategories([]);
+      })
+      .finally(() => {
+        if (mounted) setCategoryLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const categoryGroups = useMemo(() => buildCategoryGroups(categories), [categories]);
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => {
@@ -160,6 +207,7 @@ export default function NewSupplierProductPage() {
       next.originalPrice = 'Хямдралын өмнөх үнэ үндсэн үнээс их байх ёстой';
     }
     if (Number(form.stock) < 0 || Number.isNaN(Number(form.stock))) next.stock = 'Нөөцийн тоо зөв оруулна уу';
+    if (!form.category.trim()) next.category = 'Ангилал сонгоно уу';
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -244,24 +292,55 @@ export default function NewSupplierProductPage() {
           </label>
 
           <label className="space-y-1.5">
-            <span className="text-xs font-semibold text-foreground">Slug *</span>
+            <span className="text-xs font-semibold text-foreground">Барааны код (SKU/slug) *</span>
             <input
               value={form.slug}
               onChange={(event) => setField('slug', makeSlug(event.target.value))}
               placeholder="dulux-easycare-white"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.slug ? 'border-error' : 'border-[var(--glass-border)]'}`}
             />
+            <p className="text-[11px] text-foreground-muted">Main хуудсан дээр “Код” гэж харагдах ба product URL-д ашиглагдана.</p>
             {errors.slug && <p className="text-xs text-error">{errors.slug}</p>}
           </label>
 
           <label className="space-y-1.5">
-            <span className="text-xs font-semibold text-foreground">Ангилал</span>
-            <input
+            <span className="text-xs font-semibold text-foreground">Ангилал *</span>
+            <select
               value={form.category}
               onChange={(event) => setField('category', event.target.value)}
-              placeholder="Будаг"
-              className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand"
-            />
+              disabled={categoryLoading || categories.length === 0}
+              className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand disabled:opacity-60 ${errors.category ? 'border-error' : 'border-[var(--glass-border)]'}`}
+            >
+              {categoryLoading ? (
+                <option value="">Ангилал уншиж байна...</option>
+              ) : categories.length === 0 ? (
+                <option value="">Backend дээр ангилал алга</option>
+              ) : (
+                <>
+                  <option value="">Ангилал сонгох</option>
+                  {categoryGroups.map((group) => (
+                    <optgroup key={group.parent.id} label={group.parent.name}>
+                      <option value={group.parent.slug}>{group.parent.name} (үндсэн)</option>
+                      {group.children.map((category) => (
+                        <option key={category.id} value={category.slug}>
+                          {`  ${category.name}`}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </>
+              )}
+            </select>
+            {form.category && (
+              <p className="text-[11px] text-foreground-muted">
+                Сонгосон: {getCategoryDisplayName(categories.find((category) => category.slug === form.category) ?? {
+                  id: form.category,
+                  name: form.category,
+                  slug: form.category,
+                })}
+              </p>
+            )}
+            {errors.category && <p className="text-xs text-error">{errors.category}</p>}
           </label>
 
           <label className="space-y-1.5">
@@ -353,12 +432,12 @@ export default function NewSupplierProductPage() {
           </label>
 
           <label className="space-y-1.5 md:col-span-2">
-            <span className="text-xs font-semibold text-foreground">Тайлбар</span>
+            <span className="text-xs font-semibold text-foreground">Барааны тайлбар / онцлог</span>
             <textarea
               value={form.description}
               onChange={(event) => setField('description', event.target.value)}
               rows={4}
-              placeholder="Барааны тайлбар..."
+              placeholder="Main product page-ийн “Тайлбар” хэсэгт харагдах мэдээлэл..."
               className="w-full resize-none rounded-xl border border-[var(--glass-border)] bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand"
             />
           </label>

@@ -18,10 +18,14 @@ import { DeliveryPlugin } from './plugins/delivery/delivery.plugin';
 import { RealtimePlugin } from './plugins/realtime.plugin';
 import { AdminStatsPlugin } from './plugins/admin-stats/admin-stats.plugin';
 import { DeviceTokenPlugin } from './plugins/device-token/device-token.plugin';
+import { CmsPlugin } from './plugins/cms/cms.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
 
 const useSqliteDevDb = process.env.DB_TYPE === 'sqlite' || process.env.DB_TYPE === 'better-sqlite3';
+const vendureDbName = process.env.DB_NAME || process.env.VENDURE_DB_NAME || 'vendure';
+const vendureDbUsername = process.env.DB_USERNAME || process.env.VENDURE_DB_USERNAME || 'vendure';
+const vendureDbPassword = process.env.DB_PASSWORD || process.env.VENDURE_DB_PASSWORD || 'vendure';
 const corsOrigins = [
   process.env.STOREFRONT_URL || 'http://localhost:3000',
   'http://localhost:3002',
@@ -68,11 +72,11 @@ export const config: VendureConfig = {
         type: 'postgres',
         synchronize: process.env.NODE_ENV !== 'production' || process.env.DB_SYNCHRONIZE === 'true',
         logging: process.env.NODE_ENV === 'development',
-        database: process.env.DB_NAME || 'vendure',
+        database: vendureDbName,
         host: process.env.DB_HOST || 'localhost',
         port: parseInt(process.env.DB_PORT || '5432'),
-        username: process.env.DB_USERNAME || 'vendure',
-        password: process.env.DB_PASSWORD || 'vendure',
+        username: vendureDbUsername,
+        password: vendureDbPassword,
         migrations: [path.join(__dirname, '../migrations/*.js')],
       },
   paymentOptions: {
@@ -110,6 +114,7 @@ export const config: VendureConfig = {
     RealtimePlugin,
     AdminStatsPlugin,
     DeviceTokenPlugin,
+    CmsPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),

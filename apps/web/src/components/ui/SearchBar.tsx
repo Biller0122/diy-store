@@ -38,11 +38,70 @@ const SEARCH_QUERY = `
   }
 `;
 
+const SUPPLIER_PRODUCTS_QUERY = `
+  query SupplierProducts {
+    supplierProducts {
+      items {
+        id
+        name
+        slug
+        image
+        price
+        category
+        stock
+        enabled
+      }
+    }
+  }
+`;
+
+const PRODUCT_CATEGORIES_QUERY = `
+  query ProductCategories {
+    collections(options: { take: 100 }) {
+      items { name slug }
+    }
+  }
+`;
+
 const ALGOLIA_APP_ID    = process.env.NEXT_PUBLIC_ALGOLIA_APP_ID;
 const ALGOLIA_SEARCH_KEY = process.env.NEXT_PUBLIC_ALGOLIA_SEARCH_KEY;
 const ALGOLIA_INDEX     = process.env.NEXT_PUBLIC_ALGOLIA_INDEX_NAME ?? 'diy_products';
 
 async function fetchResults(term: string): Promise<{ name: string; slug: string; price?: number; image?: string; category?: string }[]> {
+  const supplierResults = async () => {
+    const [data, categories] = await Promise.all([
+      vendureShopFetch<{ supplierProducts: { items: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      image?: string | null;
+      price: number;
+      category?: string | null;
+      stock: number;
+      enabled: boolean;
+      }> } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 }),
+      vendureShopFetch<{ collections: { items: Array<{ name: string; slug: string }> } }>(PRODUCT_CATEGORIES_QUERY, undefined, { revalidate: 0 }).catch(() => ({ collections: { items: [] } })),
+    ]);
+    const categoryNames = new Map(categories.collections.items.map((category) => [category.slug, category.name]));
+    const q = term.trim().toLowerCase();
+    return data.supplierProducts.items
+      .filter((item) => item.enabled && item.stock > 0)
+      .filter((item) =>
+        item.name.toLowerCase().includes(q) ||
+        item.slug.toLowerCase().includes(q) ||
+        (item.category ?? '').toLowerCase().includes(q) ||
+        (categoryNames.get(item.category ?? '') ?? '').toLowerCase().includes(q)
+      )
+      .slice(0, 6)
+      .map((item) => ({
+        name: item.name,
+        slug: item.slug,
+        price: item.price,
+        image: item.image ?? undefined,
+        category: categoryNames.get(item.category ?? '') ?? item.category ?? 'Нийлүүлэгч',
+      }));
+  };
+
   if (ALGOLIA_APP_ID && ALGOLIA_SEARCH_KEY) {
     const { algoliasearch } = await import('algoliasearch');
     const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_KEY);
@@ -50,16 +109,20 @@ async function fetchResults(term: string): Promise<{ name: string; slug: string;
       indexName: ALGOLIA_INDEX,
       searchParams: { query: term, hitsPerPage: 6 },
     });
-    return (result.hits as any[]).map((h) => ({ name: h.name, slug: h.slug, price: h.price, image: h.imageUrl, category: h.category }));
+    const algoliaResults = (result.hits as any[]).map((h) => ({ name: h.name, slug: h.slug, price: h.price, image: h.imageUrl, category: h.category }));
+    const supplier = await supplierResults().catch(() => []);
+    return [...supplier, ...algoliaResults].slice(0, 6);
   }
 
   const data = await vendureShopFetch<{ search: { totalItems: number; items: any[] } }>(SEARCH_QUERY, { term });
-  return (data.search?.items ?? []).map((item: any) => ({
+  const catalogResults = (data.search?.items ?? []).map((item: any) => ({
     name:  item.productName,
     slug:  item.slug,
     price: item.priceWithTax?.value,
     image: item.productAsset?.preview,
   }));
+  const supplier = await supplierResults().catch(() => []);
+  return [...supplier, ...catalogResults].slice(0, 6);
 }
 
 export function SearchBar() {

@@ -1,11 +1,10 @@
-'use client';
-
-import { useState } from 'react';
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { Star, MapPin, Truck, Search, Store, Filter } from 'lucide-react';
-import { MOCK_SUPPLIERS, type SupplierCard } from '@/lib/supplier-data';
+import { Star, MapPin, Truck, Store } from 'lucide-react';
+import { dbSupplierToCard, getDbSuppliers } from '@/lib/supplier-products';
+import type { SupplierCard } from '@/lib/supplier-data';
 
-const DISTRICTS = ['Бүгд', 'Баянзүрх', 'Сүхбаатар', 'Хан-Уул', 'Баянгол', 'Чингэлтэй', 'Налайх'];
+export const dynamic = 'force-dynamic';
 
 function SupplierCardComponent({ sup }: { sup: SupplierCard }) {
   return (
@@ -77,17 +76,9 @@ function SupplierCardComponent({ sup }: { sup: SupplierCard }) {
   );
 }
 
-export default function SuppliersPage() {
-  const [search, setSearch] = useState('');
-  const [district, setDistrict] = useState('Бүгд');
-  const [showOpenOnly, setShowOpenOnly] = useState(false);
-
-  const filtered = MOCK_SUPPLIERS.filter((s) => {
-    if (showOpenOnly && !s.isOpen) return false;
-    if (district !== 'Бүгд' && s.district !== district) return false;
-    if (search && !s.businessName.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+async function SuppliersContent() {
+  const suppliers = await getDbSuppliers({ status: 'ACTIVE', take: 48 });
+  const filtered = suppliers.items.map(dbSupplierToCard).sort((a, b) => b.productCount - a.productCount);
 
   return (
     <div className="min-h-screen bg-dark pb-24 lg:pb-8">
@@ -98,47 +89,11 @@ export default function SuppliersPage() {
             <Store size={24} className="text-brand" />
             <h1 className="font-display font-bold text-3xl text-foreground">Нийлүүлэгчид</h1>
           </div>
-          <p className="text-foreground-muted mb-6">100+ найдвартай нийлүүлэгчийн дэлгүүрүүд</p>
-
-          {/* Search */}
-          <div className="relative max-w-lg">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground-muted" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Нийлүүлэгч хайх..."
-              className="w-full pl-11 pr-4 py-3 rounded-xl bg-card border border-[var(--glass-border)] text-sm text-foreground placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-          </div>
+          <p className="text-foreground-muted mb-6">{filtered.length} баталгаажсан нийлүүлэгчийн дэлгүүр</p>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* Filters */}
-        <div className="flex items-center gap-3 mb-6 flex-wrap">
-          <Filter size={14} className="text-foreground-muted" />
-          <div className="flex gap-2 flex-wrap">
-            {DISTRICTS.map((d) => (
-              <button
-                key={d}
-                onClick={() => setDistrict(d)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${district === d ? 'bg-brand text-white' : 'bg-card border border-[var(--glass-border)] text-foreground-muted hover:text-foreground'}`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-2 text-xs text-foreground-muted cursor-pointer ml-auto">
-            <input
-              type="checkbox"
-              checked={showOpenOnly}
-              onChange={(e) => setShowOpenOnly(e.target.checked)}
-              className="w-4 h-4 rounded accent-brand"
-            />
-            Зөвхөн нээлттэй
-          </label>
-        </div>
-
         {/* Count */}
         <p className="text-sm text-foreground-muted mb-4">
           <span className="font-semibold text-foreground">{filtered.length}</span> нийлүүлэгч олдлоо
@@ -159,5 +114,13 @@ export default function SuppliersPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SuppliersPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-dark" />}>
+      <SuppliersContent />
+    </Suspense>
   );
 }

@@ -58,21 +58,6 @@ export const useAdminStore = create<AdminState>()(
       login: async (username, password) => {
         set({ isLoading: true, error: null });
         try {
-          // Mock mode: accept superadmin/superadmin for local dev
-          if (process.env.NODE_ENV === 'development' &&
-              (username === 'superadmin' || username === 'admin')) {
-            const mockAdmin: AdminUser = {
-              id: 'admin-1',
-              identifier: username,
-              firstName: 'Систем',
-              lastName: 'Админ',
-              role: 'SuperAdmin',
-            };
-            set({ admin: mockAdmin, isLoading: false });
-            await createAdminSession();
-            return true;
-          }
-
           const data = await vendureAdminFetch<{ login: any }>(ADMIN_LOGIN, { username, password });
           const result = data.login;
           if (result.id) {
@@ -90,8 +75,8 @@ export const useAdminStore = create<AdminState>()(
           set({ isLoading: false, error: result.message ?? 'Нэвтрэхэд алдаа гарлаа' });
           return false;
         } catch (err: any) {
-          // Dev fallback: allow any login if admin API is down
-          if (process.env.NODE_ENV === 'development') {
+          // Dev fallback only when the Vendure Admin API is unavailable.
+          if (process.env.NODE_ENV === 'development' && (username === 'superadmin' || username === 'admin')) {
             const mockAdmin: AdminUser = { id: 'admin-1', identifier: username, firstName: 'Систем', lastName: 'Админ', role: 'SuperAdmin' };
             set({ admin: mockAdmin, isLoading: false });
             await createAdminSession();

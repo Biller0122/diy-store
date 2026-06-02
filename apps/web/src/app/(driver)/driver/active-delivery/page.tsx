@@ -27,6 +27,15 @@ const UPDATE_DELIVERY_STATUS_GQL = `
   }
 `;
 
+const COMPLETE_DELIVERY_WITH_CODE_GQL = `
+  mutation CompleteDeliveryWithCode($deliveryId: ID!, $driverId: String!, $code: String!) {
+    completeDeliveryWithCode(deliveryId: $deliveryId, driverId: $driverId, code: $code) {
+      id
+      status
+    }
+  }
+`;
+
 const ACTIVE_DELIVERIES_GQL = `
   query ActiveDeliveriesForDriver($driverId: String!) {
     activeDeliveriesForDriver(driverId: $driverId) {
@@ -87,6 +96,24 @@ async function updateDeliveryStatus(deliveryId: string, status: string, token: s
     },
     credentials: 'include',
     body: JSON.stringify({ query: UPDATE_DELIVERY_STATUS_GQL, variables: { deliveryId, status } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as { errors?: Array<{ message: string }> };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+}
+
+async function completeDeliveryWithCode(deliveryId: string, driverId: string, code: string, token: string | null) {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      query: COMPLETE_DELIVERY_WITH_CODE_GQL,
+      variables: { deliveryId, driverId, code },
+    }),
   });
   if (!response.ok) throw new Error(`Driver API ${response.status}`);
   const json = await response.json() as { errors?: Array<{ message: string }> };
@@ -259,6 +286,8 @@ export default function ActiveDeliveryPage() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [deliveryCode, setDeliveryCode] = useState('');
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -344,14 +373,8 @@ export default function ActiveDeliveryPage() {
     setError('');
     const token = await getToken();
     if (step >= buttonLabels.length - 1) {
-      try {
-        await updateDeliveryStatus(delivery.id, 'COMPLETED', token);
-        setActiveDelivery(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Хүргэлт дуусгахад алдаа гарлаа');
-      } finally {
-        setSaving(false);
-      }
+      setShowCodeModal(true);
+      setSaving(false);
       return;
     }
     try {
@@ -365,6 +388,28 @@ export default function ActiveDeliveryPage() {
     }
     setStep((current) => current + 1);
     setSaving(false);
+  }
+
+  async function finishWithCode() {
+    if (!delivery || !driver || saving) return;
+    const normalizedCode = deliveryCode.replace(/\D/g, '');
+    if (normalizedCode.length !== 6) {
+      setError('6 оронтой буулгах код оруулна уу');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    const token = await getToken();
+    try {
+      await completeDeliveryWithCode(delivery.id, driver.id, normalizedCode, token);
+      setShowCodeModal(false);
+      setDeliveryCode('');
+      setActiveDelivery(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Буулгах код шалгахад алдаа гарлаа');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -452,6 +497,41 @@ export default function ActiveDeliveryPage() {
           </div>
         </div>
       </div>
+
+      {showCodeModal && (
+        <div className="fixed inset-0 z-[1200] flex items-end justify-center bg-black/70 px-4 pb-4 sm:items-center sm:pb-0">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-card p-5 shadow-2xl">
+            <h3 className="text-lg font-black text-foreground">Буулгах код оруулах</h3>
+            <p className="mt-1 text-sm text-foreground-muted">
+              Хэрэглэгчээс 6 оронтой код аваад оруулснаар хүргэлт бүрэн дуусна.
+            </p>
+            <input
+              value={deliveryCode}
+              onChange={(event) => setDeliveryCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              autoFocus
+              placeholder="000000"
+              className="mt-4 w-full rounded-2xl border border-[var(--glass-border)] bg-surface px-4 py-4 text-center font-mono text-2xl font-black tracking-[0.3em] text-foreground outline-none focus:ring-2 focus:ring-brand"
+            />
+            {error && <p className="mt-3 text-sm text-error">{error}</p>}
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => { setShowCodeModal(false); setDeliveryCode(''); setError(''); }}
+                className="flex-1 rounded-2xl border border-[var(--glass-border)] py-3 text-sm font-bold text-foreground-muted"
+              >
+                Болих
+              </button>
+              <button
+                onClick={() => void finishWithCode()}
+                disabled={saving}
+                className="flex-1 rounded-2xl bg-brand py-3 text-sm font-black text-white disabled:opacity-60"
+              >
+                {saving ? 'Шалгаж байна...' : 'Дуусгах'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

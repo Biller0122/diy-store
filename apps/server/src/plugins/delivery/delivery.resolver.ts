@@ -103,6 +103,7 @@ export class DeliveryResolver {
       paymentMethod,
       supplierStatus: 'PENDING',
       status: DeliveryStatus.SEARCHING,
+      deliveryCode: this.generateDeliveryCode(),
       distance: feeResult.breakdown.totalDistanceKm,
       estimatedDuration: feeResult.estimatedMinutes,
       proposedFee: feeResult.fee,
@@ -235,10 +236,39 @@ export class DeliveryResolver {
     const current = await this.deliveryRepo.findOne({ where: { id: deliveryId } });
     if (!current) throw new Error('Хүргэлт олдсонгүй');
     if (current.driverId) this.requireDriverOwner(ctx, current.driverId);
+    if (status === DeliveryStatus.COMPLETED) {
+      throw new Error('Хүргэлт дуусгахын тулд хэрэглэгчийн буулгах код шаардлагатай');
+    }
     await this.deliveryRepo.update(deliveryId, { status });
     emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status });
     if (current.orderNumber) {
       emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status });
+    }
+    return this.deliveryRepo.findOne({ where: { id: deliveryId } });
+  }
+
+  @Mutation()
+  async completeDeliveryWithCode(
+    @Ctx() ctx: RequestContext,
+    @Args('deliveryId') deliveryId: string,
+    @Args('driverId') driverId: string,
+    @Args('code') code: string,
+  ) {
+    this.requireDriverOwner(ctx, driverId);
+    const current = await this.deliveryRepo.findOne({ where: { id: deliveryId } });
+    if (!current) throw new Error('Хүргэлт олдсонгүй');
+    if (current.driverId !== driverId) throw new Error('Энэ хүргэлт өөр жолоочид оноогдсон байна');
+    const normalized = code.replace(/\D/g, '');
+    if (!current.deliveryCode || current.deliveryCode !== normalized) {
+      throw new Error('Буулгах код буруу байна');
+    }
+    await this.deliveryRepo.update(deliveryId, {
+      status: DeliveryStatus.COMPLETED,
+      completedAt: new Date(),
+    });
+    emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status: DeliveryStatus.COMPLETED });
+    if (current.orderNumber) {
+      emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status: DeliveryStatus.COMPLETED });
     }
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
@@ -262,6 +292,10 @@ export class DeliveryResolver {
   private requireDriverOwner(ctx: RequestContext, driverId: string) {
     const principal = requirePlatformRole(ctx, 'DRIVER');
     if (principal.id !== driverId) throw new Error('Өөр жолоочийн хүргэлтэд хандах эрхгүй');
+  }
+
+  private generateDeliveryCode() {
+    return String(Math.floor(100000 + Math.random() * 900000));
   }
 
   private async reserveSupplierStock(orderItems: DeliveryOrderItem[]) {

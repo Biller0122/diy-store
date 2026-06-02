@@ -166,6 +166,24 @@ body {
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes banner-fade {
+  0%, 100% { opacity: 0; transform: scale(1.05); }
+  5%, 28% { opacity: 1; transform: scale(1); }
+  34% { opacity: 0; transform: scale(0.98); }
+}
+
+@keyframes banner-slide {
+  0%, 100% { opacity: 0; transform: translateX(24px); pointer-events: none; }
+  5%, 28% { opacity: 1; transform: translateX(0); pointer-events: auto; }
+  34% { opacity: 0; transform: translateX(-18px); pointer-events: none; }
+}
+
+@keyframes banner-card {
+  0%, 100% { opacity: 0; transform: translateY(18px) rotate(2deg) scale(0.96); }
+  5%, 28% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
+  34% { opacity: 0; transform: translateY(-12px) rotate(-1deg) scale(0.98); }
+}
+
 /* ─── Animation Classes ─────────────────────────────────────── */
 .animate-float { animation: float 4s ease-in-out infinite; }
 .animate-float-delayed { animation: float 4s ease-in-out 1.5s infinite; }
@@ -177,6 +195,9 @@ body {
 }
 .animate-slide-up { animation: slide-up-fade 0.4s ease forwards; }
 .animate-scale-in { animation: scale-in 0.3s ease forwards; }
+.animate-banner-fade { animation: banner-fade 10s ease-in-out infinite; opacity: 0; }
+.animate-banner-slide { animation: banner-slide 10s ease-in-out infinite; opacity: 0; }
+.animate-banner-card { animation: banner-card 10s ease-in-out infinite; opacity: 0; }
 
 /* ─── Orange Dot Indicator ──────────────────────────────────── */
 .dot-brand {

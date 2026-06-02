@@ -23,46 +23,36 @@ export const GET_DRIVER_PROFILE = `
   }
 `;
 
-export const GET_DRIVER_EARNINGS = `
-  query GetDriverEarnings($driverId: ID!, $period: String!) {
-    getDriverEarnings(driverId: $driverId, period: $period) {
-      totalDeliveries
-      totalEarned
-      averageRating
-      averagePerDelivery
-      chart { label amount count }
-      history {
-        id
-        orderNumber
-        date
-        supplierDistrict
-        customerDistrict
-        customerAddress
-        fee
-        rating
-      }
-    }
-  }
-`;
-
 export const GET_DRIVER_DELIVERY_HISTORY = `
-  query GetDriverDeliveryHistory($driverId: ID!, $limit: Int) {
-    getDriverDeliveryHistory(driverId: $driverId, limit: $limit) {
+  query DriverHistory($driverId: String!, $limit: Int) {
+    deliveryHistoryForDriver(driverId: $driverId, limit: $limit) {
       id
       orderNumber
-      date
-      supplierDistrict
-      customerDistrict
-      customerAddress
-      fee
-      rating
+      customerName
+      dropoffAddress
+      distance
+      finalFee
+      proposedFee
+      status
+      pickupStops {
+        supplierId
+        supplierName
+        district
+        address
+      }
+      orderItems {
+        name
+        qty
+        price
+      }
+      updatedAt
     }
   }
 `;
 
 export const GET_ACTIVE_ORDER = `
-  query GetActiveOrder($driverId: ID!) {
-    getActiveOrder(driverId: $driverId) {
+  query ActiveDeliveriesForDriver($driverId: String!) {
+    activeDeliveriesForDriver(driverId: $driverId) {
       id
       orderId
       orderNumber
@@ -73,17 +63,22 @@ export const GET_ACTIVE_ORDER = `
       dropoffLng
       distance
       estimatedDuration
-      fee
+      proposedFee
       status
       pickupStops {
         supplierId
         supplierName
+        district
         address
         phone
         lat
         lng
         status
-        items { name qty }
+      }
+      orderItems {
+        supplierId
+        name
+        qty
       }
     }
   }

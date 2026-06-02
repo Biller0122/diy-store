@@ -7,6 +7,7 @@ import { m, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { trackSearch, trackViewItemList } from '@/lib/analytics/ga4';
+import { vendureShopFetch } from '@/lib/vendure';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -26,6 +27,12 @@ interface AlgoliaHit {
   tags: string[];
 }
 
+type ProductCategory = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 type SortOption = 'relevant' | 'price_asc' | 'price_desc' | 'rating';
 
 const SORT_LABELS: Record<SortOption, string> = {
@@ -35,24 +42,99 @@ const SORT_LABELS: Record<SortOption, string> = {
   rating:     'Үнэлгээ',
 };
 
-// ─── Mock data (used when ALGOLIA_APP_ID not set) ─────────────
-
-const MOCK_HITS: AlgoliaHit[] = [
-  { objectID: 'p1', name: 'Makita 18V Өрөм DTD153', slug: 'makita-drill', price: 28990000, brand: 'Makita', category: 'Багаж хэрэгсэл', categorySlug: 'bagaj', rating: 4.9, reviewCount: 247, inStock: true, imageUrl: '', tags: ['өрөм', 'багаж'] },
-  { objectID: 'p2', name: 'Bosch GAS 18V Тоос соруулагч', slug: 'bosch-vacuum', price: 45990000, salePrice: 39990000, brand: 'Bosch', category: 'Багаж хэрэгсэл', categorySlug: 'bagaj', rating: 4.7, reviewCount: 183, inStock: true, imageUrl: '', tags: ['тоос соруулагч'] },
-  { objectID: 'p3', name: 'Dulux EasyCare 4L Будаг', slug: 'dulux-paint', price: 5990000, brand: 'Dulux', category: 'Будаг ба засвар', categorySlug: 'budag', rating: 4.5, reviewCount: 94, inStock: true, imageUrl: '', tags: ['будаг'] },
-  { objectID: 'p4', name: 'Stanley 210-ширхэг Багажны иж', slug: 'stanley-kit', price: 18990000, brand: 'Stanley', category: 'Багаж хэрэгсэл', categorySlug: 'bagaj', rating: 4.8, reviewCount: 312, inStock: true, imageUrl: '', tags: ['багаж', 'иж'] },
-  { objectID: 'p5', name: 'Philips LED 100W Чийдэн 6ш', slug: 'philips-led', price: 1290000, salePrice: 990000, brand: 'Philips', category: 'Гэрэлтүүлэг', categorySlug: 'gerel', rating: 4.6, reviewCount: 528, inStock: true, imageUrl: '', tags: ['LED', 'чийдэн'] },
-  { objectID: 'p6', name: 'Grohe Смесь Краан', slug: 'grohe-tap', price: 34990000, brand: 'Grohe', category: 'Сантехник', categorySlug: 'santekhnik', rating: 4.9, reviewCount: 77, inStock: true, imageUrl: '', tags: ['сантехник', 'краан'] },
-  { objectID: 'p7', name: 'Quick-Step Parquet Шалны самбар', slug: 'quickstep-floor', price: 8990000, brand: 'Quick-Step', category: 'Шал ба хана', categorySlug: 'shal', rating: 4.4, reviewCount: 156, inStock: false, imageUrl: '', tags: ['шал'] },
-  { objectID: 'p8', name: 'Schneider Electric Самбар', slug: 'schneider-panel', price: 25990000, salePrice: 19990000, brand: 'Schneider', category: 'Цахилгаан', categorySlug: 'tsakhilgaan', rating: 4.7, reviewCount: 89, inStock: true, imageUrl: '', tags: ['цахилгаан'] },
-];
-
 // ─── Algolia search (with mock fallback) ─────────────────────
 
 const ALGOLIA_APP_ID    = process.env.NEXT_PUBLIC_ALGOLIA_APP_ID;
 const ALGOLIA_SEARCH_KEY = process.env.NEXT_PUBLIC_ALGOLIA_SEARCH_KEY;
 const ALGOLIA_INDEX     = process.env.NEXT_PUBLIC_ALGOLIA_INDEX_NAME ?? 'diy_products';
+
+const SUPPLIER_PRODUCTS_QUERY = `
+  query SupplierProducts {
+    supplierProducts {
+      items {
+        id
+        supplierId
+        name
+        slug
+        image
+        price
+        originalPrice
+        category
+        stock
+        enabled
+      }
+    }
+  }
+`;
+
+const PRODUCT_CATEGORIES_QUERY = `
+  query ProductCategories {
+    collections(options: { take: 100, sort: { position: ASC } }) {
+      items {
+        id
+        name
+        slug
+      }
+    }
+  }
+`;
+
+async function searchSupplierProducts(query: string, filters: {
+  category?: string;
+  inStock?: boolean;
+  priceMin?: number;
+  priceMax?: number;
+  sort?: SortOption;
+}, categoryNames: Record<string, string>): Promise<AlgoliaHit[]> {
+  try {
+    const data = await vendureShopFetch<{ supplierProducts: { items: Array<{
+      id: string;
+      supplierId: string;
+      name: string;
+      slug: string;
+      image?: string | null;
+      price: number;
+      originalPrice?: number | null;
+      category?: string | null;
+      stock: number;
+      enabled: boolean;
+    }> } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 });
+
+    const q = query.trim().toLowerCase();
+    let hits = data.supplierProducts.items
+      .filter((item) => item.enabled)
+      .filter((item) => !q ||
+        item.name.toLowerCase().includes(q) ||
+        item.slug.toLowerCase().includes(q) ||
+        (item.category ?? '').toLowerCase().includes(q)
+      )
+      .filter((item) => !filters.category || (item.category ?? 'supplier') === filters.category)
+      .filter((item) => !filters.inStock || item.stock > 0)
+      .filter((item) => !filters.priceMin || item.price >= filters.priceMin)
+      .filter((item) => !filters.priceMax || item.price <= filters.priceMax)
+      .map((item) => ({
+        objectID: `supplier-${item.id}`,
+        name: item.name,
+        slug: item.slug,
+        price: item.price,
+        salePrice: item.originalPrice ?? null,
+        brand: 'Нийлүүлэгч',
+        category: categoryNames[item.category ?? ''] || item.category || 'Нийлүүлэгч',
+        categorySlug: item.category || 'supplier',
+        rating: 0,
+        reviewCount: 0,
+        inStock: item.stock > 0,
+        imageUrl: item.image ?? '',
+        tags: [item.category ?? '', item.slug],
+      }));
+
+    if (filters.sort === 'price_asc') hits = [...hits].sort((a, b) => a.price - b.price);
+    if (filters.sort === 'price_desc') hits = [...hits].sort((a, b) => b.price - a.price);
+    return hits;
+  } catch {
+    return [];
+  }
+}
 
 async function searchAlgolia(query: string, filters: {
   category?: string;
@@ -61,26 +143,13 @@ async function searchAlgolia(query: string, filters: {
   priceMin?: number;
   priceMax?: number;
   sort?: SortOption;
-}): Promise<{ hits: AlgoliaHit[]; total: number; brands: string[]; categories: string[] }> {
+}, categoryNames: Record<string, string>): Promise<{ hits: AlgoliaHit[]; total: number; brands: string[]; categories: string[] }> {
+  const supplierHits = await searchSupplierProducts(query, filters, categoryNames);
+
   if (!ALGOLIA_APP_ID || !ALGOLIA_SEARCH_KEY) {
-    // Mock search: simple substring filter
-    let hits = MOCK_HITS.filter((h) => {
-      if (query && !h.name.toLowerCase().includes(query.toLowerCase()) &&
-          !h.tags.some(t => t.toLowerCase().includes(query.toLowerCase()))) return false;
-      if (filters.category && h.categorySlug !== filters.category) return false;
-      if (filters.brand && h.brand !== filters.brand) return false;
-      if (filters.inStock && !h.inStock) return false;
-      if (filters.priceMin && h.price < filters.priceMin) return false;
-      if (filters.priceMax && h.price > filters.priceMax) return false;
-      return true;
-    });
-
-    if (filters.sort === 'price_asc')  hits = [...hits].sort((a, b) => a.price - b.price);
-    if (filters.sort === 'price_desc') hits = [...hits].sort((a, b) => b.price - a.price);
-    if (filters.sort === 'rating')     hits = [...hits].sort((a, b) => b.rating - a.rating);
-
-    const brands     = [...new Set(MOCK_HITS.map(h => h.brand))];
-    const categories = [...new Set(MOCK_HITS.map(h => h.categorySlug))];
+    const hits = supplierHits;
+    const brands = [...new Set(supplierHits.map(h => h.brand))];
+    const categories = [...new Set(supplierHits.map(h => h.categorySlug))];
     return { hits, total: hits.length, brands, categories };
   }
 
@@ -114,7 +183,8 @@ async function searchAlgolia(query: string, filters: {
   const facets = (result as any).facets ?? {};
   const brands     = Object.keys(facets.brand ?? {});
   const categories = Object.keys(facets.categorySlug ?? {});
-  return { hits: result.hits as unknown as AlgoliaHit[], total: (result as any).nbHits ?? 0, brands, categories };
+  const hits = [...supplierHits, ...(result.hits as unknown as AlgoliaHit[])];
+  return { hits, total: hits.length, brands: [...new Set([...brands, ...supplierHits.map(h => h.brand)])], categories: [...new Set([...categories, ...supplierHits.map(h => h.categorySlug)])] };
 }
 
 // ─── Hit → ProductCard adapter ────────────────────────────────
@@ -156,20 +226,14 @@ function Skeleton() {
 
 // ─── Filter sidebar ───────────────────────────────────────────
 
-const CATEGORY_NAMES: Record<string, string> = {
-  bagaj: 'Багаж хэрэгсэл', barilga: 'Барилгын материал',
-  santekhnik: 'Сантехник', tsakhilgaan: 'Цахилгаан',
-  budag: 'Будаг ба засвар', gerel: 'Гэрэлтүүлэг',
-  khaalga: 'Хаалга, цонх', shal: 'Шал ба хана',
-};
-
 function FilterSidebar({
   brands, categories, activeCategory, activeBrand,
-  inStockOnly, priceMin, priceMax,
+  inStockOnly, priceMin, priceMax, categoryNames,
   onChange,
 }: {
   brands: string[];
   categories: string[];
+  categoryNames: Record<string, string>;
   activeCategory: string;
   activeBrand: string;
   inStockOnly: boolean;
@@ -190,7 +254,7 @@ function FilterSidebar({
           {categories.map((slug) => (
             <button key={slug} onClick={() => onChange('category', slug)}
               className={`w-full text-left px-3 py-2 rounded-xl text-sm transition ${activeCategory === slug ? 'bg-brand/10 text-brand font-semibold' : 'text-foreground-muted hover:text-foreground hover:bg-white/5'}`}>
-              {CATEGORY_NAMES[slug] ?? slug}
+              {categoryNames[slug] ?? slug}
             </button>
           ))}
         </div>
@@ -262,6 +326,7 @@ function SearchContent() {
   const [total, setTotal]         = useState(0);
   const [brands, setBrands]       = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [backendCategories, setBackendCategories] = useState<ProductCategory[]>([]);
   const [loading, setLoading]     = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -274,6 +339,33 @@ function SearchContent() {
 
   const filterCount = [activeCategory, activeBrand, inStockOnly, priceMin, priceMax]
     .filter(Boolean).length;
+  const categoryNames = useMemo(
+    () => Object.fromEntries(backendCategories.map((category) => [category.slug, category.name])),
+    [backendCategories],
+  );
+  const filterCategories = useMemo(
+    () => backendCategories.map((category) => category.slug),
+    [backendCategories],
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    vendureShopFetch<{ collections: { items: ProductCategory[] } }>(
+      PRODUCT_CATEGORIES_QUERY,
+      undefined,
+      { revalidate: 0 },
+    )
+      .then((data) => {
+        if (!mounted) return;
+        setBackendCategories(data.collections.items.filter((item) => item.slug !== '__root_collection__'));
+      })
+      .catch(() => {
+        if (mounted) setBackendCategories([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!query) return;
@@ -285,15 +377,15 @@ function SearchContent() {
       priceMin: priceMin ? Number(priceMin) : undefined,
       priceMax: priceMax ? Number(priceMax) : undefined,
       sort,
-    }).then(({ hits, total, brands, categories }) => {
+    }, categoryNames).then(({ hits, total, brands, categories }) => {
       setHits(hits);
       setTotal(total);
       setBrands(brands);
-      setCategories(categories);
+      setCategories(categories.length ? categories : filterCategories);
       trackSearch(query, total);
       if (hits.length > 0) trackViewItemList('Search results', hits.slice(0, 12).map(h => ({ id: h.objectID, variantId: h.objectID, name: h.name, price: h.price })));
     }).finally(() => setLoading(false));
-  }, [query, activeCategory, activeBrand, inStockOnly, priceMin, priceMax, sort]);
+  }, [query, activeCategory, activeBrand, inStockOnly, priceMin, priceMax, sort, categoryNames, filterCategories]);
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -348,7 +440,7 @@ function SearchContent() {
             {query ? (
               <p className="text-sm text-foreground-muted">
                 <span className="text-foreground font-semibold">"{query}"</span>{' '}
-                {loading ? 'хайж байна...' : `— ${total} бараа олдлоо`}
+                <span data-testid="results-count">{loading ? 'хайж байна...' : `— ${total} бараа олдлоо`}</span>
               </p>
             ) : (
               <p className="text-sm text-foreground-muted">Хайлтын үр дүн</p>
@@ -394,7 +486,8 @@ function SearchContent() {
                 )}
               </div>
               <FilterSidebar
-                brands={brands} categories={categories}
+                brands={brands} categories={filterCategories.length ? filterCategories : categories}
+                categoryNames={categoryNames}
                 activeCategory={activeCategory} activeBrand={activeBrand}
                 inStockOnly={inStockOnly} priceMin={priceMin} priceMax={priceMax}
                 onChange={handleFilterChange}
@@ -428,7 +521,8 @@ function SearchContent() {
                     </button>
                   </div>
                   <FilterSidebar
-                    brands={brands} categories={categories}
+                    brands={brands} categories={filterCategories.length ? filterCategories : categories}
+                    categoryNames={categoryNames}
                     activeCategory={activeCategory} activeBrand={activeBrand}
                     inStockOnly={inStockOnly} priceMin={priceMin} priceMax={priceMax}
                     onChange={handleFilterChange}
@@ -449,7 +543,7 @@ function SearchContent() {
                 ))}
               </div>
             ) : query ? (
-              <div className="text-center py-20">
+              <div data-testid="no-results" className="text-center py-20">
                 <div className="text-5xl mb-4">🔍</div>
                 <h2 className="text-xl font-bold text-foreground mb-2">Илэрц олдсонгүй</h2>
                 <p className="text-foreground-muted text-sm mb-6">

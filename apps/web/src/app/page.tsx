@@ -4,15 +4,35 @@ import { vendureShopFetch, type VendureCollection } from '@/lib/vendure';
 import { TrustStrip } from '@/components/ui/TrustStrip';
 import { CategoryCard } from '@/components/ui/CategoryCard';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
-import { MOCK_SUPPLIERS } from '@/lib/supplier-data';
+import { HomepageBanner, type HomepageBannerData } from '@/components/ui/HomepageBanner';
+import { ARTICLES } from './how-to/articles';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
 
 // ─── Data fetching ────────────────────────────────────────────
 
+function localPortalBase(port: number) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+  return siteUrl.startsWith('http://localhost')
+    || siteUrl.startsWith('https://localhost')
+    || siteUrl.startsWith('http://127.0.0.1')
+    || siteUrl.startsWith('https://127.0.0.1')
+    ? `http://localhost:${port}`
+    : '';
+}
+
+function portalHref(baseUrl: string | undefined, localPort: number, path: string) {
+  const base = (baseUrl || localPortalBase(localPort)).replace(/\/$/, '');
+  return base ? `${base}${path}` : path;
+}
+
+const merchantLoginHref = portalHref(process.env.NEXT_PUBLIC_MERCHANT_URL, 18083, '/supplier/login');
+const driverRegisterHref = portalHref(process.env.NEXT_PUBLIC_DRIVER_URL, 18082, '/driver/register');
+
 const COLLECTIONS_QUERY = `
   query Collections {
-    collections(options: { take: 12 }) {
+    collections(options: { take: 12, topLevelOnly: true, sort: { position: ASC } }) {
       items {
-        id name slug
+        id name slug parentId
         customFields { icon }
         productVariants(options: { take: 1 }) { totalItems }
       }
@@ -22,12 +42,29 @@ const COLLECTIONS_QUERY = `
 
 const FEATURED_QUERY = `
   query Featured {
-    search(input: { take: 8, sort: { name: ASC } }) {
+    search(input: { take: 12, sort: { name: ASC } }) {
+      totalItems
       items {
         productId productVariantId productName slug
         productAsset { preview }
         priceWithTax { ... on SinglePrice { value } }
+        inStock
       }
+    }
+  }
+`;
+
+const HOMEPAGE_BANNERS_QUERY = `
+  query HomepageBanners {
+    homepageBanners {
+      id
+      title
+      subtitle
+      eyebrow
+      ctaLabel
+      ctaHref
+      imageUrl
+      accentColor
     }
   }
 `;
@@ -35,7 +72,7 @@ const FEATURED_QUERY = `
 async function getCollections(): Promise<VendureCollection[]> {
   try {
     const data = await vendureShopFetch<{ collections: { items: VendureCollection[] } }>(COLLECTIONS_QUERY);
-    return data.collections?.items ?? [];
+    return (data.collections?.items ?? []).filter((item) => item.slug !== '__root_collection__');
   } catch {
     return [];
   }
@@ -51,45 +88,37 @@ async function getFeaturedProducts(): Promise<ProductCardData[]> {
       slug: item.slug,
       image: item.productAsset?.preview ?? '',
       price: item.priceWithTax?.value ?? 0,
-      rating: 4 + Math.random() * 0.9,
-      reviewCount: Math.floor(20 + Math.random() * 200),
+      rating: 0,
+      reviewCount: 0,
       badge: i === 0 ? 'ТОП' : i < 3 ? 'ШИНЭ' : undefined,
-      inStock: true,
+      inStock: item.inStock,
     })) as ProductCardData[];
   } catch {
-    return MOCK_PRODUCTS;
+    return [];
   }
 }
 
-// ─── Mock data ────────────────────────────────────────────────
+async function getCatalogProductCount() {
+  try {
+    const data = await vendureShopFetch<{ search: { totalItems: number } }>(FEATURED_QUERY, undefined, { revalidate: 0 });
+    return data.search?.totalItems ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
-const MOCK_CATEGORIES = [
-  { id: '1', name: 'Багаж хэрэгсэл', slug: 'bagaj', customFields: { icon: '🔧' } },
-  { id: '2', name: 'Барилгын материал', slug: 'barilga', customFields: { icon: '🧱' } },
-  { id: '3', name: 'Сантехник', slug: 'santekhnik', customFields: { icon: '🚿' } },
-  { id: '4', name: 'Цахилгаан', slug: 'tsakhilgaan', customFields: { icon: '⚡' } },
-  { id: '5', name: 'Будаг ба засвар', slug: 'budag', customFields: { icon: '🎨' } },
-  { id: '6', name: 'Гэрэлтүүлэг', slug: 'gerel', customFields: { icon: '💡' } },
-  { id: '7', name: 'Хаалга, цонх', slug: 'khaalga', customFields: { icon: '🚪' } },
-  { id: '8', name: 'Шал ба хана', slug: 'shal', customFields: { icon: '🏠' } },
-] as VendureCollection[];
-
-const MOCK_PRODUCTS: ProductCardData[] = [
-  { id: 'p1', variantId: 'v1', name: 'Makita 18V Өрөм DTD153', slug: 'makita-drill', image: '', price: 28990000, rating: 4.9, reviewCount: 247, badge: 'ТОП', inStock: true },
-  { id: 'p2', variantId: 'v2', name: 'Bosch GAS 18V Тоос соруулагч', slug: 'bosch-vacuum', image: '', price: 45990000, originalPrice: 59990000, rating: 4.7, reviewCount: 183, badge: 'ХЯМДРАЛ', inStock: true },
-  { id: 'p3', variantId: 'v3', name: 'Dulux EasyCare 4L Будаг', slug: 'dulux-paint', image: '', price: 5990000, rating: 4.5, reviewCount: 94, badge: 'ШИНЭ', inStock: true },
-  { id: 'p4', variantId: 'v4', name: 'Stanley 210-ширхэг Багажны иж', slug: 'stanley-kit', image: '', price: 18990000, rating: 4.8, reviewCount: 312, inStock: true },
-  { id: 'p5', variantId: 'v5', name: 'Philips LED 100W Чийдэн 6ш', slug: 'philips-led', image: '', price: 1290000, originalPrice: 1590000, rating: 4.6, reviewCount: 528, badge: 'ХЯМДРАЛ', inStock: true },
-  { id: 'p6', variantId: 'v6', name: 'Grohe Смесь Краан', slug: 'grohe-tap', image: '', price: 34990000, rating: 4.9, reviewCount: 77, badge: 'ШИНЭ', inStock: true },
-  { id: 'p7', variantId: 'v7', name: 'Quick-Step Parquet Шалны самбар', slug: 'quickstep-floor', image: '', price: 8990000, rating: 4.4, reviewCount: 156, inStock: false },
-  { id: 'p8', variantId: 'v8', name: 'Schneider Electric Самбар', slug: 'schneider-panel', image: '', price: 25990000, originalPrice: 32990000, rating: 4.7, reviewCount: 89, badge: 'ХЯМДРАЛ', inStock: true },
-];
-
-const HOW_TO = [
-  { title: 'Өрөөний будгийг хэрхэн сонгох вэ?', time: '5 мин', emoji: '🎨', slug: 'paint-guide' },
-  { title: 'Гэртээ LED гэрэлтүүлэг суурилуулах', time: '8 мин', emoji: '💡', slug: 'led-install' },
-  { title: 'Угаалтуур яаж солих — алхам алхмаар', time: '12 мин', emoji: '🚿', slug: 'faucet-guide' },
-];
+async function getHomepageBanners(): Promise<HomepageBannerData[]> {
+  try {
+    const data = await vendureShopFetch<{ homepageBanners: HomepageBannerData[] }>(
+      HOMEPAGE_BANNERS_QUERY,
+      undefined,
+      { revalidate: 0 },
+    );
+    return data.homepageBanners ?? [];
+  } catch {
+    return [];
+  }
+}
 
 const HOW_IT_WORKS = [
   { step: 1, icon: '🛒', title: 'Бараа сонго', desc: 'Дурын нийлүүлэгчийн дэлгүүрээс хайж олоорой' },
@@ -123,21 +152,21 @@ function SectionHeader({
   );
 }
 
-function MarketplaceHero() {
+function MarketplaceHero({ supplierCount, productCount }: { supplierCount: number; productCount: number }) {
   return (
     <section className="relative overflow-hidden py-20 px-4">
       <div className="absolute inset-0 gradient-mesh opacity-60" />
       <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 30% 50%, rgba(255,69,0,0.15) 0%, transparent 60%)' }} />
       <div className="relative max-w-7xl mx-auto text-center">
         <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 text-xs font-semibold text-brand border border-brand/20 mb-6">
-          <Sparkles size={12} /> 100+ нийлүүлэгч нэг платформд
+          <Sparkles size={12} /> Backend нийлүүлэгч нэг платформд
         </div>
         <h1 className="font-display font-black text-5xl sm:text-6xl lg:text-7xl text-foreground leading-tight mb-6">
           Барилгын материал.{' '}
           <span className="text-brand">Хүргэлттэй.</span>
         </h1>
         <p className="text-xl text-foreground-muted max-w-2xl mx-auto mb-10 leading-relaxed">
-          100+ нийлүүлэгчийн бараа. Шуурхай хүргэлт. Нэг сагсаар олон дэлгүүрээс захиалаарай.
+          Backend-д бүртгэлтэй нийлүүлэгчийн бараа. Шуурхай хүргэлт. Нэг сагсаар олон дэлгүүрээс захиалаарай.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link href="/suppliers" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-brand text-white font-bold text-base hover:bg-brand-hover transition-all shadow-xl shadow-brand/30 hover:scale-105">
@@ -151,8 +180,8 @@ function MarketplaceHero() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto mt-14">
           {[
-            { value: '100+', label: 'Нийлүүлэгч' },
-            { value: '10,000+', label: 'Бүтээгдэхүүн' },
+            { value: supplierCount.toLocaleString('mn-MN'), label: 'Нийлүүлэгч' },
+            { value: productCount.toLocaleString('mn-MN'), label: 'Бүтээгдэхүүн' },
             { value: '30 мин', label: 'Дундаж хүргэлт' },
           ].map(({ value, label }) => (
             <div key={label} className="glass rounded-2xl p-4 text-center">
@@ -166,13 +195,17 @@ function MarketplaceHero() {
   );
 }
 
-function SupplierSection() {
-  const featured = MOCK_SUPPLIERS.filter((s) => s.isOpen).slice(0, 4);
+function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplierToCard>[] }) {
+  const featured = suppliers.slice(0, 4);
   return (
     <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
       <SectionHeader icon={Store} title="Онцлох нийлүүлэгчид" subtitle="Найдвартай нийлүүлэгчдээс шууд захиалаарай" href="/suppliers" />
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {featured.map((sup) => (
+        {featured.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-2 lg:col-span-4">
+            Backend дээр идэвхтэй нийлүүлэгч алга байна.
+          </div>
+        ) : featured.map((sup) => (
           <Link
             key={sup.id}
             href={`/suppliers/${sup.slug}`}
@@ -270,7 +303,7 @@ function Footer() {
               <ul className="space-y-2">
                 {links.map((l) => (
                   <li key={l}>
-                    <Link href="#" className="text-sm text-foreground-muted hover:text-foreground transition-colors">{l}</Link>
+                    <Link href={footerHref(l)} className="text-sm text-foreground-muted hover:text-foreground transition-colors">{l}</Link>
                   </li>
                 ))}
               </ul>
@@ -280,8 +313,8 @@ function Footer() {
         <div className="border-t border-[var(--glass-border)] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-foreground-muted">© 2025 DIY Store Marketplace. Бүх эрх хуулиар хамгаалагдсан.</p>
           <div className="flex items-center gap-4 text-xs text-foreground-muted">
-            <Link href="#" className="hover:text-foreground transition-colors">Нууцлалын бодлого</Link>
-            <Link href="#" className="hover:text-foreground transition-colors">Үйлчилгээний нөхцөл</Link>
+            <Link href="/trade" className="hover:text-foreground transition-colors">Нууцлалын бодлого</Link>
+            <Link href="/trade" className="hover:text-foreground transition-colors">Үйлчилгээний нөхцөл</Link>
           </div>
         </div>
       </div>
@@ -289,28 +322,66 @@ function Footer() {
   );
 }
 
+function footerHref(label: string) {
+  const routes: Record<string, string> = {
+    'Нийлүүлэгч болох': merchantLoginHref,
+    'Жолооч болох': driverRegisterHref,
+    'Бүх ангилал': '/category',
+    'Шинэ бараа': '/#new-products',
+    'Бидний тухай': '/trade',
+    'Карьер': driverRegisterHref,
+    'Хэвлэлийн мэдэгдэл': '/how-to',
+    'Холбоо барих': '/trade',
+    'Захиалга хянах': '/track/demo',
+    'Буцаалт': '/trade',
+    'Баталгаа': '/trade',
+    'Хаяг олох': '/stores',
+  };
+  return routes[label] ?? '/';
+}
+
 // ─── Page ─────────────────────────────────────────────────────
 
 export default async function HomePage() {
-  const [collections, products] = await Promise.all([getCollections(), getFeaturedProducts()]);
-  const displayCategories = collections.length > 0 ? collections : MOCK_CATEGORIES;
-  const displayProducts = products.length > 0 ? products : MOCK_PRODUCTS;
+  const [collections, catalogProducts, supplierProducts, suppliersResult, catalogProductCount, banners] = await Promise.all([
+    getCollections(),
+    getFeaturedProducts(),
+    getDbSupplierProducts(),
+    getDbSuppliers({ status: 'ACTIVE', take: 12 }),
+    getCatalogProductCount(),
+    getHomepageBanners(),
+  ]);
+  const suppliers = suppliersResult.items.map(dbSupplierToCard).sort((a, b) => b.productCount - a.productCount);
+  const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+  const products = [
+    ...supplierProducts.map((product) => dbProductToCard(product, supplierById.get(product.supplierId))),
+    ...catalogProducts,
+  ];
+  const productCount = catalogProductCount + supplierProducts.length;
+  const displayCategories = collections;
+  const displayProducts = products;
   const newProducts = displayProducts.slice(0, 4);
-  const saleProducts = displayProducts.slice(4);
+  const saleProducts = displayProducts.filter((product) => product.originalPrice && product.originalPrice > product.price).slice(0, 8);
+  const articles = ARTICLES.slice(0, 3);
 
   return (
     <>
-      <MarketplaceHero />
+      <MarketplaceHero supplierCount={suppliersResult.total} productCount={productCount} />
+      <HomepageBanner banners={banners} />
       <TrustStrip />
 
       {/* Supplier spotlight */}
-      <SupplierSection />
+      <SupplierSection suppliers={suppliers} />
 
       {/* Categories */}
       <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6">
         <SectionHeader icon={Sparkles} title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" href="/category" />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {displayCategories.slice(0, 12).map((cat, i) => (
+          {displayCategories.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-3 lg:col-span-4 xl:col-span-6">
+              Backend дээр ангилал бүртгэгдээгүй байна.
+            </div>
+          ) : displayCategories.slice(0, 12).map((cat, i) => (
             <CategoryCard key={cat.id} name={cat.name} slug={cat.slug} icon={cat.customFields?.icon ?? '📦'} index={i} />
           ))}
         </div>
@@ -320,11 +391,15 @@ export default async function HomePage() {
       <HowItWorksSection />
 
       {/* New products */}
-      <section className="py-10 border-y border-[var(--glass-border)] bg-surface/40">
+      <section id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Sparkles} title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" href="/category" />
+          <SectionHeader icon={Sparkles} title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" href="/#new-products" />
           <div className="flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 sm:-mx-6 sm:px-6 snap-x snap-mandatory">
-            {newProducts.map((product, i) => (
+            {newProducts.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted">
+                Backend дээр бараа бүртгэгдээгүй байна.
+              </div>
+            ) : newProducts.map((product, i) => (
               <div key={product.id} className="min-w-[200px] max-w-[200px] sm:min-w-[220px] sm:max-w-[220px] snap-start">
                 <ProductCard product={product} index={i} />
               </div>
@@ -350,7 +425,7 @@ export default async function HomePage() {
                 DIY Store Marketplace дээр нийлүүлэгч болж, хэдэн мянган хэрэглэгчид хүр. Бүртгэл үнэгүй.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link href="/supplier/login" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30">
+                <Link href={merchantLoginHref} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30">
                   Нийлүүлэгч болох <ArrowRight size={15} />
                 </Link>
               </div>
@@ -375,7 +450,7 @@ export default async function HomePage() {
       {/* Sale products grid */}
       {saleProducts.length > 0 && (
         <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Хугацаат санал — хурдан авна уу" href="/sale" />
+          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/search?sort=price_asc" />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {saleProducts.map((product, i) => (
               <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
@@ -386,15 +461,15 @@ export default async function HomePage() {
 
       {/* How-to articles */}
       <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-        <SectionHeader icon={BookOpen} title="DIY Заавар" subtitle="Мэргэжилтнээс суралц" href="/guides" />
+        <SectionHeader icon={BookOpen} title="DIY Заавар" subtitle="Мэргэжилтнээс суралц" href="/how-to" />
         <div className="grid sm:grid-cols-3 gap-4">
-          {HOW_TO.map((article) => (
-            <Link key={article.slug} href={`/guides/${article.slug}`} className="group block rounded-2xl bg-card border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-all overflow-hidden">
+          {articles.map((article) => (
+            <Link key={article.slug} href={`/how-to/${article.slug}`} className="group block rounded-2xl bg-card border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-all overflow-hidden">
               <div className="aspect-video bg-gradient-to-br from-surface to-card flex items-center justify-center text-6xl">{article.emoji}</div>
               <div className="p-4">
                 <h3 className="font-semibold text-sm text-foreground group-hover:text-brand transition-colors mb-2 leading-snug">{article.title}</h3>
                 <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
-                  <Clock size={11} /> {article.time} уншлага
+                  <Clock size={11} /> {article.readTime} мин уншлага
                 </div>
               </div>
             </Link>

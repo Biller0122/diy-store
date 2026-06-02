@@ -38,6 +38,21 @@ const STORES = [
 
 type DeliveryType  = 'delivery' | 'pickup';
 type PaymentMethod = 'qpay' | 'monpay' | 'card' | 'testpay';
+type DeliveryStatus = 'SEARCHING' | 'OFFERED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+type DispatchStatusData = {
+  status: DeliveryStatus;
+  deliveryCode?: string;
+  driver?: {
+    id: string;
+    name: string;
+    phone: string;
+    vehicleType: string;
+    vehiclePlate: string;
+    rating: number;
+  };
+  estimatedArrivalMinutes?: number;
+};
 
 function fmt(minor: number) {
   return `₮${Math.round(minor / 100).toLocaleString('mn-MN')}`;
@@ -400,6 +415,49 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
   estimatedMinutes: number;
   deliveryAddress?: string;
 }) {
+  const [dispatch, setDispatch] = useState<DispatchStatusData>({ status: 'SEARCHING' });
+
+  useEffect(() => {
+    if (!orderNo) return;
+    let cancelled = false;
+
+    async function fetchDispatchStatus() {
+      try {
+        const response = await fetch(`/api/order/${encodeURIComponent(orderNo)}/dispatch-status`, {
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+        const data = await response.json() as DispatchStatusData;
+        if (!cancelled) setDispatch(data);
+      } catch {
+        // The confirmation view should stay usable even if the live status endpoint is temporarily unavailable.
+      }
+    }
+
+    void fetchDispatchStatus();
+    const interval = window.setInterval(fetchDispatchStatus, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [orderNo]);
+
+  const accepted = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(dispatch.status);
+  const offered = dispatch.status === 'OFFERED';
+  const cancelled = dispatch.status === 'CANCELLED';
+  const statusCopy = cancelled
+    ? 'Жолооч олдсонгүй. Админтай холбогдоно уу.'
+    : accepted
+      ? 'Жолооч хүргэлтийг хүлээж авлаа.'
+      : offered
+        ? 'Жолоочид санал илгээж байна...'
+        : 'Таны захиалгад жолооч хайж байна...';
+  const statusClass = cancelled
+    ? 'bg-error/10 border-error/20 text-error'
+    : accepted
+      ? 'bg-success/10 border-success/20 text-success'
+      : 'bg-amber-500/10 border-amber-500/20 text-amber-400';
+
   return (
     <m.div
       initial={{ opacity: 0, scale: 0.96 }}
@@ -416,10 +474,12 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
             ✓
           </div>
         </div>
-        <div>
-          <h2 className="text-xl font-black text-foreground">Захиалга амжилттай!</h2>
-          <p className="mt-1 text-sm text-foreground-muted">Таны захиалгыг хүлээн авлаа. Жолооч хайж байна...</p>
-        </div>
+      <div>
+        <h2 className="text-xl font-black text-foreground">Захиалга амжилттай!</h2>
+          <p className="mt-1 text-sm text-foreground-muted">
+            Таны захиалгыг хүлээн авлаа. {accepted ? 'Жолооч хүргэлт авлаа.' : offered ? 'Жолоочид санал илгээж байна.' : 'Жолооч хайж байна...'}
+          </p>
+      </div>
       </div>
 
       {/* Order number */}
@@ -442,10 +502,27 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
         </div>
       </div>
 
+      {dispatch.driver && (
+        <div className="rounded-xl bg-surface border border-[var(--glass-border)] p-3 text-left">
+          <p className="text-xs text-foreground-muted">Жолооч</p>
+          <p className="mt-1 text-sm font-bold text-foreground">{dispatch.driver.name}</p>
+          <p className="text-xs text-foreground-muted">
+            {dispatch.driver.vehiclePlate || 'Дугаар бүртгээгүй'} · {dispatch.driver.phone}
+          </p>
+        </div>
+      )}
+
+      {dispatch.deliveryCode && !cancelled && (
+        <div className="rounded-2xl border border-brand/30 bg-brand/10 p-4">
+          <p className="text-xs font-semibold text-foreground-muted">Жолоочид бараагаа хүлээн авахдаа хэлэх буулгах код</p>
+          <p className="mt-2 font-mono text-3xl font-black tracking-[0.35em] text-brand">{dispatch.deliveryCode}</p>
+        </div>
+      )}
+
       {/* Status */}
-      <div className="flex items-center gap-3 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-        <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-        <p className="text-sm text-amber-400">Таны захиалгад жолооч хайж байна...</p>
+      <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${statusClass}`}>
+        <div className={`w-2 h-2 rounded-full shrink-0 ${accepted ? 'bg-success' : cancelled ? 'bg-error' : 'bg-amber-500 animate-pulse'}`} />
+        <p className="text-sm font-semibold">{statusCopy}</p>
       </div>
 
       {/* Actions */}

@@ -99,6 +99,12 @@ export default function BuyBox({
   optionGroups,
   avgRating = 0,
   reviewCount = 0,
+  supplierId,
+  supplierName,
+  supplierSlug,
+  supplierDistrict,
+  supplierLat,
+  supplierLng,
 }: {
   productId: string;
   productName: string;
@@ -108,6 +114,12 @@ export default function BuyBox({
   optionGroups: OptionGroup[];
   avgRating?: number;
   reviewCount?: number;
+  supplierId?: string;
+  supplierName?: string;
+  supplierSlug?: string;
+  supplierDistrict?: string;
+  supplierLat?: number;
+  supplierLng?: number;
 }) {
   // Initialise selected options from first variant's options
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() =>
@@ -167,6 +179,12 @@ export default function BuyBox({
       mode,
       storeId,
       sku: activeVariant.sku,
+      supplierId,
+      supplierName,
+      supplierSlug,
+      supplierDistrict,
+      supplierLat,
+      supplierLng,
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);

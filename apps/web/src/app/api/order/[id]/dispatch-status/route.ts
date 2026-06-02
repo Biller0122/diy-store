@@ -22,6 +22,8 @@ interface DeliveryRequestResult {
   driverLat?: number | null;
   driverLng?: number | null;
   estimatedDuration?: number | null;
+  deliveryCode?: string | null;
+  completedAt?: string | null;
   pickupStops?: Array<{
     supplierName: string;
     address: string;
@@ -42,6 +44,8 @@ const DELIVERY_STATUS_GQL = `
       driverLat
       driverLng
       estimatedDuration
+      deliveryCode
+      completedAt
       pickupStops {
         supplierName
         address
@@ -134,6 +138,8 @@ export async function GET(
       estimatedArrivalMinutes: delivery.estimatedDuration ?? undefined,
       driverLat: delivery.driverLat ?? driver?.lat,
       driverLng: delivery.driverLng ?? driver?.lng,
+      deliveryCode: delivery.deliveryCode ?? undefined,
+      completedAt: delivery.completedAt ?? undefined,
       pickupStops: delivery.pickupStops ?? [],
     });
   } catch (err) {

@@ -8,6 +8,7 @@ import { FacetValueResult } from './filter-sidebar';
 import { generateCategoryMetadata } from '@/lib/seo/metadata';
 import { generateBreadcrumbSchema } from '@/lib/seo/structured-data';
 import { JsonLd } from '@/components/common/JsonLd';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
 
 const PAGE_SIZE = 12;
 
@@ -18,7 +19,15 @@ const GET_COLLECTION = `
     collection(slug: $slug) {
       id
       name
+      slug
       customFields { icon }
+      children {
+        id
+        name
+        slug
+        customFields { icon }
+        productVariants(options: { take: 1 }) { totalItems }
+      }
     }
   }
 `;
@@ -72,7 +81,15 @@ interface CollectionData {
   collection: {
     id: string;
     name: string;
+    slug: string;
     customFields: { icon: string | null };
+    children?: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      customFields?: { icon: string | null };
+      productVariants?: { totalItems: number };
+    }>;
   } | null;
 }
 
@@ -154,18 +171,30 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const currentPage = Math.max(1, parseInt(sp.page ?? '1'));
 
-  const [collection, searchResult] = await Promise.all([
+  const [collection, searchResult, supplierProducts, suppliersResult] = await Promise.all([
     getCollection(slug),
     searchProducts(slug, sp),
+    getDbSupplierProducts(),
+    getDbSuppliers({ status: 'ACTIVE', take: 100 }),
   ]);
+  const categorySlugs = new Set([slug, ...(collection?.children ?? []).map((child) => child.slug)]);
+  const supplierById = new Map(suppliersResult.items.map((supplier) => {
+    const card = dbSupplierToCard(supplier);
+    return [card.id, card];
+  }));
+  const supplierCategoryProducts = supplierProducts
+    .filter((product) => product.enabled && product.category && categorySlugs.has(product.category))
+    .map((product) => dbProductToCard(product, supplierById.get(product.supplierId)));
 
-  const totalItems = searchResult?.totalItems ?? 0;
+  const totalItems = (searchResult?.totalItems ?? 0) + supplierCategoryProducts.length;
   const totalPages = Math.ceil(totalItems / PAGE_SIZE);
   const facets = searchResult?.facetValues ?? [];
   const rawProducts = searchResult?.items ?? [];
 
   // Adapt SearchProduct → ProductCardData
-  const products = rawProducts.map((p, i) => ({
+  const products = [
+    ...supplierCategoryProducts,
+    ...rawProducts.map((p) => ({
     id: p.productId,
     variantId: p.productId,
     name: p.productName,
@@ -174,10 +203,12 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     price: p.priceWithTax.__typename === 'SinglePrice' ? p.priceWithTax.value : (p.priceWithTax as any).min ?? 0,
     inStock: p.inStock,
     badge: !p.inStock ? ('ДУУССАН' as const) : undefined,
-  }));
+    })),
+  ];
 
   const icon = collection?.customFields?.icon ?? '📦';
   const name = collection?.name ?? slug;
+  const subcategories = collection?.children ?? [];
 
   return (
     <>
@@ -207,6 +238,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         totalItems={totalItems}
         currentPage={currentPage}
         totalPages={totalPages}
+        subcategories={subcategories}
       >
         {products.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--glass-border)] py-24 text-center">

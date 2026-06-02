@@ -6,6 +6,7 @@ import { SupplierProduct } from './supplier-product.entity';
 import { SupplierResolver } from './supplier.resolver';
 import { SupplierService } from './supplier.service';
 import { EmailOtpService } from '../../services/email-otp.service';
+import { DeliveryRequest } from '../delivery/delivery-request.entity';
 
 const SUPPLIER_SCHEMA_EXTENSION = gql`
   type SupplierList {
@@ -103,6 +104,62 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     success: Boolean!
     message: String!
     order: SupplierOrder
+  }
+
+  type SupplierDeliveryOrderItem {
+    supplierId: String!
+    supplierName: String!
+    productId: String
+    variantId: String
+    name: String!
+    sku: String
+    qty: Int!
+    price: Int!
+  }
+
+  type SupplierDeliveryPickupStop {
+    supplierId: String!
+    supplierName: String!
+    district: String
+    address: String!
+    phone: String
+    lat: Float!
+    lng: Float!
+    status: String!
+  }
+
+  type SupplierDeliveryRequest {
+    id: ID!
+    orderId: String!
+    orderNumber: String!
+    customerId: String!
+    customerName: String!
+    customerPhone: String!
+    pickupStops: [SupplierDeliveryPickupStop!]!
+    orderItems: [SupplierDeliveryOrderItem!]!
+    orderTotal: Int!
+    paymentMethod: String
+    supplierStatus: String!
+    dropoffAddress: String!
+    dropoffLat: Float!
+    dropoffLng: Float!
+    distance: Float!
+    estimatedDuration: Int!
+    proposedFee: Int!
+    finalFee: Int!
+    status: String!
+    driverId: String
+    driverLat: Float
+    driverLng: Float
+    estimatedArrival: String
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  type SupplierDeliveryActionResult {
+    success: Boolean!
+    message: String!
+    delivery: SupplierDeliveryRequest
   }
 
   type Supplier {
@@ -219,6 +276,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     supplierBySlug(slug: String!): Supplier
     supplierProducts(supplierId: String): SupplierProductList!
     supplierOrders(take: Int, skip: Int): SupplierOrderList!
+    supplierDeliveryRequests(supplierId: String!): [SupplierDeliveryRequest!]!
   }
 
   extend type Mutation {
@@ -230,13 +288,15 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     verifySupplierOTP(input: VerifySupplierOTPInput!): SupplierOTPResult!
     createSupplierProduct(input: SupplierProductInput!): SupplierProduct!
     updateSupplierProduct(id: ID!, input: SupplierProductUpdateInput!): SupplierProduct!
+    deleteSupplierProduct(id: ID!): Boolean!
     supplierOrderAction(orderId: ID!, action: String!): SupplierOrderActionResult!
+    supplierDeliveryAction(deliveryId: ID!, supplierId: String!, action: String!): SupplierDeliveryActionResult!
     updateSupplierStatus(id: ID!, status: String!, reason: String): Supplier!
   }
 `;
 
 @VendurePlugin({
-  imports: [PluginCommonModule, TypeOrmModule.forFeature([Supplier, SupplierProduct])],
+  imports: [PluginCommonModule, TypeOrmModule.forFeature([Supplier, SupplierProduct, DeliveryRequest])],
   providers: [SupplierResolver, SupplierService, EmailOtpService],
   entities: [Supplier as any, SupplierProduct as any],
   shopApiExtensions: {

@@ -27,6 +27,12 @@ export class Driver extends VendureEntity {
   @Column()
   lastName: string;
 
+  @Column({ nullable: true, unique: true })
+  emailAddress: string | null;
+
+  @Column({ nullable: true })
+  passwordHash: string | null;
+
   @Column({ unique: true })
   phone: string;
 

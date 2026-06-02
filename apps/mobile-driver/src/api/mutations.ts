@@ -1,6 +1,39 @@
 export const LOGIN_DRIVER = `
-  mutation LoginDriver($email: String!, $password: String!) {
+  mutation LoginDriver($phone: String!) {
+    loginDriver(phone: $phone) {
+      success
+      message
+      phone
+      otp
+    }
+  }
+`;
+
+export const LOGIN_DRIVER_BY_PASSWORD = `
+  mutation LoginDriverByPassword($email: String!, $password: String!) {
     loginDriverByPassword(email: $email, password: $password) {
+      success
+      message
+      driverId
+      token
+    }
+  }
+`;
+
+export const VERIFY_DRIVER_OTP = `
+  mutation VerifyDriverOTP($phone: String!, $otp: String!) {
+    verifyDriverOTP(phone: $phone, otp: $otp) {
+      success
+      message
+      driverId
+      token
+    }
+  }
+`;
+
+export const REFRESH_DRIVER_TOKEN = `
+  mutation RefreshDriverToken($id: ID!, $phone: String!) {
+    refreshDriverToken(id: $id, phone: $phone) {
       success
       message
       driverId
@@ -15,6 +48,7 @@ export const REGISTER_DRIVER = `
       success
       message
       phone
+      otp
     }
   }
 `;
@@ -62,6 +96,16 @@ export const REJECT_DELIVERY = `
 export const UPDATE_DELIVERY_STATUS = `
   mutation UpdateDeliveryStatus($deliveryId: ID!, $status: String!) {
     updateDeliveryStatus(deliveryId: $deliveryId, status: $status) {
+      id
+      status
+      driverId
+    }
+  }
+`;
+
+export const COMPLETE_DELIVERY_WITH_CODE = `
+  mutation CompleteDeliveryWithCode($deliveryId: ID!, $driverId: String!, $code: String!) {
+    completeDeliveryWithCode(deliveryId: $deliveryId, driverId: $driverId, code: $code) {
       id
       status
       driverId

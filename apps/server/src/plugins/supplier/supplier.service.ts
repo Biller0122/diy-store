@@ -213,6 +213,18 @@ export class SupplierService {
     return this.supplierProductRepo.save(product);
   }
 
+  async deleteSupplierProduct(id: string): Promise<boolean> {
+    const product = await this.supplierProductRepo.findOne({ where: { id } });
+    if (!product) throw new Error('Бараа олдсонгүй');
+    const result = await this.supplierProductRepo.delete(id);
+    const supplier = await this.getSupplierById(product.supplierId);
+    if (supplier) {
+      supplier.productCount = await this.supplierProductRepo.count({ where: { supplierId: product.supplierId } });
+      await this.supplierRepo.save(supplier);
+    }
+    return (result.affected ?? 0) > 0;
+  }
+
   private normalizePhone(phone: string) {
     return phone.replace(/\D/g, '').slice(-8);
   }

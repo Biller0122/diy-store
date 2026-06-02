@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRouter } from 'expo-router';
@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { Badge } from '../../src/components/Badge';
 import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
-import { SUPPORT_PHONE } from '../../src/data/mock';
+import { SUPPORT_PHONE } from '../../src/config/contact';
 import { useAuthStore } from '../../src/store/auth';
 import { useDeliveryStore } from '../../src/store/delivery';
 import { colors } from '../../src/theme';
@@ -28,7 +28,12 @@ export default function DeliveryScreen() {
   const activeOrder = useDeliveryStore((state) => state.activeOrder);
   const driverLocation = useDeliveryStore((state) => state.driverLocation);
   const updateStatus = useDeliveryStore((state) => state.updateStatus);
+  const completeWithCode = useDeliveryStore((state) => state.completeWithCode);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [deliveryCode, setDeliveryCode] = useState('');
+  const [codeError, setCodeError] = useState('');
+  const [isCompleting, setIsCompleting] = useState(false);
 
   const points = useMemo(() => {
     if (!activeOrder) return [];
@@ -70,21 +75,37 @@ export default function DeliveryScreen() {
 
   const performAction = async () => {
     if (activeOrder.status === 'ON_THE_WAY') {
-      Alert.alert('Баталгаажуулах', 'Захиалга хүргэгдсэн эсэх батлана уу?', [
-        { text: 'Болих', style: 'cancel' },
-        {
-          text: 'Батлах',
-          onPress: async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            await updateStatus(driver.id);
-            router.push('/(tabs)/earnings');
-          },
-        },
-      ]);
+      setCodeError('');
+      setShowCodeModal(true);
       return;
     }
     await Haptics.impactAsync(activeOrder.status === 'DRIVER_AT_STORE' ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium);
-    await updateStatus(driver.id);
+    try {
+      await updateStatus(driver.id);
+    } catch (error) {
+      Alert.alert('Алдаа', error instanceof Error ? error.message : 'Хүргэлтийн төлөв шинэчлэхэд алдаа гарлаа');
+    }
+  };
+
+  const finishWithCode = async () => {
+    const code = deliveryCode.replace(/\D/g, '');
+    if (code.length !== 6) {
+      setCodeError('6 оронтой буулгах код оруулна уу');
+      return;
+    }
+    setIsCompleting(true);
+    setCodeError('');
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      await completeWithCode(driver.id, code);
+      setShowCodeModal(false);
+      setDeliveryCode('');
+      router.push('/(tabs)/earnings');
+    } catch (error) {
+      setCodeError(error instanceof Error ? error.message : 'Буулгах код шалгахад алдаа гарлаа');
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   return (
@@ -173,6 +194,44 @@ export default function DeliveryScreen() {
           <Text style={styles.helpText}>Тусламж авах</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal visible={showCodeModal} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.codeSheet}>
+            <Text style={styles.codeTitle}>Буулгах код оруулах</Text>
+            <Text style={styles.codeSub}>Хэрэглэгчээс 6 оронтой код аваад оруулснаар хүргэлт бүрэн дуусна.</Text>
+            <TextInput
+              value={deliveryCode}
+              onChangeText={(text) => {
+                setDeliveryCode(text.replace(/\D/g, '').slice(0, 6));
+                setCodeError('');
+              }}
+              keyboardType="number-pad"
+              maxLength={6}
+              placeholder="000000"
+              placeholderTextColor={colors.textTertiary}
+              style={styles.codeInput}
+            />
+            {codeError ? <Text style={styles.codeError}>{codeError}</Text> : null}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowCodeModal(false);
+                  setDeliveryCode('');
+                  setCodeError('');
+                }}
+                disabled={isCompleting}
+              >
+                <Text style={styles.cancelText}>Болих</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.finishButton} onPress={finishWithCode} disabled={isCompleting}>
+                <Text style={styles.finishText}>{isCompleting ? 'Шалгаж байна...' : 'Дуусгах'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -214,4 +273,29 @@ const styles = StyleSheet.create({
   actionSubtitle: { color: colors.textSub, textAlign: 'center', marginTop: 8, fontSize: 12 },
   helpButton: { alignItems: 'center', paddingVertical: 16 },
   helpText: { color: colors.textSub, fontWeight: '800' },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)', padding: 16 },
+  codeSheet: { backgroundColor: '#111315', borderRadius: 26, borderWidth: 1, borderColor: colors.borderHover, padding: 20 },
+  codeTitle: { color: colors.text, fontSize: 22, fontWeight: '900' },
+  codeSub: { color: colors.textSub, fontSize: 13, lineHeight: 20, marginTop: 6 },
+  codeInput: {
+    marginTop: 18,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.borderHover,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: 'Courier',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    textAlign: 'center',
+  },
+  codeError: { color: colors.error, fontSize: 12, fontWeight: '800', marginTop: 10, textAlign: 'center' },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  cancelButton: { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: colors.borderHover, paddingVertical: 14, alignItems: 'center' },
+  cancelText: { color: colors.textSub, fontWeight: '900' },
+  finishButton: { flex: 1, borderRadius: 16, backgroundColor: colors.primary, paddingVertical: 14, alignItems: 'center' },
+  finishText: { color: colors.white, fontWeight: '900' },
 });

@@ -24,6 +24,8 @@ interface DispatchData {
     lat: number; lng: number;
   };
   estimatedArrivalMinutes?: number;
+  deliveryCode?: string;
+  completedAt?: string;
   driverLat?: number;
   driverLng?: number;
   pickupStops?: { supplierName: string; address: string; status: 'PENDING' | 'PICKED_UP' }[];
@@ -255,6 +257,14 @@ function StatusPanel({ orderId, data, sheetOpen, onToggleSheet }: {
           <p className="text-3xl font-black text-brand font-mono">~{data.estimatedArrivalMinutes ?? 15} мин</p>
         )}
       </div>
+
+      {/* Driver info */}
+      {data.deliveryCode && data.status !== 'COMPLETED' && data.status !== 'CANCELLED' && (
+        <div className="mx-4 mb-4 rounded-2xl border border-brand/30 bg-brand/10 p-4 text-center shrink-0">
+          <p className="text-xs font-semibold text-foreground-muted">Бараа авахдаа жолоочид хэлэх буулгах код</p>
+          <p className="mt-2 font-mono text-3xl font-black tracking-[0.35em] text-brand">{data.deliveryCode}</p>
+        </div>
+      )}
 
       {/* Driver info */}
       {driver && (

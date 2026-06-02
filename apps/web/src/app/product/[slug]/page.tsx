@@ -9,6 +9,7 @@ import ProductTabs from './product-tabs';
 import { generateProductMetadata } from '@/lib/seo/metadata';
 import { generateBreadcrumbSchema, generateProductSchema } from '@/lib/seo/structured-data';
 import { JsonLd } from '@/components/common/JsonLd';
+import { getDbSupplierById, getDbSupplierProducts, type DbSupplierProduct } from '@/lib/supplier-products';
 
 // ─── GraphQL ─────────────────────────────────────────────────
 
@@ -84,6 +85,14 @@ interface Product {
   optionGroups: OptionGroup[];
   facetValues: { id: string; name: string; facet: { id: string; name: string; code: string } }[];
   collections: { id: string; name: string; slug: string; breadcrumbs: { id: string; name: string; slug: string }[] }[];
+  supplier?: {
+    id: string;
+    name: string;
+    slug?: string;
+    district?: string;
+    lat?: number;
+    lng?: number;
+  };
 }
 
 interface RelatedItem {
@@ -103,10 +112,11 @@ interface RelatedItem {
 async function getProduct(slug: string): Promise<Product | null> {
   try {
     const data = await vendureShopFetch<{ product: Product | null }>(GET_PRODUCT, { slug });
-    return data.product;
+    if (data.product) return data.product;
   } catch {
-    return null;
+    // Supplier products are stored in the custom supplier catalog.
   }
+  return getSupplierProductAsProduct(slug);
 }
 
 async function getRelated(collectionSlug: string, excludeSlug: string): Promise<RelatedItem[]> {
@@ -130,6 +140,65 @@ function relatedPrice(p: RelatedItem['priceWithTax']): string {
   if (p.__typename === 'SinglePrice') return formatMNT(p.value);
   if (p.min === p.max) return formatMNT(p.min);
   return `${formatMNT(p.min)} – ${formatMNT(p.max)}`;
+}
+
+async function getSupplierProductAsProduct(slug: string): Promise<Product | null> {
+  const products = await getDbSupplierProducts();
+  const product = products.find((item) => item.slug === slug && item.enabled);
+  if (!product) return null;
+
+  const asset = supplierAsset(product);
+  const category = product.category?.trim();
+  const supplier = await getDbSupplierById(product.supplierId);
+  if (supplier?.status && supplier.status !== 'ACTIVE') return null;
+
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    description: product.description || '',
+    featuredAsset: asset,
+    assets: asset ? [asset] : [],
+    variants: [{
+      id: product.id,
+      name: product.name,
+      sku: product.slug,
+      price: product.price,
+      priceWithTax: product.price,
+      currencyCode: 'MNT',
+      stockLevel: product.stock > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK',
+      options: [],
+    }],
+    optionGroups: [],
+    facetValues: category ? [{
+      id: `supplier-category-${category}`,
+      name: category,
+      facet: { id: 'supplier-category', name: 'Ангилал', code: 'supplier-category' },
+    }] : [],
+    collections: category ? [{
+      id: category,
+      name: category,
+      slug: category,
+      breadcrumbs: [{ id: category, name: category, slug: category }],
+    }] : [],
+    supplier: {
+      id: product.supplierId,
+      name: supplier?.businessName ?? 'Нийлүүлэгч',
+      slug: supplier?.slug,
+      district: supplier?.district ?? undefined,
+      lat: supplier?.lat ?? undefined,
+      lng: supplier?.lng ?? undefined,
+    },
+  };
+}
+
+function supplierAsset(product: DbSupplierProduct): Asset | null {
+  if (!product.image) return null;
+  return {
+    id: `supplier-product-${product.id}`,
+    preview: product.image,
+    source: product.image,
+  };
 }
 
 // ─── Metadata ────────────────────────────────────────────────
@@ -232,6 +301,12 @@ export default async function ProductPage({
               optionGroups={product.optionGroups}
               avgRating={4.7}
               reviewCount={18}
+              supplierId={product.supplier?.id}
+              supplierName={product.supplier?.name}
+              supplierSlug={product.supplier?.slug}
+              supplierDistrict={product.supplier?.district}
+              supplierLat={product.supplier?.lat}
+              supplierLng={product.supplier?.lng}
             />
           </div>
 

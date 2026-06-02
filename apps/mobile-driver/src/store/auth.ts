@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 import { createJSONStorage, persist, StateStorage } from 'zustand/middleware';
-import { Driver, getDriverProfile, loginDriver, registerDriver, setAuthToken, updateDriverStatus } from '../api/client';
+import { Driver, getDriverProfile, loginDriver, refreshDriverToken, registerDriver, requestDriverOtp, setAuthToken, updateDriverStatus, verifyDriverOtp } from '../api/client';
 
 const secureStorage: StateStorage = {
   getItem: async (name) => (await SecureStore.getItemAsync(name)) ?? null,
@@ -29,8 +29,13 @@ type AuthState = {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  devOtp: string | null;
   login: (email: string, password: string) => Promise<boolean>;
+  requestLoginOtp: (phone: string) => Promise<boolean>;
+  verifyOtp: (phone: string, otp: string) => Promise<boolean>;
   register: (input: RegisterInput) => Promise<boolean>;
+  refreshSession: () => Promise<boolean>;
+  refreshProfile: () => Promise<void>;
   updateOnline: (isOnline: boolean) => Promise<boolean>;
   updateVehicle: (vehicleType: Driver['vehicleType'], vehiclePlate: string, vehicleModel: string) => void;
   setDriver: (driver: Driver | null) => void;
@@ -38,16 +43,16 @@ type AuthState = {
   clearError: () => void;
 };
 
-function splitName(name: string) {
-  const parts = name.trim().split(/\s+/);
-  return { firstName: parts[0] || 'Жолооч', lastName: parts.slice(1).join(' ') || '' };
-}
 
 function mapLoginError(error: unknown) {
   const text = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   if (text.includes('suspend') || text.includes('disabled') || text.includes('хаагдсан')) return 'Данс хаагдсан байна. Тусламж: 7700-0000';
   if (text.includes('network') || text.includes('failed') || text.includes('fetch')) return 'Интернэт холболт шалгана уу';
   return 'И-мэйл эсвэл нууц үг буруу байна';
+}
+
+function normalizePhone(phone: string) {
+  return phone.replace(/\D/g, '').slice(-8);
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -58,6 +63,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      devOtp: null,
 
       login: async (email, password) => {
         set({ isLoading: true, error: null });
@@ -75,10 +81,56 @@ export const useAuthStore = create<AuthState>()(
             set({ isLoading: false, error: 'Жолоочийн мэдээлэл олдсонгүй' });
             return false;
           }
-          set({ driver, token, isAuthenticated: true, isLoading: false });
+          set({ driver, token, isAuthenticated: true, isLoading: false, devOtp: null });
           return true;
         } catch (error) {
           set({ isLoading: false, error: mapLoginError(error) });
+          return false;
+        }
+      },
+
+      requestLoginOtp: async (phoneInput) => {
+        set({ isLoading: true, error: null });
+        const phone = normalizePhone(phoneInput);
+        if (!/^\d{8}$/.test(phone)) {
+          set({ isLoading: false, error: 'Утасны дугаар 8 оронтой байх ёстой' });
+          return false;
+        }
+        try {
+          const data = await requestDriverOtp(phone);
+          if (!data.loginDriver.success) {
+            set({ isLoading: false, error: data.loginDriver.message, devOtp: null });
+            return false;
+          }
+          set({ isLoading: false, devOtp: data.loginDriver.otp ?? null });
+          return true;
+        } catch (error) {
+          set({ isLoading: false, error: error instanceof Error ? error.message : 'Код илгээхэд алдаа гарлаа' });
+          return false;
+        }
+      },
+
+      verifyOtp: async (phoneInput, otp) => {
+        set({ isLoading: true, error: null });
+        const phone = normalizePhone(phoneInput);
+        try {
+          const data = await verifyDriverOtp(phone, otp);
+          if (!data.verifyDriverOTP.success || !data.verifyDriverOTP.driverId) {
+            set({ isLoading: false, error: data.verifyDriverOTP.message });
+            return false;
+          }
+          const token = data.verifyDriverOTP.token ?? null;
+          setAuthToken(token);
+          const profile = await getDriverProfile(data.verifyDriverOTP.driverId);
+          const driver = profile.getDriverProfile;
+          if (!driver) {
+            set({ isLoading: false, error: 'Жолоочийн мэдээлэл олдсонгүй' });
+            return false;
+          }
+          set({ driver, token, isAuthenticated: true, isLoading: false, devOtp: null });
+          return true;
+        } catch (error) {
+          set({ isLoading: false, error: error instanceof Error ? error.message : 'Код шалгахад алдаа гарлаа' });
           return false;
         }
       },
@@ -88,6 +140,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           const payload = {
             ownerName: input.ownerName.trim(),
+            email: input.email.trim().toLowerCase(),
+            password: input.password,
             phone: input.phone.replace(/\D/g, '').slice(-8),
             vehicleType: input.vehicleType,
             vehiclePlate: input.vehiclePlate.trim(),
@@ -106,14 +160,47 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      refreshSession: async () => {
+        const { driver, token } = get();
+        if (!driver) return false;
+        if (token) {
+          setAuthToken(token);
+          return true;
+        }
+        try {
+          const data = await refreshDriverToken(driver.id, driver.phone);
+          const nextToken = data.refreshDriverToken.token ?? null;
+          if (!data.refreshDriverToken.success || !nextToken) return false;
+          setAuthToken(nextToken);
+          set({ token: nextToken });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+
+      refreshProfile: async () => {
+        const { driver } = get();
+        if (!driver) return;
+        const profile = await getDriverProfile(driver.id);
+        if (profile.getDriverProfile) {
+          set({ driver: profile.getDriverProfile });
+        }
+      },
+
       updateOnline: async (isOnline) => {
         const { driver } = get();
         if (!driver) return false;
         set({ driver: { ...driver, isOnline }, error: null });
         try {
-          await updateDriverStatus(driver.id, isOnline);
-        } catch {
-          // Keep optimistic state in development so the driver flow remains testable.
+          await get().refreshSession();
+          const result = await updateDriverStatus(driver.id, isOnline);
+          if (result.setOnlineStatus) {
+            set({ driver: { ...driver, isOnline: result.setOnlineStatus.isOnline, status: result.setOnlineStatus.status as Driver['status'] } });
+          }
+        } catch (error) {
+          set({ driver: { ...driver, isOnline: !isOnline }, error: error instanceof Error ? error.message : 'Онлайн төлөв солиход алдаа гарлаа' });
+          return false;
         }
         return true;
       },
@@ -128,7 +215,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         setAuthToken(null);
-        set({ driver: null, token: null, isAuthenticated: false, error: null });
+        set({ driver: null, token: null, isAuthenticated: false, error: null, devOtp: null });
       },
 
       clearError: () => set({ error: null }),
@@ -150,23 +237,3 @@ export const VEHICLE_LABEL: Record<Driver['vehicleType'], string> = {
   VAN: 'Ван',
   TRUCK: 'Ачааны машин',
 };
-
-export function createRegisteredDriver(input: RegisterInput): Driver {
-  const name = splitName(input.ownerName);
-  return {
-    id: `driver-${Date.now()}`,
-    firstName: name.firstName,
-    lastName: name.lastName,
-    phone: '',
-    rating: 0,
-    totalDeliveries: 0,
-    todayEarnings: 0,
-    totalEarnings: 0,
-    emailAddress: input.email,
-    vehicleType: input.vehicleType,
-    vehiclePlate: input.vehiclePlate,
-    vehicleModel: input.vehicleModel,
-    status: 'PENDING_APPROVAL',
-    isOnline: false,
-  };
-}

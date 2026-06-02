@@ -1,20 +1,25 @@
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { SHOP_API_URL } from '../api/client';
 import { ActiveOrder, useDeliveryStore } from '../store/delivery';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+const isExpoGo = Constants.appOwnership === 'expo';
+
+if (!isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 export async function setupDriverNotifications(driverId?: string) {
-  if (!Device.isDevice) return null;
+  if (isExpoGo || !Device.isDevice) return null;
   const existing = await Notifications.getPermissionsAsync() as { status?: string; granted?: boolean };
   const finalStatus = existing.granted || existing.status === 'granted'
     ? existing
@@ -30,6 +35,7 @@ export async function setupDriverNotifications(driverId?: string) {
 }
 
 export function installNotificationListeners() {
+  if (isExpoGo) return () => {};
   const received = Notifications.addNotificationReceivedListener((notification) => {
     const type = notification.request.content.data?.type;
     const order = notification.request.content.data?.order as ActiveOrder | undefined;

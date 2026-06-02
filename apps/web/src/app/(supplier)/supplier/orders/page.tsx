@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Search, ChevronRight, Clock, CheckCircle2, Truck } from 'lucide-react';
 import { vendureShopFetch } from '@/lib/vendure';
+import { useSupplierStore } from '@/lib/supplier-store';
 
 type SupplierOrder = {
   id: string;
@@ -15,20 +16,12 @@ type SupplierOrder = {
   createdAt: string;
 };
 
-const MOCK_ORDERS: SupplierOrder[] = [
-  { id: 'ORD-2025-001', customer: 'Дорж Баатар', phone: '+97699112233', address: 'Баянзүрх, 5-р хороо', items: [{ name: 'Dulux 4L', qty: 2, price: 5990000 }], total: 11980000, status: 'PENDING', createdAt: '2025-05-26 09:12' },
-  { id: 'ORD-2025-002', customer: 'Ганаа Нямдорж', phone: '+97699445566', address: 'Сүхбаатар, 8-р хороо', items: [{ name: 'Caparol 10L', qty: 1, price: 18990000 }, { name: 'Knauf праймер', qty: 2, price: 3990000 }], total: 26970000, status: 'ACCEPTED_BY_SUPPLIER', createdAt: '2025-05-26 08:44' },
-  { id: 'ORD-2025-003', customer: 'Болд Энхбаяр', phone: '+97699778899', address: 'Хан-Уул, 14-р хороо', items: [{ name: 'Marshall 2.5L', qty: 3, price: 4990000 }], total: 14970000, status: 'DRIVER_ASSIGNED', createdAt: '2025-05-26 08:10' },
-  { id: 'ORD-2025-004', customer: 'Сарнай Оюун', phone: '+97699001122', address: 'Баянгол, 3-р хороо', items: [{ name: 'Sadolin 1L', qty: 5, price: 2490000 }], total: 12450000, status: 'ON_THE_WAY', createdAt: '2025-05-26 07:30' },
-  { id: 'ORD-2025-005', customer: 'Энхжаргал Д.', phone: '+97699334455', address: 'Чингэлтэй, 1-р хороо', items: [{ name: 'Dulux 4L', qty: 1, price: 5990000 }], total: 5990000, status: 'DELIVERED', createdAt: '2025-05-25 16:22' },
-  { id: 'ORD-2025-006', customer: 'Мөнхбат С.', phone: '+97699667788', address: 'Баянзүрх, 10-р хороо', items: [{ name: 'Caparol 10L', qty: 2, price: 18990000 }], total: 37980000, status: 'DELIVERED', createdAt: '2025-05-25 14:10' },
-];
-
 const DELIVERY_ORDERS_QUERY = `
-  query SupplierDeliveryOrders {
-    availableDeliveries {
+  query SupplierDeliveryOrders($supplierId: String!) {
+    supplierDeliveryRequests(supplierId: $supplierId) {
       id
       orderId
+      orderNumber
       customerName
       customerPhone
       dropoffAddress
@@ -37,10 +30,20 @@ const DELIVERY_ORDERS_QUERY = `
       status
       createdAt
       orderItems {
+        supplierId
         name
         qty
         price
       }
+    }
+  }
+`;
+
+const SUPPLIER_DELIVERY_ACTION = `
+  mutation SupplierDeliveryAction($deliveryId: ID!, $supplierId: String!, $action: String!) {
+    supplierDeliveryAction(deliveryId: $deliveryId, supplierId: $supplierId, action: $action) {
+      success
+      message
     }
   }
 `;
@@ -62,53 +65,76 @@ const TABS = [
 ];
 
 export default function SupplierOrdersPage() {
+  const { supplier } = useSupplierStore();
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [orders, setOrders] = useState<SupplierOrder[]>(MOCK_ORDERS);
+  const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [savingId, setSavingId] = useState('');
+  const supplierId = supplier?.id;
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadOrders() {
-      try {
-        const data = await vendureShopFetch<{
-          availableDeliveries: {
-            id: string;
-            orderId: string;
-            customerName: string;
-            customerPhone: string;
-            dropoffAddress: string;
-            orderTotal: number;
-            supplierStatus: string;
-            status: string;
-            createdAt: string;
-            orderItems: { name: string; qty: number; price: number }[];
-          }[];
-        }>(DELIVERY_ORDERS_QUERY);
-        if (!mounted) return;
-        setOrders(data.availableDeliveries.map((order) => ({
-          id: order.orderId,
+  async function loadOrders() {
+    if (!supplierId) {
+      setOrders([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await vendureShopFetch<{
+        supplierDeliveryRequests: {
+          id: string;
+          orderId: string;
+          orderNumber: string;
+          customerName: string;
+          customerPhone: string;
+          dropoffAddress: string;
+          orderTotal: number;
+          supplierStatus: string;
+          status: string;
+          createdAt: string;
+          orderItems: { supplierId: string; name: string; qty: number; price: number }[];
+        }[];
+      }>(DELIVERY_ORDERS_QUERY, { supplierId });
+      setOrders(data.supplierDeliveryRequests.map((order) => {
+        const items = order.orderItems.filter((item) => String(item.supplierId) === String(supplierId));
+        const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+        const status =
+          order.status === 'COMPLETED' ? 'DELIVERED' :
+          order.status === 'IN_PROGRESS' ? 'ON_THE_WAY' :
+          order.status === 'ACCEPTED' ? 'DRIVER_ASSIGNED' :
+          order.supplierStatus === 'ACCEPTED' ? 'ACCEPTED_BY_SUPPLIER' :
+          order.supplierStatus === 'REJECTED' ? 'REJECTED' :
+          'PENDING';
+        return {
+          id: order.id,
           customer: order.customerName || 'Хэрэглэгч',
           phone: order.customerPhone,
           address: order.dropoffAddress,
-          items: order.orderItems,
-          total: order.orderTotal,
-          status: order.supplierStatus === 'ACCEPTED' ? 'ACCEPTED_BY_SUPPLIER' : 'PENDING',
+          items,
+          total: total || order.orderTotal,
+          status,
           createdAt: new Date(order.createdAt).toLocaleString('mn-MN'),
-        })));
-        setError('');
-      } catch (err) {
-        if (mounted) setError(err instanceof Error ? err.message : 'Захиалга татахад алдаа гарлаа');
-      }
+        };
+      }));
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Захиалга татахад алдаа гарлаа');
+    } finally {
+      setLoading(false);
     }
-    void loadOrders();
-    const interval = window.setInterval(loadOrders, 30_000);
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    if (mounted) void loadOrders();
+    const interval = window.setInterval(() => void loadOrders(), 30_000);
     return () => {
       mounted = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [supplierId]);
 
   const filtered = orders.filter((o) => {
     if (tab !== 'all' && o.status !== tab) return false;
@@ -116,9 +142,21 @@ export default function SupplierOrdersPage() {
     return true;
   });
 
-  function handleAccept(orderId: string) {
-    // In production: call API to update status
-    alert(`Захиалга #${orderId} баталгаажуулав`);
+  async function handleAction(orderId: string, action: 'ACCEPT' | 'REJECT') {
+    if (!supplierId) return;
+    setSavingId(`${orderId}:${action}`);
+    try {
+      const data = await vendureShopFetch<{ supplierDeliveryAction: { success: boolean; message: string } }>(
+        SUPPLIER_DELIVERY_ACTION,
+        { deliveryId: orderId, supplierId, action },
+      );
+      if (!data.supplierDeliveryAction.success) throw new Error(data.supplierDeliveryAction.message);
+      await loadOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Захиалга шинэчлэхэд алдаа гарлаа');
+    } finally {
+      setSavingId('');
+    }
   }
 
   return (
@@ -126,7 +164,7 @@ export default function SupplierOrdersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-foreground">Захиалгууд</h2>
-          <p className="text-sm text-foreground-muted mt-0.5">{orders.length} нийт захиалга</p>
+          <p className="text-sm text-foreground-muted mt-0.5">{loading ? 'Синк хийж байна...' : `${orders.length} нийт захиалга`}</p>
         </div>
       </div>
 
@@ -216,12 +254,17 @@ export default function SupplierOrdersPage() {
                   {order.status === 'PENDING' && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleAccept(order.id)}
+                        disabled={savingId === `${order.id}:ACCEPT`}
+                        onClick={() => void handleAction(order.id, 'ACCEPT')}
                         className="flex-1 py-2 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-hover transition-colors"
                       >
-                        Баталгаажуулах
+                        {savingId === `${order.id}:ACCEPT` ? 'Хадгалж байна...' : 'Баталгаажуулах'}
                       </button>
-                      <button className="px-4 py-2 rounded-xl bg-error/10 text-error text-xs font-semibold hover:bg-error/20 transition-colors">
+                      <button
+                        disabled={savingId === `${order.id}:REJECT`}
+                        onClick={() => void handleAction(order.id, 'REJECT')}
+                        className="px-4 py-2 rounded-xl bg-error/10 text-error text-xs font-semibold hover:bg-error/20 transition-colors disabled:opacity-50"
+                      >
                         Цуцлах
                       </button>
                     </div>

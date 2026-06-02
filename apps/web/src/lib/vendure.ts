@@ -51,6 +51,7 @@ export function clearVendureAdminAuthToken() {
 export async function vendureShopFetch<T>(
   query: string,
   variables?: Record<string, unknown>,
+  options?: { revalidate?: number },
 ): Promise<T> {
   const token = getVendureAuthToken();
   const res = await fetch(getShopApi(), {
@@ -62,7 +63,7 @@ export async function vendureShopFetch<T>(
     },
     credentials: 'include',
     body: JSON.stringify({ query, variables }),
-    next: { revalidate: 60 },
+    next: { revalidate: options?.revalidate ?? 60 },
   });
 
   if (!res.ok) {
@@ -122,5 +123,8 @@ export interface VendureCollection {
   id: string;
   name: string;
   slug: string;
+  parentId?: string | null;
   customFields: { icon: string | null };
+  children?: VendureCollection[];
+  parent?: { id: string; name: string; slug: string } | null;
 }

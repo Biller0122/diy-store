@@ -5,7 +5,8 @@ import { verifyToken } from '../utils/auth';
 
 function createService() {
   const repo = createMockRepository<Driver>();
-  return { repo, driverService: new DriverService(repo as never) };
+  const deliveryRepo = createMockRepository();
+  return { repo, driverService: new DriverService(repo as never, deliveryRepo as never) };
 }
 
 async function createMockDriver(

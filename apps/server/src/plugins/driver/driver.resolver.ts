@@ -41,6 +41,12 @@ export class DriverResolver {
 
   @Query()
   @Allow(Permission.Public)
+  async getDriverEarnings(@Args('driverId') driverId: string, @Args('period') period: string) {
+    return this.driverService.getDriverEarnings(driverId, period);
+  }
+
+  @Query()
+  @Allow(Permission.Public)
   async getNearbyDrivers(
     @Args('lat') lat: number,
     @Args('lng') lng: number,
@@ -152,7 +158,7 @@ export class DriverResolver {
 
   @Mutation()
   @Allow(Permission.Public)
-  async adminUpdateDriver(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('input') input: Partial<Driver>) {
+  async adminUpdateDriver(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('input') input: Partial<Driver> & { emailAddress?: string; password?: string }) {
     this.requireAdmin(ctx);
     const driver = await this.driverService.getDriverById(String(id));
     if (!driver) throw new Error('Жолооч олдсонгүй');
@@ -162,6 +168,16 @@ export class DriverResolver {
       const existing = await this.driverRepo.findOne({ where: { phone } });
       if (existing && String(existing.id) !== String(id)) throw new Error('Энэ дугаар бүртгэлтэй байна');
       driver.phone = phone;
+    }
+    if (input.emailAddress !== undefined) {
+      const email = input.emailAddress.trim().toLowerCase();
+      const existing = await this.driverRepo.findOne({ where: { emailAddress: email } });
+      if (existing && String(existing.id) !== String(id)) throw new Error('Энэ и-мэйл бүртгэлтэй байна');
+      driver.emailAddress = email || null;
+    }
+    if (input.password) {
+      const bcrypt = await import('bcryptjs');
+      driver.passwordHash = await bcrypt.hash(input.password, 10);
     }
     if (input.firstName !== undefined) driver.firstName = String(input.firstName).trim();
     if (input.lastName !== undefined) driver.lastName = String(input.lastName).trim();

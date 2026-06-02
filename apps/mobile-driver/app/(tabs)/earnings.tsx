@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Badge } from '../../src/components/Badge';
 import { Card } from '../../src/components/Card';
+import { getDriverDeliveryHistory, getDriverEarnings, type DriverDeliveryHistoryResult } from '../../src/api/client';
 import { useAuthStore } from '../../src/store/auth';
 import { colors } from '../../src/theme';
 
@@ -15,6 +15,46 @@ const labels: Record<Period, string> = {
   month: 'Энэ сар',
 };
 
+const periodParam: Record<Period, string> = {
+  today: 'today',
+  week: 'week',
+  month: 'month',
+};
+
+type EarningsData = {
+  totalDeliveries: number;
+  totalEarned: number;
+  averageRating: number;
+  averagePerDelivery: number;
+  chart: Array<{ label: string; amount: number; count: number }>;
+  history: Array<{
+    id: string;
+    orderNumber: string;
+    date: string;
+    supplierDistrict: string;
+    customerDistrict: string;
+    customerAddress: string;
+    fee: number;
+    rating: number;
+  }>;
+};
+
+type HistoryItem = {
+  id: string;
+  orderNumber: string;
+  date: string;
+  customerName: string;
+  supplierDistrict: string;
+  customerDistrict: string;
+  customerAddress: string;
+  fee: number;
+  rating: number | null;
+  status: 'COMPLETED' | 'CANCELLED';
+  distance: number;
+  pickups: number;
+  items: string;
+};
+
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <Card style={styles.summaryCard}>
@@ -24,20 +64,71 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatMoney(amount: number) {
+  return `₮${Math.round(amount / 100).toLocaleString()}`;
+}
+
+function toHistoryItem(item: DriverDeliveryHistoryResult): HistoryItem {
+  const pickup = item.pickupStops[0];
+  const supplierDistrict = pickup?.district || pickup?.address?.split(',')[0]?.trim() || 'Нийлүүлэгч';
+  const customerDistrict = item.dropoffAddress?.split(',')[0]?.trim() || 'Хэрэглэгч';
+  return {
+    id: item.id,
+    orderNumber: item.orderNumber || item.id,
+    date: new Date(item.updatedAt).toLocaleString('mn-MN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+    customerName: item.customerName || 'Хэрэглэгч',
+    supplierDistrict,
+    customerDistrict,
+    customerAddress: item.dropoffAddress,
+    fee: item.finalFee || item.proposedFee || 0,
+    rating: item.status === 'COMPLETED' ? 5 : null,
+    status: item.status,
+    distance: item.distance,
+    pickups: item.pickupStops.length,
+    items: item.orderItems.map((orderItem) => `${orderItem.name} ×${orderItem.qty}`).join(', '),
+  };
+}
+
 export default function EarningsScreen() {
   const driver = useAuthStore((state) => state.driver);
   const [period, setPeriod] = useState<Period>('today');
-  const [selected, setSelected] = useState<{ id: string; orderNumber: string; date: string; from: string; to: string; amount: number; rating: number } | null>(null);
-  const chart = period === 'today'
-    ? [{ label: labels.today, amount: driver?.todayEarnings ?? 0 }]
-    : [{ label: labels[period], amount: driver?.totalEarnings ?? 0 }];
-  const max = Math.max(...chart.map((item) => item.amount), 1);
-  const total = chart.reduce((sum, item) => sum + item.amount, 0);
-  const deliveries = period === 'today' ? driver?.totalDeliveries ?? 0 : driver?.totalDeliveries ?? 0;
-  const average = Math.round(total / deliveries);
-  const history: Array<{ id: string; orderNumber: string; date: string; from: string; to: string; amount: number; rating: number }> = [];
+  const [data, setData] = useState<EarningsData | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selected, setSelected] = useState<HistoryItem | null>(null);
+
+  useEffect(() => {
+    if (!driver) return;
+    setLoading(true);
+    getDriverEarnings(driver.id, periodParam[period])
+      .then((result) => {
+        const earnings = (result as { getDriverEarnings: EarningsData }).getDriverEarnings;
+        setData(earnings ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [driver, period]);
+
+  useEffect(() => {
+    if (!driver) return;
+    setHistoryLoading(true);
+    getDriverDeliveryHistory(driver.id, 50)
+      .then((result) => {
+        setHistory(result.deliveryHistoryForDriver.map(toHistoryItem));
+      })
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [driver]);
 
   if (!driver) return null;
+
+  const chart = data?.chart ?? [{ label: labels[period], amount: 0, count: 0 }];
+  const max = Math.max(...chart.map((item) => item.amount), 1);
+  const total = data?.totalEarned ?? 0;
+  const deliveries = data?.totalDeliveries ?? 0;
+  const averageRating = data?.averageRating ?? driver.rating;
+  const averagePerDelivery = data?.averagePerDelivery ?? 0;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -52,10 +143,10 @@ export default function EarningsScreen() {
         </View>
 
         <View style={styles.summaryGrid}>
-          <SummaryCard label="Нийт хүргэлт" value={String(deliveries)} />
-          <SummaryCard label="Нийт орлого" value={`₮${total.toLocaleString()}`} />
-          <SummaryCard label="Дундаж үнэлгээ" value={`⭐ ${driver.rating.toFixed(1)}`} />
-          <SummaryCard label="Дундаж хүргэлт" value={`₮${Number.isFinite(average) ? average.toLocaleString() : '0'}`} />
+          <SummaryCard label="Нийт хүргэлт" value={loading ? '…' : String(deliveries)} />
+          <SummaryCard label="Нийт орлого" value={loading ? '…' : formatMoney(total)} />
+          <SummaryCard label="Дундаж үнэлгээ" value={loading ? '…' : `⭐ ${averageRating.toFixed(1)}`} />
+          <SummaryCard label="Дундаж хүргэлт" value={loading ? '…' : formatMoney(averagePerDelivery)} />
         </View>
 
         <Card style={styles.chartCard}>
@@ -63,7 +154,7 @@ export default function EarningsScreen() {
           <View style={styles.chart}>
             {chart.map((item) => (
               <TouchableOpacity key={item.label} style={styles.barWrap} activeOpacity={0.75}>
-                <Text style={styles.tooltip}>₮{item.amount.toLocaleString()}</Text>
+                <Text style={styles.tooltip}>{formatMoney(item.amount)}</Text>
                 <View style={styles.barTrack}>
                   <View style={[styles.bar, { height: `${Math.max(8, (item.amount / max) * 100)}%` }]} />
                 </View>
@@ -74,31 +165,32 @@ export default function EarningsScreen() {
         </Card>
 
         <Text style={styles.sectionTitle}>Хүргэлтийн түүх</Text>
-        {history.map((item) => (
-          <TouchableOpacity key={item.id} onPress={() => setSelected(item)} activeOpacity={0.82}>
-            <Card style={styles.historyCard}>
-              <View style={styles.historyLeft}>
-                <Text style={styles.historyDate}>{item.date}</Text>
-                <Text style={styles.historyRoute}>From: {item.from} → To: {item.to}</Text>
-              </View>
-              <View style={styles.historyRight}>
-                <Text style={styles.historyAmount}>₮{item.amount.toLocaleString()}</Text>
-                <Text style={styles.historyRating}>⭐ {item.rating}</Text>
-              </View>
-            </Card>
-          </TouchableOpacity>
-        ))}
-        {history.length === 0 ? <Text style={styles.emptyText}>Хүргэлтийн түүх одоогоор байхгүй</Text> : null}
+        {historyLoading ? (
+          <Text style={styles.emptyText}>Уншиж байна…</Text>
+        ) : history.length === 0 ? (
+          <Text style={styles.emptyText}>Хүргэлтийн түүх одоогоор байхгүй</Text>
+        ) : (
+          history.map((item) => (
+            <TouchableOpacity key={item.id} onPress={() => setSelected(item)} activeOpacity={0.82}>
+              <Card style={styles.historyCard}>
+                <View style={styles.historyLeft}>
+                  <Text style={styles.historyDate}>{item.date}</Text>
+                  <Text style={styles.historyRoute}>{item.supplierDistrict} → {item.customerDistrict}</Text>
+                </View>
+                <View style={styles.historyRight}>
+                  <Text style={[styles.historyAmount, item.status === 'CANCELLED' && styles.cancelledAmount]}>
+                    {item.status === 'CANCELLED' ? 'Цуцлагдсан' : formatMoney(item.fee)}
+                  </Text>
+                  <Text style={styles.historyRating}>{item.status === 'COMPLETED' ? `⭐ ${item.rating ?? driver.rating}` : `${item.distance} км`}</Text>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          ))
+        )}
 
         <Card style={styles.payoutCard}>
-          <View style={styles.payoutHeader}>
-            <Text style={styles.sectionTitle}>Төлбөр авах</Text>
-            <Badge label="Удахгүй" tone="warning" />
-          </View>
-          <Text style={styles.bank}>Банк: {driver.bankName ?? 'Хаан банк'} {driver.bankAccount ?? '5030001122'}</Text>
-          <Text style={styles.editLink}>Банкны мэдээлэл засах</Text>
-          <View style={styles.disabledButton}><Text style={styles.disabledText}>Төлбөр хүсэх</Text></View>
-          <Text style={styles.minNote}>Хамгийн бага ₮50,000</Text>
+          <Text style={styles.sectionTitle}>Банкны данс</Text>
+          <Text style={styles.bank}>Банк: {driver.bankName ?? '—'} {driver.bankAccount ?? '—'}</Text>
         </Card>
       </ScrollView>
 
@@ -106,11 +198,14 @@ export default function EarningsScreen() {
         <View style={styles.modalBackdrop}>
           <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>{selected?.orderNumber}</Text>
-            <Text style={styles.modalText}>Нийлүүлэгчид: {selected?.from}</Text>
-            <Text style={styles.modalText}>Хаяг: {selected?.to}, хэрэглэгчийн хаяг</Text>
-            <Text style={styles.modalText}>Бараа: Өрөм ×1, Будаг ×2</Text>
-            <Text style={styles.modalFee}>₮{selected?.amount.toLocaleString()}</Text>
-            <Text style={styles.modalText}>Үнэлгээ: ⭐ {selected?.rating}</Text>
+            <Text style={styles.modalText}>Төлөв: {selected?.status === 'COMPLETED' ? 'Хүргэгдсэн' : 'Цуцлагдсан'}</Text>
+            <Text style={styles.modalText}>Хэрэглэгч: {selected?.customerName}</Text>
+            <Text style={styles.modalText}>Нийлүүлэгч: {selected?.supplierDistrict}</Text>
+            <Text style={styles.modalText}>Хаяг: {selected?.customerAddress}</Text>
+            <Text style={styles.modalText}>Бараа: {selected?.items || '—'}</Text>
+            <Text style={styles.modalText}>Зай: {selected?.distance} км · {selected?.pickups} дэлгүүр</Text>
+            <Text style={styles.modalFee}>{selected?.status === 'COMPLETED' ? formatMoney(selected?.fee ?? 0) : 'Цуцлагдсан'}</Text>
+            <Text style={styles.modalText}>Үнэлгээ: {selected?.rating ? `⭐ ${selected.rating}` : '—'}</Text>
             <TouchableOpacity style={styles.closeButton} onPress={() => setSelected(null)}>
               <Ionicons name="close" size={20} color={colors.white} />
             </TouchableOpacity>
@@ -148,15 +243,11 @@ const styles = StyleSheet.create({
   historyRoute: { color: colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
   historyRight: { alignItems: 'flex-end' },
   historyAmount: { color: colors.primary, fontFamily: 'Courier', fontSize: 15, fontWeight: '900' },
+  cancelledAmount: { color: colors.error, fontFamily: 'System', fontSize: 12 },
   historyRating: { color: colors.warning, fontSize: 12, marginTop: 4 },
   emptyText: { color: colors.textSub, textAlign: 'center', paddingVertical: 18 },
   payoutCard: { padding: 16, marginTop: 12 },
-  payoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bank: { color: colors.text, fontSize: 14, marginBottom: 10 },
-  editLink: { color: colors.primary, fontWeight: '800', marginBottom: 12 },
-  disabledButton: { height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
-  disabledText: { color: colors.textTertiary, fontWeight: '900' },
-  minNote: { color: colors.textSub, fontSize: 12, textAlign: 'center', marginTop: 10 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', padding: 24 },
   modalCard: { padding: 18 },
   modalTitle: { color: colors.text, fontSize: 20, fontWeight: '900', marginBottom: 12 },

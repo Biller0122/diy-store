@@ -1,11 +1,12 @@
 import {
   bootstrap,
   CollectionService,
+  ID,
   LanguageCode,
   RequestContextService,
 } from '@vendure/core';
 import { config } from '../vendure-config';
-import { TOP_CATEGORIES } from './categories';
+import { CATEGORY_TREE, SeedCategory } from './categories';
 
 async function seedCollections() {
   console.log('🌱 Seeding Vendure collections...\n');
@@ -14,27 +15,29 @@ async function seedCollections() {
   const collectionService = app.get(CollectionService);
   const ctx = await app.get(RequestContextService).create({ apiType: 'admin' });
 
-  // Fetch existing slugs so the script is idempotent
-  const existing = await collectionService.findAll(ctx, { take: 200, skip: 0 });
-  const existingSlugs = new Set(
-    existing.items.flatMap((c) =>
-      c.translations.map((t) => t.slug),
-    ),
-  );
+  const existing = await collectionService.findAll(ctx, { take: 500, skip: 0 });
+  const existingBySlug = new Map<string, ID>();
+  for (const collection of existing.items) {
+    for (const translation of collection.translations) {
+      existingBySlug.set(translation.slug, collection.id);
+    }
+    existingBySlug.set(collection.slug, collection.id);
+  }
 
   let created = 0;
   let skipped = 0;
 
-  for (const cat of TOP_CATEGORIES) {
-    if (existingSlugs.has(cat.slug)) {
+  async function ensureCollection(cat: SeedCategory | Omit<SeedCategory, 'children'>, parentId?: ID) {
+    const existingId = existingBySlug.get(cat.slug);
+    if (existingId) {
       console.log(`⏭  Skipped (exists): ${cat.icon}  ${cat.name}`);
       skipped++;
-      continue;
+      return existingId;
     }
 
-    await collectionService.create(ctx, {
+    const saved = await collectionService.create(ctx, {
       isPrivate: false,
-      // No parentId → Vendure places it under the root collection
+      parentId,
       filters: [],
       inheritFilters: false,
       customFields: { icon: cat.icon },
@@ -58,6 +61,15 @@ async function seedCollections() {
 
     console.log(`✅ Created: ${cat.icon}  ${cat.name}  (/${cat.slug})`);
     created++;
+    existingBySlug.set(cat.slug, saved.id);
+    return saved.id;
+  }
+
+  for (const category of CATEGORY_TREE) {
+    const parentId = await ensureCollection(category);
+    for (const child of category.children ?? []) {
+      await ensureCollection(child, parentId);
+    }
   }
 
   console.log(`\n🏁 Done — ${created} created, ${skipped} skipped`);

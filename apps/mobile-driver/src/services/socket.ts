@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import type { Driver } from '../api/client';
 import { ActiveOrder } from '../store/delivery';
 
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? 'ws://192.168.0.13:3002';
+const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? 'http://192.168.0.13:13002';
 
 type OrderPayload = {
   orderId?: string;
@@ -35,7 +35,7 @@ type OrderPayload = {
 function toOrder(payload: OrderPayload): ActiveOrder {
   const dropoff = payload.dropoff ?? {};
   return {
-    id: `req-${payload.orderId ?? Date.now()}`,
+    id: payload.orderId ?? `req-${Date.now()}`,
     orderId: payload.orderId ?? `ORD-${Date.now()}`,
     orderNumber: payload.orderNumber ?? '#DIY-2024-00001',
     customerName: dropoff.customerName ?? 'Хэрэглэгч',

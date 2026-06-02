@@ -160,7 +160,6 @@ export function handleDriverOfferDecision(type: 'accept' | 'reject', payload: Dr
 function emitToRoom(room: string, event: string, payload: unknown) {
   if (_io) {
     _io.to(room).emit(event, payload);
-    return;
   }
 
   void publishJsonMessage(REALTIME_EVENTS_CHANNEL, { room, event, payload });

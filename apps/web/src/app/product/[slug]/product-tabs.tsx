@@ -15,7 +15,7 @@ interface Variant {
 }
 
 const TABS = [
-  { id: 'features', label: 'Онцлог' },
+  { id: 'features', label: 'Тайлбар' },
   { id: 'specs', label: 'Техникийн үзүүлэлт' },
   { id: 'docs', label: 'Баримт бичиг' },
   { id: 'warranty', label: 'Баталгаа' },
@@ -29,7 +29,7 @@ type TabId = (typeof TABS)[number]['id'];
 function FeaturesTab({ description }: { description: string }) {
   if (!description) {
     return (
-      <p className="text-sm text-foreground-muted">Бүтээгдэхүүний тайлбар оруулаагүй байна.</p>
+      <p className="text-sm text-foreground-muted">Merchant бараа нэмэх хэсэгт тайлбар оруулаагүй байна.</p>
     );
   }
   return (
@@ -60,7 +60,7 @@ function SpecsTab({
   const rows: { label: string; value: string }[] = [
     ...Object.values(groups).map((g) => ({ label: g.name, value: g.values.join(', ') })),
     ...(variants.length > 0
-      ? [{ label: 'Барааны код (SKU)', value: variants.map((v) => v.sku).join(', ') }]
+      ? [{ label: 'Барааны код (SKU/slug)', value: variants.map((v) => v.sku).join(', ') }]
       : []),
     { label: 'Загварын тоо', value: String(variants.length || 1) },
   ];

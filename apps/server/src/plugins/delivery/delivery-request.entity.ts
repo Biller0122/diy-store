@@ -104,6 +104,12 @@ export class DeliveryRequest extends VendureEntity {
   @Column({ nullable: true })
   estimatedArrival: string;
 
+  @Column({ default: '' })
+  deliveryCode: string;
+
+  @Column({ nullable: true })
+  completedAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 

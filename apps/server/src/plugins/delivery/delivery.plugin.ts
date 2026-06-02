@@ -74,6 +74,8 @@ const DELIVERY_SCHEMA_EXTENSION = `
     driverLat: Float
     driverLng: Float
     estimatedArrival: String
+    deliveryCode: String
+    completedAt: DateTime
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -104,6 +106,7 @@ const DELIVERY_SCHEMA_EXTENSION = `
     rejectDelivery(deliveryId: ID!, driverId: String!): DeliveryRequest!
     updateDeliveryStatus(deliveryId: ID!, status: String!): DeliveryRequest!
     updateDeliveryLocation(deliveryId: ID!, lat: Float!, lng: Float!): DeliveryRequest!
+    completeDeliveryWithCode(deliveryId: ID!, driverId: String!, code: String!): DeliveryRequest!
   }
 `;
 

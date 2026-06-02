@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between, MoreThanOrEqual } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
 import { generateToken } from '../../utils/auth';
 import { Driver, DriverStatus, VehicleType } from './driver.entity';
+import { DeliveryRequest, DeliveryStatus } from '../delivery/delivery-request.entity';
 
 export interface RegisterDriverInput {
   ownerName: string;
   phone: string;
+  email?: string;
+  password?: string;
   vehicleType?: VehicleType;
   vehiclePlate?: string;
   vehicleModel?: string;
@@ -19,6 +23,8 @@ export class DriverService {
   constructor(
     @InjectRepository(Driver)
     private readonly driverRepo: Repository<Driver>,
+    @InjectRepository(DeliveryRequest)
+    private readonly deliveryRepo: Repository<DeliveryRequest>,
   ) {}
 
   async registerDriver(input: RegisterDriverInput) {
@@ -28,11 +34,20 @@ export class DriverService {
     if (!/^\d{8}$/.test(phone)) throw new Error('Утасны дугаар 8 оронтой байх ёстой');
     if (await this.driverRepo.findOne({ where: { phone } })) throw new Error('Энэ дугаар бүртгэлтэй байна');
 
+    const emailAddress = input.email?.trim().toLowerCase() || null;
+    if (emailAddress) {
+      if (await this.driverRepo.findOne({ where: { emailAddress } })) throw new Error('Энэ и-мэйл бүртгэлтэй байна');
+    }
+
     const [firstName, ...rest] = name.split(/\s+/);
+    const passwordHash = input.password ? await bcrypt.hash(input.password, 10) : null;
+
     const driver = this.driverRepo.create({
       firstName,
       lastName: rest.join(' ') || '',
       phone,
+      emailAddress,
+      passwordHash,
       vehicleType: input.vehicleType || VehicleType.MOTORCYCLE,
       vehiclePlate: input.vehiclePlate?.trim() || null,
       vehicleModel: input.vehicleModel?.trim() || null,
@@ -67,37 +82,13 @@ export class DriverService {
 
   async loginDriverByPassword(emailInput: string, password: string) {
     const email = emailInput.trim().toLowerCase();
-    const configuredEmail = process.env.DEMO_DRIVER_EMAIL?.trim().toLowerCase()
-      || (process.env.NODE_ENV !== 'production' ? 'starbiller@gmail.com' : undefined);
-    const configuredPassword = process.env.DEMO_DRIVER_PASSWORD
-      || (process.env.NODE_ENV !== 'production' ? 'Odbayar22' : undefined);
-    if (!configuredEmail || !configuredPassword || email !== configuredEmail || password !== configuredPassword) {
-      throw new Error('И-мэйл эсвэл нууц үг буруу байна');
-    }
-
-    const phone = '99112233';
-    let driver = await this.driverRepo.findOne({ where: { phone } });
-    if (!driver) {
-      driver = this.driverRepo.create({
-        firstName: 'Одбаяр',
-        lastName: 'Жолооч',
-        phone,
-        vehicleType: VehicleType.MOTORCYCLE,
-        vehiclePlate: '7777УБА',
-        vehicleModel: 'Honda PCX150',
-        status: DriverStatus.ACTIVE,
-        isOnline: false,
-        rating: 4.8,
-        totalDeliveries: 143,
-        todayEarnings: 45000,
-        totalEarnings: 3200000,
-      });
-    } else if (driver.status !== DriverStatus.ACTIVE) {
-      driver.status = DriverStatus.ACTIVE;
-    }
-
-    const saved = await this.driverRepo.save(driver);
-    return { driver: saved, token: generateToken({ id: String(saved.id), role: 'DRIVER' }, '7d') };
+    const driver = await this.driverRepo.findOne({ where: { emailAddress: email } });
+    if (!driver) throw new Error('И-мэйл эсвэл нууц үг буруу байна');
+    if (!driver.passwordHash) throw new Error('Энэ данс нууц үгтэй холбогдоогүй байна. OTP-аар нэвтэрнэ үү.');
+    const valid = await bcrypt.compare(password, driver.passwordHash);
+    if (!valid) throw new Error('И-мэйл эсвэл нууц үг буруу байна');
+    if (driver.status === DriverStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
+    return { driver, token: generateToken({ id: String(driver.id), role: 'DRIVER' }, '7d') };
   }
 
   async verifyOTP(phoneInput: string, otp: string) {
@@ -159,8 +150,69 @@ export class DriverService {
     });
   }
 
+  async getDriverEarnings(driverId: string, period: string) {
+    const driver = await this.getDriverById(driverId);
+    if (!driver) throw new Error('Жолооч олдсонгүй');
+
+    const now = new Date();
+    let from: Date;
+    if (period === 'today') {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (period === 'week') {
+      from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    const completedDeliveries = await this.deliveryRepo.find({
+      where: {
+        driverId,
+        status: DeliveryStatus.COMPLETED,
+        updatedAt: MoreThanOrEqual(from),
+      },
+      order: { updatedAt: 'DESC' },
+    });
+
+    const totalEarned = completedDeliveries.reduce((sum, d) => sum + (d.proposedFee ?? 0), 0);
+    const totalDeliveries = completedDeliveries.length;
+    const averageRating = driver.rating;
+    const averagePerDelivery = totalDeliveries > 0 ? Math.round(totalEarned / totalDeliveries) : 0;
+
+    const chartMap = new Map<string, { amount: number; count: number }>();
+    for (const d of completedDeliveries) {
+      const label = this.periodLabel(d.updatedAt, period);
+      const existing = chartMap.get(label) ?? { amount: 0, count: 0 };
+      chartMap.set(label, { amount: existing.amount + (d.proposedFee ?? 0), count: existing.count + 1 });
+    }
+    const chart = Array.from(chartMap.entries()).map(([label, { amount, count }]) => ({ label, amount, count }));
+
+    const history = completedDeliveries.slice(0, 30).map((d) => ({
+      id: String(d.id),
+      orderNumber: d.orderNumber ?? String(d.id),
+      date: d.updatedAt.toISOString().split('T')[0],
+      supplierDistrict: d.pickupStops?.[0]?.district ?? d.pickupStops?.[0]?.address?.split(',')[0]?.trim() ?? 'Нийлүүлэгч',
+      customerDistrict: d.dropoffAddress?.split(',')[0]?.trim() ?? 'Хэрэглэгч',
+      customerAddress: d.dropoffAddress ?? '',
+      fee: d.proposedFee ?? 0,
+      rating: driver.rating,
+    }));
+
+    return { totalDeliveries, totalEarned, averageRating, averagePerDelivery, chart, history };
+  }
+
   getDriverById(id: string) {
     return this.driverRepo.findOne({ where: { id } });
+  }
+
+  private periodLabel(date: Date, period: string): string {
+    if (period === 'today') {
+      return `${date.getHours()}:00`;
+    } else if (period === 'week') {
+      const days = ['Ням', 'Дав', 'Мяг', 'Лха', 'Пүр', 'Баа', 'Бям'];
+      return days[date.getDay()];
+    } else {
+      return `${date.getDate()}-р`;
+    }
   }
 
   private normalizePhone(phone: string) {

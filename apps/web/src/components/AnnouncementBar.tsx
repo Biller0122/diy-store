@@ -2,6 +2,7 @@
 
 import { X, Truck } from 'lucide-react';
 import { useUIStore } from '@/lib/ui-store';
+import Link from 'next/link';
 
 export function AnnouncementBar() {
   const { announcementDismissed, dismissAnnouncement } = useUIStore();
@@ -13,9 +14,9 @@ export function AnnouncementBar() {
         <Truck size={14} className="shrink-0" />
         <span>
           <strong>Үнэгүй хүргэлт</strong> — ₮100,000-с дээш захиалгад УБ дотор үнэгүй хүргэнэ!
-          <span className="ml-3 underline underline-offset-2 cursor-pointer opacity-80 hover:opacity-100">
+          <Link href="/trade" className="ml-3 underline underline-offset-2 opacity-80 hover:opacity-100">
             Дэлгэрэнгүй →
-          </span>
+          </Link>
         </span>
       </div>
       <button

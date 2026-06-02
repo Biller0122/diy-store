@@ -4,12 +4,14 @@ import gql from 'graphql-tag';
 import { Driver } from './driver.entity';
 import { DriverResolver } from './driver.resolver';
 import { DriverService } from './driver.service';
+import { DeliveryRequest } from '../delivery/delivery-request.entity';
 
 const DRIVER_SCHEMA_EXTENSION = gql`
   type Driver {
     id: ID!
     firstName: String!
     lastName: String!
+    emailAddress: String
     phone: String!
     vehicleType: String!
     vehiclePlate: String
@@ -26,6 +28,32 @@ const DRIVER_SCHEMA_EXTENSION = gql`
     bankAccount: String
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  type EarningsChartItem {
+    label: String!
+    amount: Int!
+    count: Int!
+  }
+
+  type EarningsHistoryItem {
+    id: String!
+    orderNumber: String!
+    date: String!
+    supplierDistrict: String!
+    customerDistrict: String!
+    customerAddress: String!
+    fee: Int!
+    rating: Float!
+  }
+
+  type DriverEarnings {
+    totalDeliveries: Int!
+    totalEarned: Int!
+    averageRating: Float!
+    averagePerDelivery: Int!
+    chart: [EarningsChartItem!]!
+    history: [EarningsHistoryItem!]!
   }
 
   type DriverAuthResult {
@@ -45,6 +73,8 @@ const DRIVER_SCHEMA_EXTENSION = gql`
   input RegisterDriverInput {
     ownerName: String!
     phone: String!
+    email: String
+    password: String
     vehicleType: String
     vehiclePlate: String
     vehicleModel: String
@@ -69,6 +99,8 @@ const DRIVER_SCHEMA_EXTENSION = gql`
     firstName: String
     lastName: String
     phone: String
+    emailAddress: String
+    password: String
     vehicleType: String
     vehiclePlate: String
     vehicleModel: String
@@ -83,6 +115,7 @@ const DRIVER_SCHEMA_EXTENSION = gql`
     driver(id: ID!): Driver
     getDriverProfile(id: ID!): Driver
     getNearbyDrivers(lat: Float!, lng: Float!, radiusKm: Float): [Driver!]!
+    getDriverEarnings(driverId: ID!, period: String!): DriverEarnings!
   }
 
   extend type Mutation {
@@ -101,7 +134,7 @@ const DRIVER_SCHEMA_EXTENSION = gql`
 `;
 
 @VendurePlugin({
-  imports: [PluginCommonModule, TypeOrmModule.forFeature([Driver])],
+  imports: [PluginCommonModule, TypeOrmModule.forFeature([Driver, DeliveryRequest])],
   providers: [DriverResolver, DriverService],
   entities: [Driver as any],
   shopApiExtensions: {

@@ -21,6 +21,7 @@ export default function ImageGallery({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const main = assets[activeIdx] ?? assets[0];
+  const mainSrc = main?.preview.startsWith('data:') ? main.preview : main ? `${main.preview}?preset=large` : '';
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -41,9 +42,20 @@ export default function ImageGallery({
         onMouseLeave={() => setZoomed(false)}
         className="relative aspect-square overflow-hidden rounded-2xl bg-surface cursor-zoom-in"
       >
-        {main ? (
+        {main && mainSrc.startsWith('data:') ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={mainSrc}
+            alt={productName}
+            className="h-full w-full object-cover transition-transform duration-150"
+            style={{
+              transform: zoomed ? 'scale(2.2)' : 'scale(1)',
+              transformOrigin: `${origin.x}% ${origin.y}%`,
+            }}
+          />
+        ) : main ? (
           <Image
-            src={`${main.preview}?preset=large`}
+            src={mainSrc}
             alt={productName}
             fill
             priority
@@ -81,13 +93,18 @@ export default function ImageGallery({
                   : 'border-transparent hover:border-[var(--glass-border-hover)]'
               }`}
             >
-              <Image
-                src={`${asset.preview}?preset=thumb`}
-                alt={`${productName} - зураг ${i + 1}`}
-                fill
-                sizes="64px"
-                className="object-cover"
-              />
+              {asset.preview.startsWith('data:') ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={asset.preview} alt={`${productName} - зураг ${i + 1}`} className="h-full w-full object-cover" />
+              ) : (
+                <Image
+                  src={`${asset.preview}?preset=thumb`}
+                  alt={`${productName} - зураг ${i + 1}`}
+                  fill
+                  sizes="64px"
+                  className="object-cover"
+                />
+              )}
             </button>
           ))}
         </div>

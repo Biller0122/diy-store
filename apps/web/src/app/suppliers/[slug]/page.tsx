@@ -1,23 +1,28 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Star, MapPin, Truck, Phone, ArrowLeft, Package } from 'lucide-react';
-import { MOCK_SUPPLIERS, MOCK_SUPPLIER_PRODUCTS } from '@/lib/supplier-data';
 import { ProductCard } from '@/components/ui/ProductCard';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierBySlug, getDbSupplierProducts } from '@/lib/supplier-products';
+
+export const dynamic = 'force-dynamic';
 
 interface Props {
   params: Promise<{ slug: string }>;
 }
 
 export async function generateStaticParams() {
-  return MOCK_SUPPLIERS.map((s) => ({ slug: s.slug }));
+  return [];
 }
 
 export default async function SupplierStorePage({ params }: Props) {
   const { slug } = await params;
-  const supplier = MOCK_SUPPLIERS.find((s) => s.slug === slug);
+  const dbSupplier = await getDbSupplierBySlug(slug);
+  if (dbSupplier?.status && dbSupplier.status !== 'ACTIVE') notFound();
+  const supplier = dbSupplier ? dbSupplierToCard(dbSupplier) : null;
   if (!supplier) notFound();
 
-  const products = MOCK_SUPPLIER_PRODUCTS[slug] ?? [];
+  const dbProducts = dbSupplier ? await getDbSupplierProducts(dbSupplier.id) : [];
+  const products = dbProducts.map((product) => dbProductToCard(product, supplier));
 
   return (
     <div className="min-h-screen bg-dark pb-24 lg:pb-8">

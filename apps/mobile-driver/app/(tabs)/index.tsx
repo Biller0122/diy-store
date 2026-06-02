@@ -8,6 +8,7 @@ import OrderRequestModal from '../../components/OrderRequestModal';
 import { Badge } from '../../src/components/Badge';
 import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
+import { getDriverDeliveryHistory, getDriverEarnings } from '../../src/api/client';
 import { setupDriverNotifications } from '../../src/services/notifications';
 import { socketService } from '../../src/services/socket';
 import { startLocationTracking, stopLocationTracking } from '../../src/services/location';
@@ -33,10 +34,15 @@ function WaitingDots() {
   return <Text style={styles.toggleSub}>Захиалга хүлээж байна{dots}</Text>;
 }
 
+function formatMoney(amount: number) {
+  return `₮${Math.round(amount / 100).toLocaleString()}`;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const driver = useAuthStore((state) => state.driver);
   const updateOnline = useAuthStore((state) => state.updateOnline);
+  const refreshProfile = useAuthStore((state) => state.refreshProfile);
   const activeOrder = useDeliveryStore((state) => state.activeOrder);
   const incomingOrder = useDeliveryStore((state) => state.incomingOrder);
   const isOnline = useDeliveryStore((state) => state.isOnline);
@@ -45,6 +51,9 @@ export default function DashboardScreen() {
   const setIncomingOrder = useDeliveryStore((state) => state.setIncomingOrder);
   const acceptOrder = useDeliveryStore((state) => state.acceptOrder);
   const rejectOrder = useDeliveryStore((state) => state.rejectOrder);
+  const refreshActiveOrder = useDeliveryStore((state) => state.refreshActiveOrder);
+  const [recentDeliveries, setRecentDeliveries] = useState<Array<{ id: string; orderNumber: string; date: string; fee: number; route: string }>>([]);
+  const [todayStats, setTodayStats] = useState({ deliveries: 0, earned: 0, rating: driver?.rating ?? 5 });
   const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(1)).current;
 
@@ -73,6 +82,41 @@ export default function DashboardScreen() {
     startLocationTracking(driver.id, activeOrder?.orderId).catch(() => {});
     return undefined;
   }, [driver, isOnline, activeOrder?.orderId, setIncomingOrder]);
+
+  useEffect(() => {
+    if (!driver || !isOnline || activeOrder) return;
+    refreshActiveOrder(driver.id).catch(() => {});
+  }, [driver, isOnline, activeOrder, refreshActiveOrder]);
+
+  useEffect(() => {
+    if (!driver) return;
+    refreshProfile().catch(() => {});
+    getDriverEarnings(driver.id, 'today')
+      .then((result) => {
+        const earnings = (result as {
+          getDriverEarnings?: { totalDeliveries: number; totalEarned: number; averageRating: number };
+        }).getDriverEarnings;
+        if (earnings) {
+          setTodayStats({
+            deliveries: earnings.totalDeliveries,
+            earned: earnings.totalEarned,
+            rating: earnings.averageRating,
+          });
+        }
+      })
+      .catch(() => setTodayStats({ deliveries: 0, earned: 0, rating: driver.rating }));
+    getDriverDeliveryHistory(driver.id, 5)
+      .then((result) => {
+        setRecentDeliveries(result.deliveryHistoryForDriver.slice(0, 5).map((item) => ({
+          id: item.id,
+          orderNumber: item.orderNumber,
+          date: new Date(item.updatedAt).toLocaleDateString('mn-MN'),
+          fee: item.finalFee || item.proposedFee || 0,
+          route: `${item.pickupStops[0]?.district || item.pickupStops[0]?.address?.split(',')[0]?.trim() || 'Нийлүүлэгч'} → ${item.dropoffAddress.split(',')[0]?.trim() || 'Хэрэглэгч'}`,
+        })));
+      })
+      .catch(() => setRecentDeliveries([]));
+  }, [driver?.id, refreshProfile]);
 
   if (!driver) return null;
 
@@ -122,9 +166,9 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.statsRow}>
-          <StatCard value={String(driver.totalDeliveries)} label="Хүргэлт" />
-          <StatCard value={`₮${driver.todayEarnings.toLocaleString()}`} label="Орлого" />
-          <StatCard value={`⭐ ${driver.rating.toFixed(1)}`} label="Үнэлгээ" />
+          <StatCard value={String(todayStats.deliveries)} label="Өнөөдөр" />
+          <StatCard value={formatMoney(todayStats.earned)} label="Орлого" />
+          <StatCard value={`⭐ ${todayStats.rating.toFixed(1)}`} label="Үнэлгээ" />
         </View>
 
         {activeOrder ? (
@@ -137,8 +181,25 @@ export default function DashboardScreen() {
           </Card>
         ) : null}
 
-        <Text style={styles.sectionTitle}>Сүүлийн хүргэлтүүд</Text>
-        <Text style={styles.emptyText}>Хүргэлт байхгүй байна</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Сүүлийн хүргэлтүүд</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/earnings')}>
+            <Text style={styles.linkText}>Орлого →</Text>
+          </TouchableOpacity>
+        </View>
+        {recentDeliveries.length === 0 ? (
+          <Text style={styles.emptyText}>Хүргэлт байхгүй байна</Text>
+        ) : (
+          recentDeliveries.map((item) => (
+            <Card key={item.id} style={styles.deliveryItem}>
+              <View style={styles.deliveryMiddle}>
+                <Text style={styles.deliveryTitle}>{item.orderNumber}</Text>
+                <Text style={styles.deliveryDate}>{item.route} · {item.date}</Text>
+              </View>
+              <Text style={styles.deliveryAmount}>{formatMoney(item.fee)}</Text>
+            </Card>
+          ))
+        )}
       </ScrollView>
 
       {incomingOrder && isOnline ? <OrderRequestModal visible request={incomingOrder} onAccept={accept} onReject={reject} /> : null}
@@ -171,7 +232,9 @@ const styles = StyleSheet.create({
   activeStatus: { color: colors.textSub, fontSize: 12, marginTop: 3 },
   progressTrack: { height: 7, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden', marginVertical: 14 },
   progressFill: { height: '100%', backgroundColor: colors.primary },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '900', marginBottom: 12 },
+  linkText: { color: colors.primary, fontSize: 12, fontWeight: '900' },
   deliveryItem: { flexDirection: 'row', alignItems: 'center', padding: 13, marginBottom: 9 },
   districtBadge: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   districtText: { fontSize: 12, fontWeight: '900' },

@@ -12,14 +12,20 @@ import { colors } from '../../src/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const [phone, setPhone] = useState('8911 8564');
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const { requestLoginOtp, verifyOtp, isLoading, error, devOtp, clearError } = useAuthStore();
 
   const submit = async () => {
     clearError();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const ok = await login(email, password);
+    if (!otpSent) {
+      const sent = await requestLoginOtp(phone);
+      if (sent) setOtpSent(true);
+      return;
+    }
+    const ok = await verifyOtp(phone, otp);
     if (ok) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/(tabs)');
@@ -39,10 +45,18 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.form}>
-            <Input label="И-мэйл" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-            <Input label="Нууц үг" value={password} onChangeText={setPassword} secureTextEntry passwordToggle />
+            {!otpSent ? (
+              <Input label="Утасны дугаар" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            ) : (
+              <>
+                <Text style={styles.otpInfo}>{phone} дугаарт илгээсэн кодоо оруулна уу</Text>
+                <Input label="Баталгаажуулах код" value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 4))} keyboardType="number-pad" />
+                {devOtp ? <Text style={styles.devOtp}>Туршилтын OTP: {devOtp}</Text> : null}
+              </>
+            )}
             <Toast message={error} />
-            <Button title="Нэвтрэх" loading={isLoading} onPress={submit} style={styles.loginButton} />
+            <Button title={otpSent ? 'Нэвтрэх' : 'Код авах'} loading={isLoading} onPress={submit} style={styles.loginButton} />
+            {otpSent ? <Button title="Дугаар солих" variant="ghost" size="md" onPress={() => { setOtpSent(false); setOtp(''); clearError(); }} /> : null}
           </View>
 
           <TouchableOpacity style={styles.registerLink} onPress={() => router.push('/(auth)/register')}>
@@ -73,6 +87,8 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 28, fontWeight: '900', textAlign: 'center' },
   subtitle: { color: colors.textSub, fontSize: 13, fontWeight: '800', letterSpacing: 1.1, marginTop: 8, textTransform: 'uppercase' },
   form: { gap: 14 },
+  otpInfo: { color: colors.textSub, textAlign: 'center', fontSize: 14, lineHeight: 20 },
+  devOtp: { color: colors.textSub, textAlign: 'center', fontSize: 13, fontWeight: '800' },
   loginButton: { marginTop: 4 },
   registerLink: { alignItems: 'center', marginTop: 26 },
   registerText: { color: colors.primary, fontSize: 14, fontWeight: '800' },

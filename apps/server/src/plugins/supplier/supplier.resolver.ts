@@ -6,6 +6,7 @@ import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
 import { RegisterSupplierInput, SupplierProductInput, SupplierService, VerifySupplierOtpInput } from './supplier.service';
 import { requirePlatformRole } from '../../utils/auth';
+import { DeliveryRequest } from '../delivery/delivery-request.entity';
 
 @Resolver()
 export class SupplierResolver {
@@ -14,6 +15,8 @@ export class SupplierResolver {
     private readonly supplierRepo: Repository<Supplier>,
     @InjectRepository(SupplierProduct)
     private readonly supplierProductRepo: Repository<SupplierProduct>,
+    @InjectRepository(DeliveryRequest)
+    private readonly deliveryRepo: Repository<DeliveryRequest>,
     private readonly supplierService: SupplierService,
     private readonly connection: TransactionalConnection,
   ) {}
@@ -191,6 +194,53 @@ export class SupplierResolver {
     if (!product) throw new Error('Бараа олдсонгүй');
     this.requireAdminOrSupplier(ctx, product.supplierId);
     return this.supplierService.updateSupplierProduct(String(id), input as Partial<SupplierProductInput>);
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  async deleteSupplierProduct(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+    const product = await this.supplierProductRepo.findOne({ where: { id: String(id) } });
+    if (!product) throw new Error('Бараа олдсонгүй');
+    this.requireAdminOrSupplier(ctx, product.supplierId);
+    return this.supplierService.deleteSupplierProduct(String(id));
+  }
+
+  @Query()
+  @Allow(Permission.Public)
+  async supplierDeliveryRequests(@Ctx() ctx: RequestContext, @Args('supplierId') supplierId: string) {
+    this.requireAdminOrSupplier(ctx, String(supplierId));
+    const deliveries = await this.deliveryRepo.find({ order: { createdAt: 'DESC' } });
+    return deliveries.filter((delivery) =>
+      delivery.orderItems?.some((item) => String(item.supplierId) === String(supplierId)) ||
+      delivery.pickupStops?.some((stop) => String(stop.supplierId) === String(supplierId)),
+    );
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  async supplierDeliveryAction(
+    @Ctx() ctx: RequestContext,
+    @Args('deliveryId') deliveryId: ID,
+    @Args('supplierId') supplierId: string,
+    @Args('action') action: string,
+  ) {
+    this.requireAdminOrSupplier(ctx, String(supplierId));
+    const delivery = await this.deliveryRepo.findOne({ where: { id: String(deliveryId) } });
+    if (!delivery) return { success: false, message: 'Захиалга олдсонгүй', delivery: null };
+    const ownsDelivery = delivery.orderItems?.some((item) => String(item.supplierId) === String(supplierId)) ||
+      delivery.pickupStops?.some((stop) => String(stop.supplierId) === String(supplierId));
+    if (!ownsDelivery) throw new Error('Өөр нийлүүлэгчийн захиалгад хандах эрхгүй');
+
+    const normalized = action.trim().toUpperCase();
+    if (normalized === 'ACCEPT') {
+      delivery.supplierStatus = 'ACCEPTED';
+    } else if (normalized === 'REJECT' || normalized === 'CANCEL') {
+      delivery.supplierStatus = 'REJECTED';
+    } else {
+      return { success: false, message: 'Үйлдэл буруу байна', delivery };
+    }
+    const saved = await this.deliveryRepo.save(delivery);
+    return { success: true, message: 'Амжилттай шинэчлэгдлээ', delivery: saved };
   }
 
   @Query()

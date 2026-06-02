@@ -1,31 +1,97 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { ChevronDown, ArrowRight } from 'lucide-react';
+import { vendureShopFetch } from '@/lib/vendure';
 
-const CATEGORIES = [
-  { name: 'Багаж хэрэгсэл', slug: 'bagaj', icon: '🔧', sub: ['Гар багаж', 'Цахилгаан багаж', 'Хэмжих хэрэгсэл'] },
-  { name: 'Барилгын материал', slug: 'barilga', icon: '🧱', sub: ['Цемент', 'Тоосго', 'Ган материал'] },
-  { name: 'Сантехник', slug: 'santekhnik', icon: '🚿', sub: ['Хоолой', 'Краан', 'Угаалтуур'] },
-  { name: 'Цахилгаан', slug: 'tsakhilgaan', icon: '⚡', sub: ['Кабель', 'Унтраалга', 'Зального самбар'] },
-  { name: 'Будаг ба засвар', slug: 'budag', icon: '🎨', sub: ['Дотор будаг', 'Гадна будаг', 'Хаяг'] },
-  { name: 'Гэрэлтүүлэг', slug: 'gerel', icon: '💡', sub: ['LED чийдэн', 'Дандар', 'Хяналт'] },
-  { name: 'Хаалга, цонх', slug: 'khaalga', icon: '🚪', sub: ['Модон хаалга', 'Металл хаалга', 'Цонхны хүрээ'] },
-  { name: 'Шал ба хана', slug: 'shal', icon: '🏠', sub: ['Паркет', 'Плитка', 'Ханын цаас'] },
-];
+type MenuCategory = { name: string; slug: string; icon: string; count: number; children: MenuCategory[] };
+type MenuProduct = { name: string; slug: string; price: number };
 
-const FEATURED = [
-  { name: 'Makita 18V Өрөм', slug: 'makita-drill', price: 289900 },
-  { name: 'Dulux Будаг 4L', slug: 'dulux-paint', price: 59900 },
-  { name: 'LED 100W Чийдэн', slug: 'led-100w', price: 12900 },
-];
+const MENU_QUERY = `
+  query MenuData {
+    collections(options: { take: 12, topLevelOnly: true, sort: { position: ASC } }) {
+      items {
+        id
+        name
+        slug
+        customFields { icon }
+        productVariants(options: { take: 1 }) { totalItems }
+        children {
+          id
+          name
+          slug
+          customFields { icon }
+          productVariants(options: { take: 1 }) { totalItems }
+        }
+      }
+    }
+    search(input: { take: 3, sort: { name: ASC } }) {
+      items {
+        productName
+        slug
+        priceWithTax { ... on SinglePrice { value } }
+      }
+    }
+  }
+`;
 
 export function MegaMenu() {
   const [open, setOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0]);
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [featured, setFeatured] = useState<MenuProduct[]>([]);
+  const [activeCategory, setActiveCategory] = useState<MenuCategory | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    vendureShopFetch<{
+      collections: { items: Array<{
+        name: string;
+        slug: string;
+        customFields?: { icon?: string | null };
+        productVariants?: { totalItems: number };
+        children?: Array<{ name: string; slug: string; customFields?: { icon?: string | null }; productVariants?: { totalItems: number } }>;
+      }> };
+      search: { items: Array<{ productName: string; slug: string; priceWithTax?: { value?: number } }> };
+    }>(MENU_QUERY, undefined, { revalidate: 0 })
+      .then((data) => {
+        if (!mounted) return;
+        const nextCategories = data.collections.items
+          .filter((item) => item.slug !== '__root_collection__')
+          .map((item) => ({
+            name: item.name,
+            slug: item.slug,
+            icon: item.customFields?.icon ?? '📦',
+            count: item.productVariants?.totalItems ?? 0,
+            children: (item.children ?? []).map((child) => ({
+              name: child.name,
+              slug: child.slug,
+              icon: child.customFields?.icon ?? '📦',
+              count: child.productVariants?.totalItems ?? 0,
+              children: [],
+            })),
+          }));
+        setCategories(nextCategories);
+        setActiveCategory(nextCategories[0] ?? null);
+        setFeatured(data.search.items.map((item) => ({
+          name: item.productName,
+          slug: item.slug,
+          price: item.priceWithTax?.value ?? 0,
+        })));
+      })
+      .catch(() => {
+        if (mounted) {
+          setCategories([]);
+          setFeatured([]);
+          setActiveCategory(null);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -64,18 +130,21 @@ export function MegaMenu() {
             <div className="flex max-h-[calc(100vh-9.5rem)] overflow-hidden">
               {/* Left: Category list */}
               <div className="w-52 shrink-0 overflow-y-auto border-r border-white/10 bg-surface/80 py-3 sm:w-56">
-                {CATEGORIES.map((cat) => (
+                {categories.length === 0 ? (
+                  <div className="px-4 py-6 text-xs text-foreground-muted">Backend ангилал алга</div>
+                ) : categories.map((cat) => (
                   <button
                     key={cat.slug}
                     onMouseEnter={() => setActiveCategory(cat)}
                     className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors sm:gap-3 sm:px-4 ${
-                      activeCategory.slug === cat.slug
+                      activeCategory?.slug === cat.slug
                         ? 'bg-white/8 text-brand'
                         : 'text-foreground hover:bg-white/5'
                     }`}
                   >
                     <span className="shrink-0 text-lg">{cat.icon}</span>
                     <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-snug">{cat.name}</span>
+                    <span className="text-[10px] text-foreground-muted">{cat.count}</span>
                     <ArrowRight size={12} className="shrink-0 opacity-40" />
                   </button>
                 ))}
@@ -84,12 +153,12 @@ export function MegaMenu() {
               {/* Right: Sub-categories + featured */}
               <div className="min-w-0 flex-1 overflow-y-auto bg-card/95 p-4 sm:p-5">
                 <m.div
-                  key={activeCategory.slug}
+                  key={activeCategory?.slug ?? 'empty'}
                   initial={{ opacity: 0, x: 8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.15 }}
                 >
-                  <Link
+                  {activeCategory ? <Link
                     href={`/category/${activeCategory.slug}`}
                     className="mb-4 flex min-w-0 items-center gap-2"
                     onClick={() => setOpen(false)}
@@ -99,19 +168,29 @@ export function MegaMenu() {
                       {activeCategory.name}
                     </span>
                     <ArrowRight size={14} className="shrink-0 text-brand" />
-                  </Link>
+                  </Link> : (
+                    <p className="mb-4 text-sm text-foreground-muted">Backend дээр ангилал бүртгэгдээгүй байна.</p>
+                  )}
 
                   <div className="mb-5 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-                    {activeCategory.sub.map((sub) => (
+                    {activeCategory?.children.length ? activeCategory.children.slice(0, 12).map((sub) => (
                       <Link
-                        key={sub}
+                        key={sub.slug}
+                        href={`/category/${sub.slug}`}
+                        onClick={() => setOpen(false)}
+                        className="rounded-lg px-3 py-2 text-xs leading-snug text-foreground-muted transition-colors hover:bg-white/8 hover:text-foreground"
+                      >
+                        {sub.name}
+                      </Link>
+                    )) : activeCategory ? (
+                      <Link
                         href={`/category/${activeCategory.slug}`}
                         onClick={() => setOpen(false)}
                         className="rounded-lg px-3 py-2 text-xs leading-snug text-foreground-muted transition-colors hover:bg-white/8 hover:text-foreground"
                       >
-                        {sub}
+                        {activeCategory.count} бараа
                       </Link>
-                    ))}
+                    ) : null}
                   </div>
 
                   <div className="border-t border-[var(--glass-border)] pt-4">
@@ -119,7 +198,9 @@ export function MegaMenu() {
                       Онцлох бараа
                     </p>
                     <div className="space-y-2">
-                      {FEATURED.map((item) => (
+                      {featured.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-foreground-muted">Backend дээр онцлох бараа алга</p>
+                      ) : featured.map((item) => (
                         <Link
                           key={item.slug}
                           href={`/product/${item.slug}`}
