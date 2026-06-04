@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev:aws-local": "DOTENV_CONFIG_PATH=../../.env.aws-local ts-node-dev -r dotenv/config --respawn --transpile-only src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "lint": "eslint src",
@@ -13,9 +14,13 @@
     "test:ci": "jest --ci --coverage",
     "populate": "ts-node src/populate.ts",
     "seed:collections": "ts-node src/seed/seed-collections.ts",
+    "seed:sample": "ts-node src/seed/seed-sample-data.ts",
+    "seed:sample:aws-local": "DOTENV_CONFIG_PATH=../../.env.aws-local ts-node -r dotenv/config src/seed/seed-sample-data.ts",
     "sync-algolia": "ts-node src/plugins/search/sync-products.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1061.0",
+    "@aws-sdk/lib-storage": "^3.1061.0",
     "@types/nodemailer": "^6.4.23",
     "@vendure/admin-ui-plugin": "^3.6.0",
     "@vendure/asset-server-plugin": "^3.6.0",

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { bootstrap, runMigrations } from '@vendure/core';
+import { bootstrap, JobQueueService, runMigrations } from '@vendure/core';
 import { config } from './vendure-config';
 import { handleDriverOfferDecision, startRealtimeServer } from './plugins/realtime.plugin';
 
@@ -27,7 +27,8 @@ function registerRealtimeDecisionWebhook(app: Awaited<ReturnType<typeof bootstra
 }
 
 bootstrap(config)
-  .then((app) => {
+  .then(async (app) => {
+    await app.get(JobQueueService).start();
     registerRealtimeDecisionWebhook(app);
     if (process.env.REALTIME_EMBEDDED !== 'false') {
       startRealtimeServer();

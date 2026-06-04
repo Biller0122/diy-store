@@ -2,9 +2,14 @@ import {
   DefaultJobQueuePlugin,
   DefaultSearchPlugin,
   LanguageCode,
+  RequestContext,
   VendureConfig,
 } from '@vendure/core';
-import { AssetServerPlugin } from '@vendure/asset-server-plugin';
+import {
+  AssetServerPlugin,
+  configureS3AssetStorage,
+  HashedAssetNamingStrategy,
+} from '@vendure/asset-server-plugin';
 import { AdminUiPlugin } from '@vendure/admin-ui-plugin';
 import { defaultEmailHandlers, EmailPlugin } from '@vendure/email-plugin';
 import { config as loadEnv } from 'dotenv';
@@ -34,6 +39,58 @@ const corsOrigins = [
     .map((origin) => origin.trim())
     .filter(Boolean),
 ];
+const useS3AssetStorage = process.env.ASSET_STORAGE === 's3';
+const s3AssetPrefix = (process.env.S3_PREFIX || '').replace(/^\/+|\/+$/g, '');
+
+class PrefixedAssetNamingStrategy extends HashedAssetNamingStrategy {
+  constructor(private readonly prefix: string) {
+    super();
+  }
+
+  generateSourceFileName(ctx: RequestContext, originalFileName: string, conflictFileName?: string) {
+    return path.posix.join(
+      this.prefix,
+      super.generateSourceFileName(ctx, originalFileName, conflictFileName),
+    );
+  }
+
+  generatePreviewFileName(ctx: RequestContext, sourceFileName: string, conflictFileName?: string) {
+    return path.posix.join(
+      this.prefix,
+      super.generatePreviewFileName(ctx, sourceFileName, conflictFileName),
+    );
+  }
+}
+
+function getS3AssetStorageOptions() {
+  if (!useS3AssetStorage) return {};
+
+  const bucket = process.env.S3_BUCKET;
+  if (!bucket) {
+    throw new Error('ASSET_STORAGE=s3 requires S3_BUCKET to be set');
+  }
+
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const credentials = accessKeyId && secretAccessKey
+    ? { accessKeyId, secretAccessKey }
+    : undefined;
+
+  return {
+    ...(s3AssetPrefix
+      ? { namingStrategy: new PrefixedAssetNamingStrategy(s3AssetPrefix) }
+      : {}),
+    storageStrategyFactory: configureS3AssetStorage({
+      bucket,
+      credentials: credentials as any,
+      nativeS3Configuration: {
+        region: process.env.S3_REGION || process.env.AWS_REGION || 'ap-southeast-1',
+        ...(process.env.S3_ENDPOINT ? { endpoint: process.env.S3_ENDPOINT } : {}),
+        ...(process.env.S3_FORCE_PATH_STYLE === 'true' ? { forcePathStyle: true } : {}),
+      },
+    }),
+  };
+}
 
 export const config: VendureConfig = {
   apiOptions: {
@@ -77,6 +134,9 @@ export const config: VendureConfig = {
         port: parseInt(process.env.DB_PORT || '5432'),
         username: vendureDbUsername,
         password: vendureDbPassword,
+        ...(process.env.DB_SSL === 'true'
+          ? { ssl: { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true' } }
+          : {}),
         migrations: [path.join(__dirname, '../migrations/*.js')],
       },
   paymentOptions: {
@@ -118,6 +178,7 @@ export const config: VendureConfig = {
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),
+      ...getS3AssetStorageOptions(),
     }),
     DefaultJobQueuePlugin.init({ useDatabaseForBuffer: true }),
     DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: true }),

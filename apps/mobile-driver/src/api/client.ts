@@ -2,7 +2,7 @@ import { GraphQLClient } from 'graphql-request';
 import { GET_ACTIVE_ORDER, GET_DRIVER_DELIVERY_HISTORY, GET_DRIVER_PROFILE } from './queries';
 import { ACCEPT_DELIVERY, COMPLETE_DELIVERY_WITH_CODE, LOGIN_DRIVER, LOGIN_DRIVER_BY_PASSWORD, REFRESH_DRIVER_TOKEN, REGISTER_DRIVER, REJECT_DELIVERY, UPDATE_DELIVERY_STATUS, UPDATE_DRIVER_LOCATION, UPDATE_DRIVER_STATUS, VERIFY_DRIVER_OTP } from './mutations';
 
-export const SHOP_API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL ?? 'http://192.168.0.13:13001/shop-api';
+export const SHOP_API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL ?? 'https://shop.example.com/shop-api';
 
 const client = new GraphQLClient(SHOP_API_URL, {
   credentials: 'include',

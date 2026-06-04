@@ -1,4 +1,4 @@
-const API_URL = 'http://192.168.0.13:3001/shop-api';
+const API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL || 'https://shop.example.com/shop-api';
 
 export async function shopFetch<T>(
   query: string,

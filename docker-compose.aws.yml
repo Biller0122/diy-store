@@ -1,21 +1,6 @@
 name: diy-store
 
 services:
-  postgres-vendure:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DB_NAME:-vendure}
-      POSTGRES_USER: ${DB_USERNAME:-vendure}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-vendure}
-    volumes:
-      - vendure-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-vendure} -d ${DB_NAME:-vendure}']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -34,27 +19,37 @@ services:
       dockerfile: apps/server/Dockerfile
     restart: unless-stopped
     env_file:
-      - .env.production
+      - path: .env.production
+        required: false
     environment:
       NODE_ENV: production
       PORT: 3001
       REALTIME_EMBEDDED: 'false'
       DB_TYPE: postgres
-      DB_HOST: postgres-vendure
-      DB_PORT: 5432
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-vendure}
+      DB_USERNAME: ${DB_USERNAME:-vendure}
+      DB_PASSWORD: ${DB_PASSWORD}
       REDIS_URL: redis://redis:6379
       DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
       VENDURE_DISABLE_TELEMETRY: 'true'
-      FIREBASE_MOCK_MODE: 'true'
+      FIREBASE_MOCK_MODE: ${FIREBASE_MOCK_MODE:-true}
       OTP_MOCK_MODE: ${OTP_MOCK_MODE:-true}
+      PAYMENT_MOCK_MODE: ${PAYMENT_MOCK_MODE:-true}
+      ASSET_STORAGE: ${ASSET_STORAGE:-s3}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION:-ap-southeast-1}
+      S3_PREFIX: ${S3_PREFIX:-vendure-assets}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      REALTIME_WEBHOOK_SECRET: ${REALTIME_WEBHOOK_SECRET}
       NODE_OPTIONS: --max-old-space-size=1024
     depends_on:
-      postgres-vendure:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - vendure-assets:/app/apps/server/static/assets
       - vendure-emails:/app/apps/server/static/email/test-emails
 
   realtime-server:
@@ -63,12 +58,14 @@ services:
       dockerfile: apps/realtime-server/Dockerfile
     restart: unless-stopped
     env_file:
-      - .env.production
+      - path: .env.production
+        required: false
     environment:
       NODE_ENV: production
       SOCKET_PORT: 3002
       REDIS_URL: redis://redis:6379
       REALTIME_DECISION_WEBHOOK_URL: http://server:3001/realtime/driver-decision
+      REALTIME_WEBHOOK_SECRET: ${REALTIME_WEBHOOK_SECRET}
       NODE_OPTIONS: --max-old-space-size=512
     depends_on:
       redis:
@@ -236,7 +233,8 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     env_file:
-      - .env.production
+      - path: .env.production
+        required: false
     ports:
       - '80:80'
       - '443:443'
@@ -253,12 +251,8 @@ services:
       - realtime-server
 
 volumes:
-  vendure-db-data:
-    name: diy-store_vendure-db-data
   redis-data:
     name: diy-store_redis-data
-  vendure-assets:
-    name: diy-store_vendure-assets
   vendure-emails:
     name: diy-store_vendure-emails
   caddy-data:

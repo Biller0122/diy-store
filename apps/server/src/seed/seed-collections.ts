@@ -5,13 +5,14 @@ import {
   LanguageCode,
   RequestContextService,
 } from '@vendure/core';
+import type { INestApplication } from '@nestjs/common';
 import { config } from '../vendure-config';
 import { CATEGORY_TREE, SeedCategory } from './categories';
 
-async function seedCollections() {
+export async function seedCollections(existingApp?: INestApplication) {
   console.log('🌱 Seeding Vendure collections...\n');
 
-  const app = await bootstrap(config);
+  const app = existingApp ?? await bootstrap(config);
   const collectionService = app.get(CollectionService);
   const ctx = await app.get(RequestContextService).create({ apiType: 'admin' });
 
@@ -73,11 +74,16 @@ async function seedCollections() {
   }
 
   console.log(`\n🏁 Done — ${created} created, ${skipped} skipped`);
-  await app.close();
-  process.exit(0);
+  if (!existingApp) {
+    await app.close();
+  }
 }
 
-seedCollections().catch((err) => {
-  console.error('\n❌ Seed failed:', err.message ?? err);
-  process.exit(1);
-});
+if (require.main === module) {
+  seedCollections()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('\n❌ Seed failed:', err.message ?? err);
+      process.exit(1);
+    });
+}
