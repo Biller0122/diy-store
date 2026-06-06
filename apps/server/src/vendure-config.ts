@@ -41,6 +41,9 @@ const corsOrigins = [
 ];
 const useS3AssetStorage = process.env.ASSET_STORAGE === 's3';
 const s3AssetPrefix = (process.env.S3_PREFIX || '').replace(/^\/+|\/+$/g, '');
+const assetUrlPrefix = process.env.ASSET_URL_PREFIX
+  ? process.env.ASSET_URL_PREFIX.replace(/\/?$/, '/')
+  : undefined;
 
 class PrefixedAssetNamingStrategy extends HashedAssetNamingStrategy {
   constructor(private readonly prefix: string) {
@@ -178,6 +181,7 @@ export const config: VendureConfig = {
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),
+      ...(assetUrlPrefix ? { assetUrlPrefix } : {}),
       ...getS3AssetStorageOptions(),
     }),
     DefaultJobQueuePlugin.init({ useDatabaseForBuffer: true }),

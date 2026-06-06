@@ -31,6 +31,7 @@ const nextConfig: NextConfig = {
       { protocol: 'http',  hostname: '52.77.245.218', port: '8080', pathname: '/assets/**' },
       { protocol: 'https', hostname: '*.algolia.net' },
       { protocol: 'https', hostname: '*.algolianet.com' },
+      { protocol: 'https', hostname: '*.cloudfront.net', pathname: '/**' },
       { protocol: 'https', hostname: 'diy-store.mn', pathname: '/**' },
       { protocol: 'https', hostname: 'cdn.diy-store.mn', pathname: '/**' },
     ],

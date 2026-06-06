@@ -3,6 +3,8 @@
   "tasks": {
     "dev": { "persistent": true, "cache": false },
     "build": { "outputs": [".next/**", "dist/**"] },
-    "lint": {}
+    "lint": {},
+    "test": { "outputs": ["coverage/**"] },
+    "test:coverage": { "outputs": ["coverage/**"] }
   }
 }
