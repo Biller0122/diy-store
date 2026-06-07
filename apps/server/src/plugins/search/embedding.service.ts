@@ -295,13 +295,14 @@ export class EmbeddingService {
             COALESCE(pt.description, '') AS description,
             COALESCE(ct.name, '') AS category,
             a.preview AS image,
-            COALESCE(pv.price, 0) AS price,
+            COALESCE(pvp.price, 0) AS price,
             NULL::text AS "supplierId",
             'catalog' AS source,
             1 - (pt.embedding <=> $1::vector) AS score
           FROM product_translation pt
           JOIN product p ON p.id = pt."baseId"
           LEFT JOIN product_variant pv ON pv."productId" = p.id
+          LEFT JOIN product_variant_price pvp ON pvp."variantId" = pv.id
           LEFT JOIN asset a ON a.id = p."featuredAssetId"
           LEFT JOIN collection_product_variants_product_variant cpv ON cpv."productVariantId" = pv.id
           LEFT JOIN collection_translation ct ON ct."baseId" = cpv."collectionId"
