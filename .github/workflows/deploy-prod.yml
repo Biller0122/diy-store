@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -73,6 +74,15 @@ jobs:
           fi
 
           if [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ "${{ github.ref_name }}" == "dev" ]]; then
+              echo "Dev branch push: deploy backend and web for AWS validation."
+              server=true
+              web=true
+              echo "server=$server" >> "$GITHUB_OUTPUT"
+              echo "web=$web" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             base="${{ github.event.before }}"
             if [[ "$base" =~ ^0+$ ]]; then
               base="HEAD~1"
