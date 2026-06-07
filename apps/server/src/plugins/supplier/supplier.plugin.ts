@@ -7,6 +7,7 @@ import { SupplierResolver } from './supplier.resolver';
 import { SupplierService } from './supplier.service';
 import { EmailOtpService } from '../../services/email-otp.service';
 import { DeliveryRequest } from '../delivery/delivery-request.entity';
+import { EmbeddingService } from '../search/embedding.service';
 
 const SUPPLIER_SCHEMA_EXTENSION = gql`
   type SupplierList {
@@ -297,7 +298,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
 
 @VendurePlugin({
   imports: [PluginCommonModule, TypeOrmModule.forFeature([Supplier, SupplierProduct, DeliveryRequest])],
-  providers: [SupplierResolver, SupplierService, EmailOtpService],
+  providers: [SupplierResolver, SupplierService, EmailOtpService, EmbeddingService],
   entities: [Supplier as any, SupplierProduct as any],
   shopApiExtensions: {
     schema: SUPPLIER_SCHEMA_EXTENSION,

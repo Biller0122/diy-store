@@ -1,12 +1,13 @@
+// Shows a web-safe active delivery fallback without native map modules.
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Button } from '../../src/components/Button';
-import { Card } from '../../src/components/Card';
-import { useAuthStore } from '../../src/store/auth';
-import { useDeliveryStore } from '../../src/store/delivery';
-import { colors } from '../../src/theme';
+import { Button } from '../components/Button';
+import { Card } from '../components/Card';
+import { useAuthStore } from '../store/auth';
+import { useDeliveryStore } from '../store/delivery';
+import { colors } from '../theme';
 
 export default function DeliveryWebFallback() {
   const driver = useAuthStore((state) => state.driver);

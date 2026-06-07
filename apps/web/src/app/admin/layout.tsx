@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAdminStore } from '@/lib/admin-store';
 import { Providers } from '@/components/providers';
+import { getCustomerHomeHref } from '@/lib/portal-links';
 
 const NAV = [
   { href: '/admin',             icon: LayoutDashboard, label: 'Хяналтын самбар' },
@@ -45,6 +46,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-[var(--glass-border)]">
+        <Link href={getCustomerHomeHref()} onClick={onClose} className="flex min-w-0 items-center gap-3">
         <div className="w-9 h-9 rounded-xl bg-brand flex items-center justify-center shadow-lg shadow-brand/30 shrink-0">
           <span className="text-lg">🔨</span>
         </div>
@@ -54,6 +56,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           </p>
           <p className="text-[10px] text-foreground-muted">Admin Panel</p>
         </div>
+        </Link>
         <button onClick={onClose} className="ml-auto lg:hidden text-foreground-muted hover:text-foreground">
           <X size={18} />
         </button>

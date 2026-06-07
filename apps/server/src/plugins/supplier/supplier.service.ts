@@ -5,6 +5,7 @@ import { EmailOtpService } from '../../services/email-otp.service';
 import { generateToken } from '../../utils/auth';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
+import { EmbeddingService } from '../search/embedding.service';
 
 export interface RegisterSupplierInput {
   ownerName: string;
@@ -43,6 +44,8 @@ export class SupplierService {
     private readonly supplierProductRepo: Repository<SupplierProduct>,
     @Optional()
     private readonly emailOtpService?: EmailOtpService,
+    @Optional()
+    private readonly embeddingService?: EmbeddingService,
   ) {}
 
   async registerSupplier(input: RegisterSupplierInput): Promise<Supplier> {
@@ -195,6 +198,7 @@ export class SupplierService {
     const saved = await this.supplierProductRepo.save(product);
     supplier.productCount = await this.supplierProductRepo.count({ where: { supplierId: String(input.supplierId) } });
     await this.supplierRepo.save(supplier);
+    void this.embeddingService?.indexSupplierProductById(String(saved.id));
     return saved;
   }
 
@@ -210,7 +214,9 @@ export class SupplierService {
     if (input.originalPrice !== undefined) product.originalPrice = input.originalPrice ? Math.round(input.originalPrice) : null;
     if (input.stock !== undefined) product.stock = Math.max(0, Math.round(input.stock));
     if (input.enabled !== undefined) product.enabled = input.enabled;
-    return this.supplierProductRepo.save(product);
+    const saved = await this.supplierProductRepo.save(product);
+    void this.embeddingService?.indexSupplierProductById(String(saved.id));
+    return saved;
   }
 
   async deleteSupplierProduct(id: string): Promise<boolean> {

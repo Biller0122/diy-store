@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, Edit3, Trash2, Package, ToggleLeft, ToggleRight } from 'lucide-react';
+import { BulkProductGrid } from '@/components/supplier/bulk-products/BulkProductGrid';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { vendureShopFetch } from '@/lib/vendure';
 import {
@@ -312,6 +313,8 @@ export default function SupplierProductsPage() {
           {syncError}
         </div>
       )}
+
+      <BulkProductGrid onSaved={loadProducts} />
 
       {/* Search */}
       <div className="relative">

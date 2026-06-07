@@ -1,257 +1,271 @@
-import { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  FlatList,
-  Pressable,
-} from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
-import { COLLECTIONS_QUERY, PRODUCTS_QUERY, shopFetch } from '@/lib/api';
+import { COLLECTIONS_QUERY, HOMEPAGE_BANNERS_QUERY, SEARCH_QUERY, shopFetch, SUPPLIERS_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
+import {
+  CATEGORY_ICONS,
+  DIY_GUIDES,
+  HomepageBanner,
+  HOW_IT_WORKS,
+  mapSearchProduct,
+  mapSupplierProduct,
+  MarketplaceCategory,
+  MarketplaceProduct,
+  MarketplaceSupplier,
+} from '@/lib/marketplace';
+import { CategoryTile, ProductTile, RemoteImage, SectionHeading, SupplierTile } from '@/components/MarketplaceCards';
 
-const MOCK_SUPPLIERS = [
-  { id: '1', name: 'Зочин Буд', rating: 4.8, time: '20-30 мин', slug: 'zochin-bud' },
-  { id: '2', name: 'Мод Материал', rating: 4.6, time: '30-45 мин', slug: 'mod-material' },
-  { id: '3', name: 'Цахилгаан Хэрэгсэл', rating: 4.9, time: '15-25 мин', slug: 'tsahilgaan' },
-  { id: '4', name: 'Барилгын Материал', rating: 4.5, time: '45-60 мин', slug: 'barilagiin' },
-];
-
-const MOCK_CATEGORIES = [
-  { id: '1', icon: '🔨', label: 'Багаж' },
-  { id: '2', icon: '🪵', label: 'Мод' },
-  { id: '3', icon: '⚡', label: 'Цахилгаан' },
-  { id: '4', icon: '🪟', label: 'Цонх' },
-  { id: '5', icon: '🛁', label: 'Угаалгын' },
-  { id: '6', icon: '🎨', label: 'Будаг' },
-  { id: '7', icon: '🔩', label: 'Боолт' },
-  { id: '8', icon: '🏗️', label: 'Барилга' },
-];
-
-const MOCK_PRODUCTS = [
-  { id: '1', name: 'Perforator Bosch 800W', price: 145000, slug: 'bosch-perforator' },
-  { id: '2', name: 'PVC Хоолой 110мм', price: 28000, slug: 'pvc-holooi' },
-  { id: '3', name: 'LED Гэрлийн хавтан', price: 15500, slug: 'led-panel' },
-  { id: '4', name: 'Цемент М400 50кг', price: 42000, slug: 'cement-m400' },
-];
-
-const SUPPLIERS_QUERY = `
-  query Suppliers {
-    suppliers(take: 8, skip: 0) {
-      items {
-        id
-        businessName
-        slug
-        rating
-      }
-    }
-  }
-`;
-
-type HomeSupplier = { id: string; name: string; rating: number; time: string; slug: string };
-type HomeCategory = { id: string; icon: string; label: string };
-type HomeProduct = { id: string; name: string; price: number; slug: string };
+type HomeData = {
+  suppliers: MarketplaceSupplier[];
+  categories: MarketplaceCategory[];
+  products: MarketplaceProduct[];
+  banners: HomepageBanner[];
+  supplierTotal: number;
+  productTotal: number;
+};
 
 const TRUST_ITEMS = [
-  { icon: '⚡', label: 'Хурдан хүргэлт' },
-  { icon: '✅', label: 'Баталгаат чанар' },
-  { icon: '🔄', label: 'Буцаалт' },
-  { icon: '🏪', label: 'Дэлгүүрт очиж авах' },
-];
+  { icon: 'flash-outline', label: 'Хурдан хүргэлт' },
+  { icon: 'shield-checkmark-outline', label: 'Баталгаат чанар' },
+  { icon: 'swap-horizontal-outline', label: 'Буцаалт' },
+  { icon: 'storefront-outline', label: 'Дэлгүүрээс авах' },
+] as const;
 
-function formatPrice(price: number) {
-  return '₮' + price.toLocaleString('mn-MN');
+function mapSupplier(item: any): MarketplaceSupplier {
+  return {
+    id: item.id,
+    name: item.businessName,
+    slug: item.slug,
+    rating: item.rating || 5,
+    reviewCount: item.reviewCount || 0,
+    district: item.district || 'Улаанбаатар',
+    productCount: item.productCount || 0,
+    isOpen: item.isOpen !== false,
+    deliveryTime: item.deliveryTime || '30-45 мин',
+  };
 }
 
-function StarRating({ rating }: { rating: number }) {
+function FeaturedBanner({ banner }: { banner?: HomepageBanner }) {
+  if (!banner) return null;
   return (
-    <View style={styles.starRow}>
-      <Ionicons name="star" size={11} color={C.warning} />
-      <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
-    </View>
+    <TouchableOpacity style={styles.bannerCard} activeOpacity={0.9}>
+      <View style={[styles.bannerGlow, { backgroundColor: banner.accentColor || C.primary }]} />
+      <View style={styles.bannerCopy}>
+        <View style={styles.eyebrowPill}>
+          <Ionicons name="sparkles" size={12} color="#fff" />
+          <Text style={styles.eyebrowText}>{banner.eyebrow || 'Онцлох санал'}</Text>
+        </View>
+        <Text style={styles.bannerTitle} numberOfLines={2}>{banner.title}</Text>
+        {banner.subtitle ? <Text style={styles.bannerSubtitle} numberOfLines={2}>{banner.subtitle}</Text> : null}
+      </View>
+      <RemoteImage uri={banner.imageUrl} icon="construct-outline" style={styles.bannerImage} />
+    </TouchableOpacity>
   );
 }
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [suppliers, setSuppliers] = useState<HomeSupplier[]>([]);
-  const [categories, setCategories] = useState<HomeCategory[]>([]);
-  const [products, setProducts] = useState<HomeProduct[]>([]);
+  const [data, setData] = useState<HomeData>({
+    suppliers: [],
+    categories: [],
+    products: [],
+    banners: [],
+    supplierTotal: 0,
+    productTotal: 0,
+  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
-    async function loadHomeData() {
+    async function load() {
       try {
-        const [supplierData, collectionData, productData] = await Promise.all([
-          shopFetch<{ suppliers: { items: Array<{ id: string; businessName: string; slug: string; rating: number }> } }>(
-            SUPPLIERS_QUERY,
-          ),
-          shopFetch<{ collections: { items: Array<{ id: string; name: string; slug: string }> } }>(
-            COLLECTIONS_QUERY,
-            { options: { take: 8 } },
-          ),
-          shopFetch<{
-            products: {
-              items: Array<{
-                id: string;
-                name: string;
-                slug: string;
-                variants: Array<{ priceWithTax: number }>;
-              }>;
-            };
-          }>(PRODUCTS_QUERY, { options: { take: 8 } }),
+        const [supplierData, collectionData, productData, bannerData, supplierProductData] = await Promise.all([
+          shopFetch<{ suppliers: { items: any[]; total: number } }>(SUPPLIERS_QUERY, { take: 12, skip: 0 }),
+          shopFetch<{ collections: { items: any[] } }>(COLLECTIONS_QUERY, {
+            options: { take: 12, topLevelOnly: true, sort: { position: 'ASC' } },
+          }),
+          shopFetch<{ search: { items: any[]; totalItems: number } }>(SEARCH_QUERY, {
+            input: { take: 12, sort: { name: 'ASC' } },
+          }),
+          shopFetch<{ homepageBanners: HomepageBanner[] }>(HOMEPAGE_BANNERS_QUERY),
+          shopFetch<{ supplierProducts: { items: any[]; total: number } }>(SUPPLIER_PRODUCTS_QUERY),
         ]);
 
         if (!mounted) return;
-        setSuppliers(
-          supplierData.suppliers.items.map((supplier) => ({
-            id: supplier.id,
-            name: supplier.businessName,
-            slug: supplier.slug,
-            rating: supplier.rating || 5,
-            time: '20-40 мин',
-          })),
-        );
-        setCategories(
-          collectionData.collections.items.map((collection, index) => ({
-            id: collection.id,
-            icon: MOCK_CATEGORIES[index % MOCK_CATEGORIES.length]?.icon ?? '🛠️',
-            label: collection.name,
-          })),
-        );
-        setProducts(
-          productData.products.items.map((product) => ({
-            id: product.id,
-            name: product.name,
-            slug: product.slug,
-            price: product.variants[0]?.priceWithTax ?? 0,
-          })),
-        );
+        setData({
+          suppliers: (supplierData.suppliers?.items ?? []).map(mapSupplier),
+          categories: (collectionData.collections?.items ?? [])
+            .filter((item) => item.slug !== '__root_collection__')
+            .map((item, index) => ({
+              id: item.id,
+              name: item.name,
+              slug: item.slug,
+              icon: item.customFields?.icon || CATEGORY_ICONS[index % CATEGORY_ICONS.length],
+              productCount: item.productVariants?.totalItems ?? 0,
+            })),
+          products: [
+            ...(supplierProductData.supplierProducts?.items ?? []).map(mapSupplierProduct),
+            ...(productData.search?.items ?? []).map(mapSearchProduct),
+          ],
+          banners: bannerData.homepageBanners ?? [],
+          supplierTotal: supplierData.suppliers?.total ?? 0,
+          productTotal: (supplierProductData.supplierProducts?.total ?? 0) + (productData.search?.totalItems ?? 0),
+        });
       } catch {
-        if (!mounted) return;
-        setSuppliers([]);
-        setCategories([]);
-        setProducts([]);
+        if (mounted) setData((prev) => prev);
+      } finally {
+        if (mounted) setLoading(false);
       }
     }
 
-    loadHomeData();
+    load();
     return () => {
       mounted = false;
     };
   }, []);
 
+  const saleProducts = useMemo(
+    () => data.products.slice(4, 8).map((product) => ({ ...product, badge: 'ХЯМДРАЛ' as const })),
+    [data.products],
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.logoRow}>
             <View style={styles.logoDot} />
             <Text style={styles.logoText}>DIY Store</Text>
           </View>
-          <TouchableOpacity style={styles.bellBtn}>
-            <Ionicons name="notifications-outline" size={22} color={C.primary} />
-            <View style={styles.bellDot} />
+          <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/(tabs)/cart' as never)}>
+            <Ionicons name="cart-outline" size={22} color={C.primary} />
           </TouchableOpacity>
         </View>
 
-        {/* Search Bar */}
-        <Pressable style={styles.searchBar} onPress={() => router.push('/(tabs)/search')}>
-          <Ionicons name="search-outline" size={18} color={C.textTertiary} />
-          <Text style={styles.searchPlaceholder}>Хайх...</Text>
+        <Pressable style={styles.searchBar} onPress={() => router.push('/(tabs)/search' as never)}>
+          <Ionicons name="search-outline" size={19} color={C.textTertiary} />
+          <Text style={styles.searchText}>Бүтээгдэхүүн, ангилал, дэлгүүр хайх</Text>
+          <Ionicons name="options-outline" size={18} color={C.primary} />
         </Pressable>
 
-        {/* Featured Suppliers */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Дэлгүүрүүд</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAll}>Бүгдийг харах</Text>
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={suppliers}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.supplierList}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.supplierCard}
-              onPress={() => router.push(`/supplier/${item.slug}` as never)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.supplierTopBorder} />
-              <View style={styles.supplierAvatar}>
-                <Text style={styles.supplierAvatarText}>{item.name.charAt(0)}</Text>
-              </View>
-              <Text style={styles.supplierName} numberOfLines={2}>{item.name}</Text>
-              <StarRating rating={item.rating} />
-              <View style={styles.deliveryRow}>
-                <Ionicons name="time-outline" size={11} color={C.textTertiary} />
-                <Text style={styles.deliveryText}>{item.time}</Text>
-              </View>
+        <View style={styles.hero}>
+          <View style={styles.heroAccent} />
+          <Text style={styles.heroKicker}>Backend нийлүүлэгч нэг платформд</Text>
+          <Text style={styles.heroTitle}>Хэрэгтэй бараагаа ойр дэлгүүрээс захиал</Text>
+          <Text style={styles.heroText}>Нэг сагс, олон нийлүүлэгч, шууд хүргэлт. Захиалга бүрийн явцыг апп дээрээс хянана.</Text>
+          <View style={styles.heroActions}>
+            <TouchableOpacity style={styles.primaryAction} onPress={() => router.push('/(tabs)/search' as never)}>
+              <Ionicons name="storefront-outline" size={17} color="#fff" />
+              <Text style={styles.primaryActionText}>Бараа үзэх</Text>
             </TouchableOpacity>
-          )}
-        />
+            <TouchableOpacity style={styles.secondaryAction} onPress={() => router.push('/(tabs)/orders' as never)}>
+              <Ionicons name="navigate-outline" size={17} color={C.text} />
+              <Text style={styles.secondaryActionText}>Захиалга</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{data.supplierTotal.toLocaleString('mn-MN')}</Text>
+              <Text style={styles.statLabel}>Нийлүүлэгч</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{data.productTotal.toLocaleString('mn-MN')}</Text>
+              <Text style={styles.statLabel}>Бүтээгдэхүүн</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>30 мин</Text>
+              <Text style={styles.statLabel}>Дундаж хүргэлт</Text>
+            </View>
+          </View>
+        </View>
 
-        {/* Categories */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Ангилал</Text>
-        </View>
-        <View style={styles.categoryGrid}>
-          {categories.map((cat) => (
-            <TouchableOpacity key={cat.id} style={styles.categoryCard} activeOpacity={0.75}>
-              <Text style={styles.categoryIcon}>{cat.icon}</Text>
-              <Text style={styles.categoryLabel}>{cat.label}</Text>
-            </TouchableOpacity>
+        <FeaturedBanner banner={data.banners[0]} />
+
+        <View style={styles.trustStrip}>
+          {TRUST_ITEMS.map((item) => (
+            <View key={item.label} style={styles.trustItem}>
+              <Ionicons name={item.icon} size={19} color={C.primary} />
+              <Text style={styles.trustText}>{item.label}</Text>
+            </View>
           ))}
         </View>
 
-        {/* New Products */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Шинэ бүтээгдэхүүн</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAll}>Бүгдийг харах</Text>
-          </TouchableOpacity>
-        </View>
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color={C.primary} />
+            <Text style={styles.loadingText}>Marketplace өгөгдөл ачаалж байна...</Text>
+          </View>
+        ) : null}
+
+        <SectionHeading title="Онцлох нийлүүлэгчид" subtitle="Найдвартай дэлгүүрүүдээс шууд захиалаарай" action="Бүгд" onPress={() => router.push('/(tabs)/search' as never)} />
         <FlatList
-          data={products}
-          keyExtractor={(item) => item.id}
           horizontal
+          data={data.suppliers}
+          keyExtractor={(item) => item.id}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.productList}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.productCard}
-              onPress={() => router.push(`/product/${item.slug}` as never)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.productImagePlaceholder}>
-                <Ionicons name="cube-outline" size={36} color={C.textTertiary} />
-              </View>
-              <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-              <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
-            </TouchableOpacity>
-          )}
+          contentContainerStyle={styles.horizontalList}
+          renderItem={({ item }) => <SupplierTile supplier={item} onPress={() => router.push(`/supplier/${item.slug}` as never)} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>Backend дээр идэвхтэй нийлүүлэгч алга байна.</Text>}
         />
 
-        {/* Trust Strip */}
-        <View style={styles.trustStrip}>
-          {TRUST_ITEMS.map((t, i) => (
-            <View key={i} style={styles.trustItem}>
-              <Text style={styles.trustIcon}>{t.icon}</Text>
-              <Text style={styles.trustLabel}>{t.label}</Text>
+        <SectionHeading title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" action="Хайх" onPress={() => router.push('/(tabs)/search' as never)} />
+        <View style={styles.categoryGrid}>
+          {data.categories.slice(0, 9).map((category) => (
+            <CategoryTile key={category.id} category={category} onPress={() => router.push(`/category/${category.slug}` as never)} />
+          ))}
+        </View>
+
+        <View style={styles.howSection}>
+          <SectionHeading title="Хэрхэн ажилладаг вэ?" subtitle="4 алхамаар бараа тань хүргэгдэнэ" />
+          <View style={styles.stepsGrid}>
+            {HOW_IT_WORKS.map((step, index) => (
+              <View key={step.title} style={styles.stepCard}>
+                <Text style={styles.stepNumber}>{index + 1}</Text>
+                <Text style={styles.stepIcon}>{step.icon}</Text>
+                <Text style={styles.stepTitle}>{step.title}</Text>
+                <Text style={styles.stepDesc}>{step.desc}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <SectionHeading title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" action="Хайх" onPress={() => router.push('/(tabs)/search' as never)} />
+        <FlatList
+          horizontal
+          data={data.products.slice(0, 8)}
+          keyExtractor={(item) => item.variantId}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalList}
+          renderItem={({ item }) => <ProductTile product={item} onPress={() => router.push(`/product/${item.slug}` as never)} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>Backend дээр бараа бүртгэгдээгүй байна.</Text>}
+        />
+
+        {saleProducts.length > 0 ? (
+          <>
+            <SectionHeading title="Хямдралтай бараа" subtitle="Онцлох санал, хурдан авах боломжтой" />
+            <View style={styles.productGrid}>
+              {saleProducts.map((product) => (
+                <ProductTile key={product.variantId} product={product} wide onPress={() => router.push(`/product/${product.slug}` as never)} />
+              ))}
             </View>
+          </>
+        ) : null}
+
+        <SectionHeading title="DIY Заавар" subtitle="Мэргэжилтнээс суралц, зөв бараагаа сонго" action="Бүгд" onPress={() => router.push('/how-to' as never)} />
+        <View style={styles.guideGrid}>
+          {DIY_GUIDES.map((guide) => (
+            <TouchableOpacity key={guide.title} style={styles.guideCard} onPress={() => router.push(`/(tabs)/search?query=${encodeURIComponent(guide.query)}` as never)}>
+              <Text style={styles.guideEmoji}>{guide.emoji}</Text>
+              <Text style={styles.guideTitle} numberOfLines={2}>{guide.title}</Text>
+              <View style={styles.guideMeta}>
+                <Ionicons name="time-outline" size={12} color={C.textTertiary} />
+                <Text style={styles.guideMetaText}>{guide.readTime} уншлага</Text>
+              </View>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -264,155 +278,172 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16 },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
+  content: { paddingHorizontal: 16, paddingBottom: 18 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, paddingBottom: 14 },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: C.primary,
+  logoDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
+  logoText: { color: C.text, fontSize: 24, fontWeight: '900' },
+  iconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  logoText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: C.text,
-    letterSpacing: -0.5,
-  },
-  bellBtn: { position: 'relative', padding: 4 },
-  bellDot: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: C.primary,
-  },
-
   searchBar: {
+    height: 50,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 14,
+    backgroundColor: C.surface,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: C.border,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 24,
+    marginBottom: 14,
   },
-  searchPlaceholder: { color: C.textTertiary, fontSize: 15 },
-
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: { color: C.text, fontSize: 17, fontWeight: '700' },
-  seeAll: { color: C.primary, fontSize: 13, fontWeight: '600' },
-
-  supplierList: { paddingRight: 16, gap: 12, marginBottom: 24 },
-  supplierCard: {
-    width: 160,
-    height: 140,
+  searchText: { color: C.textTertiary, fontSize: 14, flex: 1 },
+  hero: {
+    overflow: 'hidden',
+    borderRadius: 22,
     backgroundColor: C.card,
-    borderRadius: 16,
     borderWidth: 1,
     borderColor: C.border,
-    overflow: 'hidden',
-    padding: 12,
-    paddingTop: 14,
+    padding: 18,
+    marginBottom: 14,
   },
-  supplierTopBorder: {
+  heroAccent: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    backgroundColor: C.primary,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  supplierAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    right: -44,
+    top: -36,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     backgroundColor: C.primaryGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
   },
-  supplierAvatarText: { color: C.primary, fontWeight: '700', fontSize: 16 },
-  supplierName: { color: C.text, fontSize: 13, fontWeight: '600', marginBottom: 4, lineHeight: 17 },
-  starRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
-  ratingText: { color: C.warning, fontSize: 11, fontWeight: '600' },
-  deliveryRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  deliveryText: { color: C.textTertiary, fontSize: 10 },
-
-  categoryGrid: {
+  heroKicker: { color: C.primary, fontSize: 12, fontWeight: '800', marginBottom: 8 },
+  heroTitle: { color: C.text, fontSize: 28, fontWeight: '900', lineHeight: 33, maxWidth: 305 },
+  heroText: { color: C.textSub, fontSize: 13, lineHeight: 20, marginTop: 10, maxWidth: 310 },
+  heroActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  primaryAction: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 24,
-  },
-  categoryCard: {
-    width: '22%',
-    aspectRatio: 1,
-    backgroundColor: C.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  categoryIcon: { fontSize: 26 },
-  categoryLabel: { color: C.textSub, fontSize: 9, fontWeight: '500', textAlign: 'center' },
-
-  productList: { paddingRight: 16, gap: 12, marginBottom: 24 },
-  productCard: {
-    width: 148,
-    backgroundColor: C.card,
+    gap: 8,
+    backgroundColor: C.primary,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
-    padding: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
   },
-  productImagePlaceholder: {
-    width: '100%',
-    height: 100,
+  primaryActionText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  secondaryAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: C.surface,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
   },
-  productName: { color: C.text, fontSize: 12, fontWeight: '600', marginBottom: 6, lineHeight: 16 },
-  productPrice: { color: C.primary, fontSize: 14, fontWeight: '700', fontFamily: 'monospace' },
-
+  secondaryActionText: { color: C.text, fontSize: 13, fontWeight: '800' },
+  statsRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  statBox: { flex: 1, backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 10 },
+  statValue: { color: C.primary, fontSize: 16, fontWeight: '900', fontFamily: 'monospace' },
+  statLabel: { color: C.textTertiary, fontSize: 10, marginTop: 2 },
+  bannerCard: {
+    minHeight: 170,
+    overflow: 'hidden',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+    marginBottom: 14,
+    flexDirection: 'row',
+  },
+  bannerGlow: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.16 },
+  bannerCopy: { flex: 1.05, padding: 16, justifyContent: 'center' },
+  eyebrowPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginBottom: 10,
+  },
+  eyebrowText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  bannerTitle: { color: C.text, fontSize: 20, fontWeight: '900', lineHeight: 25 },
+  bannerSubtitle: { color: C.textSub, fontSize: 12, lineHeight: 17, marginTop: 6 },
+  bannerImage: { width: 126, minHeight: 170 },
   trustStrip: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     backgroundColor: C.card,
-    borderRadius: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 10,
+    marginBottom: 20,
+  },
+  trustItem: { flex: 1, alignItems: 'center', gap: 5 },
+  trustText: { color: C.textSub, fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  loadingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    marginBottom: 18,
+  },
+  loadingText: { color: C.textSub, fontSize: 12 },
+  horizontalList: { gap: 12, paddingRight: 16, paddingBottom: 22 },
+  emptyText: { color: C.textSub, fontSize: 13, padding: 16 },
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
+  howSection: {
+    backgroundColor: C.surface,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: C.border,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: 24,
   },
-  trustItem: { alignItems: 'center', flex: 1 },
-  trustIcon: { fontSize: 20, marginBottom: 4 },
-  trustLabel: { color: C.textTertiary, fontSize: 9, textAlign: 'center', fontWeight: '500' },
-
-  bottomSpacer: { height: 24 },
+  stepsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  stepCard: { width: '48%', backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 12 },
+  stepNumber: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    color: C.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: 'monospace',
+  },
+  stepIcon: { fontSize: 25, marginBottom: 8 },
+  stepTitle: { color: C.text, fontSize: 13, fontWeight: '800' },
+  stepDesc: { color: C.textSub, fontSize: 11, lineHeight: 16, marginTop: 4 },
+  productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
+  guideGrid: { gap: 10 },
+  guideCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+  },
+  guideEmoji: { fontSize: 31, width: 42, textAlign: 'center' },
+  guideTitle: { color: C.text, flex: 1, fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  guideMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  guideMetaText: { color: C.textTertiary, fontSize: 10 },
+  bottomSpacer: { height: 30 },
 });

@@ -11,7 +11,7 @@ const CATEGORY_SLUGS = [
 
 async function getProductSlugs(): Promise<string[]> {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api'}`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? 'http://localhost:13001/shop-api'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

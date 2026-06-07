@@ -3,6 +3,9 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
+import { useEffect } from 'react';
+import { setShopSessionToken } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,6 +17,12 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  const token = useAppStore((state) => state.token);
+
+  useEffect(() => {
+    setShopSessionToken(token);
+  }, [token]);
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
@@ -22,6 +31,8 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="product/[slug]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="supplier/[slug]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="category/[slug]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="how-to" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="cart" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="checkout" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="track/[id]" options={{ animation: 'slide_from_bottom' }} />

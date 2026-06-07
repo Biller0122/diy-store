@@ -24,6 +24,7 @@ import { RealtimePlugin } from './plugins/realtime.plugin';
 import { AdminStatsPlugin } from './plugins/admin-stats/admin-stats.plugin';
 import { DeviceTokenPlugin } from './plugins/device-token/device-token.plugin';
 import { CmsPlugin } from './plugins/cms/cms.plugin';
+import { SearchPlugin } from './plugins/search/search.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
 
@@ -33,6 +34,16 @@ const vendureDbUsername = process.env.DB_USERNAME || process.env.VENDURE_DB_USER
 const vendureDbPassword = process.env.DB_PASSWORD || process.env.VENDURE_DB_PASSWORD || 'vendure';
 const corsOrigins = [
   process.env.STOREFRONT_URL || 'http://localhost:3000',
+  'http://localhost:18080',
+  'http://localhost:18081',
+  'http://localhost:18082',
+  'http://localhost:18083',
+  'http://localhost:19006',
+  'http://127.0.0.1:18080',
+  'http://127.0.0.1:18081',
+  'http://127.0.0.1:18082',
+  'http://127.0.0.1:18083',
+  'http://127.0.0.1:19006',
   'http://localhost:3002',
   ...(process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
@@ -178,6 +189,7 @@ export const config: VendureConfig = {
     AdminStatsPlugin,
     DeviceTokenPlugin,
     CmsPlugin,
+    SearchPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),

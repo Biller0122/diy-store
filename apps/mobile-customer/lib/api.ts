@@ -1,4 +1,15 @@
-const API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL || 'https://shop.example.com/shop-api';
+import { API_URL as BASE_API_URL } from '@/app/config';
+
+const API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL || `${BASE_API_URL.replace(/\/$/, '')}/shop-api`;
+let sessionToken: string | null = null;
+
+export function setShopSessionToken(token: string | null) {
+  sessionToken = token;
+}
+
+export function getShopSessionToken() {
+  return sessionToken;
+}
 
 export async function shopFetch<T>(
   query: string,
@@ -8,18 +19,25 @@ export async function shopFetch<T>(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  const authToken = token ?? sessionToken;
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
   }
 
   const response = await fetch(API_URL, {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify({ query, variables }),
   });
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const nextToken = response.headers.get('vendure-auth-token');
+  if (nextToken) {
+    sessionToken = nextToken;
   }
 
   const json = await response.json();
@@ -109,6 +127,50 @@ export const PRODUCTS_QUERY = `
   }
 `;
 
+export const SEARCH_QUERY = `
+  query Search($input: SearchInput!) {
+    search(input: $input) {
+      totalItems
+      items {
+        productId
+        productVariantId
+        productName
+        slug
+        productAsset {
+          preview
+        }
+        priceWithTax {
+          ... on SinglePrice {
+            value
+          }
+        }
+        inStock
+      }
+    }
+  }
+`;
+
+export const SEMANTIC_SEARCH_QUERY = `
+  query SemanticSearch($query: String!, $take: Int) {
+    semanticSearch(query: $query, take: $take) {
+      total
+      items {
+        id
+        variantId
+        name
+        slug
+        description
+        category
+        image
+        price
+        supplierId
+        source
+        score
+      }
+    }
+  }
+`;
+
 export const PRODUCT_QUERY = `
   query Product($slug: String!) {
     product(slug: $slug) {
@@ -145,10 +207,84 @@ export const COLLECTIONS_QUERY = `
         id
         name
         slug
+        description
+        customFields {
+          icon
+        }
         featuredAsset {
           preview
         }
+        productVariants(options: { take: 1 }) {
+          totalItems
+        }
       }
+    }
+  }
+`;
+
+export const HOMEPAGE_BANNERS_QUERY = `
+  query HomepageBanners {
+    homepageBanners {
+      id
+      title
+      subtitle
+      eyebrow
+      ctaLabel
+      ctaHref
+      imageUrl
+      accentColor
+    }
+  }
+`;
+
+export const SUPPLIERS_QUERY = `
+  query Suppliers($take: Int, $skip: Int) {
+    suppliers(take: $take, skip: $skip) {
+      items {
+        id
+        businessName
+        slug
+        rating
+      }
+      total
+    }
+  }
+`;
+
+export const SUPPLIER_PRODUCTS_QUERY = `
+  query SupplierProducts($supplierId: String) {
+    supplierProducts(supplierId: $supplierId) {
+      total
+      items {
+        id
+        supplierId
+        name
+        slug
+        description
+        category
+        image
+        price
+        originalPrice
+        stock
+        enabled
+      }
+    }
+  }
+`;
+
+export const SUPPLIER_BY_SLUG_QUERY = `
+  query SupplierBySlug($slug: String!) {
+    supplierBySlug(slug: $slug) {
+      id
+      businessName
+      slug
+      description
+      district
+      rating
+      reviewCount
+      productCount
+      pickupEnabled
+      deliveryEnabled
     }
   }
 `;

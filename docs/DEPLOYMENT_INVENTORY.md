@@ -152,6 +152,18 @@ Known parameters:
 | `/diy-store/prod/DB_PASSWORD` | `SecureString` |
 | `/diy-store/prod/DB_USERNAME` | `SecureString` |
 | `/diy-store/prod/REALTIME_WEBHOOK_SECRET` | `SecureString` |
+| `/diy-store/prod/VOYAGE_API_KEY` | `SecureString` |
+| `/diy-store/prod/ANTHROPIC_API_KEY` | `SecureString` |
+
+Semantic search also expects these non-secret environment values in the backend
+task definition:
+
+```text
+EMBEDDING_MODEL=voyage-3.5
+EMBEDDING_DIMENSIONS=1024
+CLAUDE_QUERY_MODEL=claude-haiku-4-5-20251001
+SEMANTIC_SEARCH_MIN_SCORE=0.45
+```
 
 Do not copy secret values into repository files.
 

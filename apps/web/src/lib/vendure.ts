@@ -6,7 +6,7 @@ const ADMIN_AUTH_TOKEN_KEY = 'diy-vendure-admin-auth-token';
 function getShopApi() {
   if (PUBLIC_SHOP_API.startsWith('http')) return PUBLIC_SHOP_API;
   if (typeof window === 'undefined') {
-    return process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
+    return process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:13001/shop-api';
   }
   return PUBLIC_SHOP_API;
 }
@@ -14,7 +14,7 @@ function getShopApi() {
 function getAdminApi() {
   if (PUBLIC_ADMIN_API.startsWith('http')) return PUBLIC_ADMIN_API;
   if (typeof window === 'undefined') {
-    return process.env.INTERNAL_VENDURE_ADMIN_API ?? 'http://localhost:3001/admin-api';
+    return process.env.INTERNAL_VENDURE_ADMIN_API ?? 'http://localhost:13001/admin-api';
   }
   return PUBLIC_ADMIN_API;
 }

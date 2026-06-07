@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-data-grid/lib/styles.css";
 
 /* Dark mode via class strategy (next-themes) */
 @custom-variant dark (&:where(.dark, .dark *));

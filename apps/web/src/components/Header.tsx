@@ -9,6 +9,7 @@ import { useUIStore } from '@/lib/ui-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { MegaMenu } from './ui/MegaMenu';
 import { cn } from '@/lib/utils';
+import { getCustomerHomeHref, getPortalHref } from '@/lib/portal-links';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -17,6 +18,8 @@ export function Header() {
   const { openSearch, openCart } = useUIStore();
   const { customer } = useAuthStore();
   const cartCount = items.reduce((a, i) => a + i.qty, 0);
+  const customerHomeHref = getCustomerHomeHref();
+  const driverLoginHref = getPortalHref('driver', '/driver/login');
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 20);
@@ -36,7 +39,7 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center gap-4 h-16">
           {/* Logo */}
-          <Link href="/" data-testid="logo" className="flex items-center gap-2 shrink-0 group">
+          <Link href={customerHomeHref} data-testid="logo" className="flex items-center gap-2 shrink-0 group">
             <m.div
               whileHover={{ rotate: [0, -12, 12, 0] }}
               transition={{ duration: 0.4 }}
@@ -57,7 +60,7 @@ export function Header() {
             {[
               { href: '/how-to', label: 'DIY Зөвлөгөө' },
               { href: '/trade', label: 'Trade данс' },
-              ...(!customer ? [{ href: '/driver/login', label: 'Жолооч' }] : []),
+              ...(!customer ? [{ href: driverLoginHref, label: 'Жолооч' }] : []),
             ].map(({ href, label }) => (
               <Link
                 key={href}
@@ -98,7 +101,7 @@ export function Header() {
             {/* Driver — hidden for logged-in customers */}
             {!customer && (
               <Link
-                href="/driver/login"
+                href={driverLoginHref}
                 className="hidden lg:flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white transition-colors"
               >
                 <Truck size={16} />

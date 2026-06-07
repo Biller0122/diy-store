@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { shopFetch, LOGIN_MUTATION, LOGOUT_MUTATION, REGISTER_MUTATION, ACTIVE_CUSTOMER_QUERY } from './api';
+import {
+  getShopSessionToken,
+  setShopSessionToken,
+  shopFetch,
+  LOGIN_MUTATION,
+  LOGOUT_MUTATION,
+  REGISTER_MUTATION,
+  ACTIVE_CUSTOMER_QUERY,
+} from './api';
 
 interface Customer {
   id: string;
@@ -55,11 +63,15 @@ export const useAppStore = create<AppState>()(
           }
 
           if (result.id) {
+            const token = getShopSessionToken();
             const customerData = await shopFetch<{ activeCustomer: Customer | null }>(
-              ACTIVE_CUSTOMER_QUERY
+              ACTIVE_CUSTOMER_QUERY,
+              undefined,
+              token
             );
             set({
               customer: customerData.activeCustomer,
+              token,
               isLoading: false,
             });
             return true;
@@ -105,6 +117,7 @@ export const useAppStore = create<AppState>()(
 
       logout: () => {
         shopFetch(LOGOUT_MUTATION).catch(() => {});
+        setShopSessionToken(null);
         set({ customer: null, token: null, cartCount: 0 });
       },
 

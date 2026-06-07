@@ -15,10 +15,10 @@ function localVendureUrl(envValue: string | undefined, fallback: string) {
   return envValue || fallback;
 }
 
-const shopApiUrl = localVendureUrl(process.env.INTERNAL_VENDURE_SHOP_API, 'http://localhost:3001/shop-api');
-const adminApiUrl = localVendureUrl(process.env.INTERNAL_VENDURE_ADMIN_API, 'http://localhost:3001/admin-api');
-const assetsUrl = localVendureUrl(process.env.INTERNAL_VENDURE_ASSETS, 'http://localhost:3001/assets/:path*');
-const mailboxUrl = localVendureUrl(process.env.INTERNAL_VENDURE_MAILBOX, 'http://localhost:3001/mailbox/:path*');
+const shopApiUrl = localVendureUrl(process.env.INTERNAL_VENDURE_SHOP_API, 'http://localhost:13001/shop-api');
+const adminApiUrl = localVendureUrl(process.env.INTERNAL_VENDURE_ADMIN_API, 'http://localhost:13001/admin-api');
+const assetsUrl = localVendureUrl(process.env.INTERNAL_VENDURE_ASSETS, 'http://localhost:13001/assets/:path*');
+const mailboxUrl = localVendureUrl(process.env.INTERNAL_VENDURE_MAILBOX, 'http://localhost:13001/mailbox/:path*');
 
 const nextConfig: NextConfig = {
   compress: true,
@@ -27,7 +27,8 @@ const nextConfig: NextConfig = {
 
   images: {
     remotePatterns: [
-      { protocol: 'http',  hostname: 'localhost', port: '3001', pathname: '/assets/**' },
+      { protocol: 'http',  hostname: 'localhost', port: '13001', pathname: '/assets/**' },
+      { protocol: 'http',  hostname: '127.0.0.1', port: '13001', pathname: '/assets/**' },
       { protocol: 'http',  hostname: '52.77.245.218', port: '8080', pathname: '/assets/**' },
       { protocol: 'https', hostname: '*.algolia.net' },
       { protocol: 'https', hostname: '*.algolianet.com' },

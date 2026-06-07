@@ -6,89 +6,61 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
-import { shopFetch, PRODUCTS_QUERY } from '@/lib/api';
+import { shopFetch, SUPPLIER_BY_SLUG_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
+import { mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
+import { ProductTile } from '@/components/MarketplaceCards';
 
-interface Product {
+type SupplierDetail = {
   id: string;
-  name: string;
+  businessName: string;
   slug: string;
-  featuredAsset: { preview: string } | null;
-  variants: { id: string; priceWithTax: number; currencyCode: string; stockLevel: string }[];
-}
-
-const MOCK_SUPPLIERS: Record<string, { name: string; description: string; rating: number; deliveryTime: string; minOrder: number; category: string }> = {
-  'zochin-bud': {
-    name: 'Зочин Буд',
-    description: 'Барилгын материал, засал чимэглэлийн бүтээгдэхүүн. 2010 оноос эхлэн үйл ажиллагаа явуулж байна.',
-    rating: 4.8,
-    deliveryTime: '20-30 мин',
-    minOrder: 10000,
-    category: 'Барилгын материал',
-  },
-  'mod-material': {
-    name: 'Мод Материал',
-    description: 'Мод, хавтан болон цагаан тугалга зэрэг барилгын материалын томоохон постачлагч.',
-    rating: 4.6,
-    deliveryTime: '30-45 мин',
-    minOrder: 20000,
-    category: 'Мод материал',
-  },
-  'tsahilgaan': {
-    name: 'Цахилгаан Хэрэгсэл',
-    description: 'Цахилгааны хэрэгсэл, кабель, гэрлийн тоноглол, LED бүтээгдэхүүн.',
-    rating: 4.9,
-    deliveryTime: '15-25 мин',
-    minOrder: 5000,
-    category: 'Цахилгааны хэрэгсэл',
-  },
-  'barilagiin': {
-    name: 'Барилгын Материал',
-    description: 'Цемент, тоосго, элс, дам нурууны материал болон барилгын бүх төрлийн хэрэглэгдэхүүн.',
-    rating: 4.5,
-    deliveryTime: '45-60 мин',
-    minOrder: 50000,
-    category: 'Барилгын материал',
-  },
+  description?: string | null;
+  district?: string | null;
+  rating: number;
+  reviewCount: number;
+  productCount: number;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
 };
-
-function formatPrice(price: number) {
-  return '₮' + Math.round(price / 100).toLocaleString('mn-MN');
-}
-
-function ProductCard({ product, onPress }: { product: Product; onPress: () => void }) {
-  const variant = product.variants[0];
-  const price = variant?.priceWithTax ?? 0;
-  return (
-    <TouchableOpacity style={styles.productCard} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.productImage}>
-        <Ionicons name="cube-outline" size={32} color={C.textTertiary} />
-      </View>
-      <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
-      <Text style={styles.productPrice}>{formatPrice(price)}</Text>
-    </TouchableOpacity>
-  );
-}
 
 export default function SupplierScreen() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const [products, setProducts] = useState<Product[]>([]);
+  const [supplier, setSupplier] = useState<SupplierDetail | null>(null);
+  const [products, setProducts] = useState<MarketplaceProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const supplier = slug ? MOCK_SUPPLIERS[slug] : null;
-
   useEffect(() => {
-    shopFetch<{ products: { items: Product[] } }>(PRODUCTS_QUERY, { options: { take: 20 } })
-      .then((d) => setProducts(d.products?.items ?? []))
-      .catch(() => {})
+    if (!slug) return;
+    setLoading(true);
+    shopFetch<{ supplierBySlug: SupplierDetail | null }>(SUPPLIER_BY_SLUG_QUERY, { slug })
+      .then(async (data) => {
+        const nextSupplier = data.supplierBySlug;
+        setSupplier(nextSupplier);
+        if (!nextSupplier) {
+          setProducts([]);
+          return;
+        }
+        const productData = await shopFetch<{ supplierProducts: { items: any[] } }>(
+          SUPPLIER_PRODUCTS_QUERY,
+          { supplierId: nextSupplier.id },
+        );
+        setProducts((productData.supplierProducts?.items ?? []).map((item, index) => mapSupplierProduct({
+          ...item,
+          supplierName: nextSupplier.businessName,
+        }, index)));
+      })
+      .catch(() => {
+        setSupplier(null);
+        setProducts([]);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [slug]);
 
   if (!supplier) {
     return (
@@ -116,7 +88,7 @@ export default function SupplierScreen() {
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={22} color={C.text} />
           </TouchableOpacity>
-          <Text style={styles.navTitle} numberOfLines={1}>{supplier.name}</Text>
+          <Text style={styles.navTitle} numberOfLines={1}>{supplier.businessName}</Text>
           <View style={{ width: 38 }} />
         </View>
       </SafeAreaView>
@@ -125,27 +97,27 @@ export default function SupplierScreen() {
         {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.heroAvatar}>
-            <Text style={styles.heroAvatarText}>{supplier.name.charAt(0)}</Text>
+            <Text style={styles.heroAvatarText}>{supplier.businessName.charAt(0)}</Text>
           </View>
-          <Text style={styles.heroName}>{supplier.name}</Text>
-          <Text style={styles.heroCategory}>{supplier.category}</Text>
+          <Text style={styles.heroName}>{supplier.businessName}</Text>
+          <Text style={styles.heroCategory}>{supplier.district || 'Улаанбаатар'}</Text>
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
               <Ionicons name="star" size={14} color={C.warning} />
-              <Text style={styles.heroStatText}>{supplier.rating}</Text>
+              <Text style={styles.heroStatText}>{(supplier.rating || 0).toFixed(1)}</Text>
             </View>
             <View style={styles.heroDot} />
             <View style={styles.heroStat}>
               <Ionicons name="time-outline" size={14} color={C.textSub} />
-              <Text style={styles.heroStatText}>{supplier.deliveryTime}</Text>
+              <Text style={styles.heroStatText}>{supplier.deliveryEnabled ? '30-60 мин' : 'Pickup'}</Text>
             </View>
             <View style={styles.heroDot} />
             <View style={styles.heroStat}>
               <Ionicons name="cart-outline" size={14} color={C.textSub} />
-              <Text style={styles.heroStatText}>min ₮{(supplier.minOrder / 1000).toFixed(0)}K</Text>
+              <Text style={styles.heroStatText}>{supplier.productCount} бараа</Text>
             </View>
           </View>
-          <Text style={styles.heroDesc}>{supplier.description}</Text>
+          <Text style={styles.heroDesc}>{supplier.description || `${supplier.businessName} нийлүүлэгчийн дэлгүүр`}</Text>
         </View>
 
         {/* Products */}
@@ -160,9 +132,10 @@ export default function SupplierScreen() {
           ) : (
             <View style={styles.productsGrid}>
               {products.map((product) => (
-                <ProductCard
+                <ProductTile
                   key={product.id}
                   product={product}
+                  wide
                   onPress={() => router.push(`/product/${product.slug}` as never)}
                 />
               ))}
@@ -240,34 +213,4 @@ const styles = StyleSheet.create({
   productsSection: { padding: 16 },
   productsTitle: { color: C.text, fontSize: 18, fontWeight: '700', marginBottom: 16 },
   productsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  productCard: {
-    width: '47%',
-    backgroundColor: C.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
-  },
-  productImage: {
-    height: 110,
-    backgroundColor: C.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  productName: {
-    color: C.text,
-    fontSize: 12,
-    fontWeight: '600',
-    padding: 10,
-    paddingBottom: 4,
-    lineHeight: 17,
-  },
-  productPrice: {
-    color: C.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-  },
 });

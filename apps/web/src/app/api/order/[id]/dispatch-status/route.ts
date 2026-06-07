@@ -31,7 +31,7 @@ interface DeliveryRequestResult {
   }>;
 }
 
-const SHOP_API = process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
+const SHOP_API = process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:13001/shop-api';
 
 const DELIVERY_STATUS_GQL = `
   query DeliveryStatus($orderId: String!) {

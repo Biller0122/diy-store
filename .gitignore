@@ -69,3 +69,6 @@ test-results/
 .DS_Store
 .idea/
 .vscode/
+
+# Local dev
+docker-compose.local.yml

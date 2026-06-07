@@ -25,7 +25,13 @@
           "color": "#FF4500"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Нүүр таних замаар нэвтрэхийг зөвшөөрнө үү"
+        }
+      ]
     ],
     "android": {
       "package": "mn.diystore.driver",

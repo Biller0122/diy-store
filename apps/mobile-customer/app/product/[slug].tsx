@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
 import { useAppStore } from '@/lib/store';
-import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY } from '@/lib/api';
+import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 
 interface ProductVariant {
   id: string;
@@ -32,6 +33,7 @@ interface Product {
   featuredAsset: { preview: string } | null;
   variants: ProductVariant[];
   collections: { id: string; name: string }[];
+  supplierProduct?: boolean;
 }
 
 function formatPrice(price: number) {
@@ -52,13 +54,45 @@ export default function ProductDetailScreen() {
   useEffect(() => {
     if (!slug) return;
     shopFetch<{ product: Product | null }>(PRODUCT_QUERY, { slug })
-      .then((data) => setProduct(data.product))
+      .then(async (data) => {
+        if (data.product) {
+          setProduct(data.product);
+          return;
+        }
+        const supplierData = await shopFetch<{ supplierProducts: { items: any[] } }>(SUPPLIER_PRODUCTS_QUERY);
+        const supplierProduct = (supplierData.supplierProducts?.items ?? []).find((item) => item.slug === slug);
+        if (!supplierProduct) {
+          setProduct(null);
+          return;
+        }
+        setProduct({
+          id: supplierProduct.id,
+          name: supplierProduct.name,
+          slug: supplierProduct.slug,
+          description: supplierProduct.description || '',
+          featuredAsset: supplierProduct.image ? { preview: supplierProduct.image } : null,
+          variants: [{
+            id: supplierProduct.id,
+            name: supplierProduct.name,
+            priceWithTax: supplierProduct.price * 100,
+            currencyCode: 'MNT',
+            stockLevel: supplierProduct.enabled && supplierProduct.stock > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK',
+            options: [],
+          }],
+          collections: supplierProduct.category ? [{ id: supplierProduct.category, name: supplierProduct.category }] : [],
+          supplierProduct: true,
+        });
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [slug]);
 
   const handleAddToCart = async () => {
     if (!product) return;
+    if (product.supplierProduct) {
+      Alert.alert('Тун удахгүй', 'Нийлүүлэгчийн барааг mobile сагсанд нэмэх холболтыг дараагийн алхамд идэвхжүүлнэ.');
+      return;
+    }
     if (!customer) {
       Alert.alert('Нэвтэрнэ үү', 'Сагсанд нэмэхийн тулд нэвтэрнэ үү', [
         { text: 'Болих', style: 'cancel' },
@@ -148,10 +182,14 @@ export default function ProductDetailScreen() {
       </SafeAreaView>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="cube-outline" size={72} color={C.textTertiary} />
-          <Text style={styles.imagePlaceholderLabel}>Зураг</Text>
-        </View>
+        {product.featuredAsset?.preview ? (
+          <Image source={{ uri: product.featuredAsset.preview }} style={styles.productImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Ionicons name="cube-outline" size={72} color={C.textTertiary} />
+            <Text style={styles.imagePlaceholderLabel}>Зураг</Text>
+          </View>
+        )}
 
         <View style={styles.content}>
           <Text style={styles.productName}>{product.name}</Text>
@@ -288,6 +326,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+  },
+  productImage: {
+    width: '100%',
+    height: 320,
+    backgroundColor: C.surface,
   },
   imagePlaceholderLabel: { color: C.textTertiary, fontSize: 13 },
 
