@@ -174,6 +174,8 @@ steps are documented in
 [docs/CONTRIBUTING_FOR_BEGINNERS.md](docs/CONTRIBUTING_FOR_BEGINNERS.md).
 GitHub-to-AWS OIDC setup is documented in
 [docs/GITHUB_AWS_OIDC.md](docs/GITHUB_AWS_OIDC.md).
+The deployed resource inventory is documented in
+[docs/DEPLOYMENT_INVENTORY.md](docs/DEPLOYMENT_INVENTORY.md).
 
 Recommended CI/CD direction:
 
