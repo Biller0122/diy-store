@@ -45,6 +45,7 @@ env:
   WEB_CONTAINER_NAME: ${{ vars.WEB_CONTAINER_NAME || 'web' }}
   PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com' }}
   NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL || '' }}
+  GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '' }}
 
 jobs:
   detect-changes:
@@ -149,6 +150,7 @@ jobs:
             --build-arg NEXT_PUBLIC_VENDURE_ADMIN_API=/admin-api \
             --build-arg NEXT_PUBLIC_SITE_URL="$PRODUCTION_BASE_URL" \
             --build-arg NEXT_PUBLIC_SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL" \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
             --build-arg INTERNAL_VENDURE_SHOP_API="$PRODUCTION_BASE_URL/shop-api" \
             --build-arg INTERNAL_VENDURE_ADMIN_API="$PRODUCTION_BASE_URL/admin-api" \
             --build-arg INTERNAL_VENDURE_ASSETS="$PRODUCTION_BASE_URL/assets/:path*" \
@@ -183,6 +185,7 @@ jobs:
             jq \
               --arg image "$image" \
               --arg preferredContainer "$preferred_container" \
+              --arg googleClientId "$GOOGLE_CLIENT_ID" \
               'del(
                 .taskDefinitionArn,
                 .revision,
@@ -197,6 +200,20 @@ jobs:
                     map(if .name == $preferredContainer then .image = $image else . end)
                   else
                     .[0].image = $image | .
+                  end
+                )
+              | .containerDefinitions |= (
+                  if $googleClientId == "" then
+                    .
+                  else
+                    map(
+                      .environment = ((.environment // [])
+                        | map(select(.name != "GOOGLE_CLIENT_ID" and .name != "NEXT_PUBLIC_GOOGLE_CLIENT_ID"))
+                        + [
+                          {"name":"GOOGLE_CLIENT_ID","value":$googleClientId},
+                          {"name":"NEXT_PUBLIC_GOOGLE_CLIENT_ID","value":$googleClientId}
+                        ])
+                    )
                   end
                 )' \
               current-task-definition.json > next-task-definition.json

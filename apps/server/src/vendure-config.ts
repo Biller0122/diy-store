@@ -26,6 +26,7 @@ import { DeviceTokenPlugin } from './plugins/device-token/device-token.plugin';
 import { CmsPlugin } from './plugins/cms/cms.plugin';
 import { SearchPlugin } from './plugins/search/search.plugin';
 import { ProductAiPlugin } from './plugins/product-ai/product-ai.plugin';
+import { CustomerAuthPlugin } from './plugins/customer-auth/customer-auth.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
 
@@ -192,6 +193,7 @@ export const config: VendureConfig = {
     CmsPlugin,
     SearchPlugin,
     ProductAiPlugin,
+    CustomerAuthPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),
@@ -200,12 +202,12 @@ export const config: VendureConfig = {
     }),
     DefaultJobQueuePlugin.init({ useDatabaseForBuffer: true }),
     DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: true }),
-    EmailPlugin.init({
-      devMode: true,
+    EmailPlugin.init(({
       outputPath: path.join(__dirname, '../static/email/test-emails'),
       route: 'mailbox',
       handlers: defaultEmailHandlers,
       templatePath: path.join(__dirname, '../static/email/templates'),
+      ...(!process.env.SMTP_HOST ? { devMode: true as const } : {}),
       ...(process.env.SMTP_HOST
         ? {
             transport: {
@@ -226,7 +228,7 @@ export const config: VendureConfig = {
         passwordResetUrl: `${process.env.STOREFRONT_URL || 'http://localhost:3000'}/password-reset`,
         changeEmailAddressUrl: `${process.env.STOREFRONT_URL || 'http://localhost:3000'}/verify-email-address-change`,
       },
-    }),
+    }) as any),
     AdminUiPlugin.init({
       route: 'admin',
       port: 3002,

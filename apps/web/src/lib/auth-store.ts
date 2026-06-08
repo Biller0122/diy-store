@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { clearVendureAuthToken, vendureShopFetch } from './vendure';
+import { clearVendureAuthToken, setVendureAuthToken, vendureShopFetch } from './vendure';
 
 export interface ActiveCustomer {
   id: string;
@@ -18,6 +18,11 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<boolean>;
+  requestEmailOtp: (email: string) => Promise<{ ok: boolean; otp?: string | null }>;
+  verifyEmailOtp: (email: string, otp: string) => Promise<boolean>;
+  loginWithGoogle: (credential: string) => Promise<boolean>;
+  requestPasswordResetOtp: (email: string) => Promise<{ ok: boolean; otp?: string | null }>;
+  resetPasswordWithOtp: (email: string, otp: string, password: string) => Promise<boolean>;
   register: (input: RegisterInput) => Promise<boolean>;
   logout: () => Promise<void>;
   fetchActiveCustomer: () => Promise<void>;
@@ -100,6 +105,63 @@ const ACTIVE_CUSTOMER_QUERY = `
   }
 `;
 
+const CUSTOMER_AUTH_FIELDS = `
+  success
+  message
+  token
+  customer {
+    id
+    firstName
+    lastName
+    emailAddress
+    phoneNumber
+  }
+`;
+
+const REQUEST_EMAIL_OTP_MUTATION = `
+  mutation RequestCustomerEmailOtp($emailAddress: String!) {
+    requestCustomerEmailOtp(emailAddress: $emailAddress) {
+      success
+      message
+      otp
+    }
+  }
+`;
+
+const VERIFY_EMAIL_OTP_MUTATION = `
+  mutation VerifyCustomerEmailOtp($emailAddress: String!, $otp: String!) {
+    verifyCustomerEmailOtp(emailAddress: $emailAddress, otp: $otp) {
+      ${CUSTOMER_AUTH_FIELDS}
+    }
+  }
+`;
+
+const GOOGLE_LOGIN_MUTATION = `
+  mutation CustomerGoogleLogin($credential: String!) {
+    customerGoogleLogin(credential: $credential) {
+      ${CUSTOMER_AUTH_FIELDS}
+    }
+  }
+`;
+
+const REQUEST_PASSWORD_RESET_OTP_MUTATION = `
+  mutation RequestCustomerPasswordResetOtp($emailAddress: String!) {
+    requestCustomerPasswordResetOtp(emailAddress: $emailAddress) {
+      success
+      message
+      otp
+    }
+  }
+`;
+
+const RESET_PASSWORD_WITH_OTP_MUTATION = `
+  mutation ResetCustomerPasswordWithOtp($emailAddress: String!, $otp: String!, $password: String!) {
+    resetCustomerPasswordWithOtp(emailAddress: $emailAddress, otp: $otp, password: $password) {
+      ${CUSTOMER_AUTH_FIELDS}
+    }
+  }
+`;
+
 function createMockCustomer(email: string): ActiveCustomer {
   return {
     id: 'customer-dev-1',
@@ -116,6 +178,17 @@ function isNetworkError(error: unknown) {
 
 async function createCustomerSession() {
   await fetch('/api/account/session', { method: 'POST' });
+}
+
+async function applyCustomerAuth(result: { success?: boolean; message?: string; token?: string | null; customer?: ActiveCustomer | null }, set: (state: Partial<AuthState>) => void) {
+  if (!result.success || !result.token || !result.customer) {
+    set({ isLoading: false, error: result.message ?? 'Нэвтрэхэд алдаа гарлаа' });
+    return false;
+  }
+  setVendureAuthToken(result.token);
+  set({ customer: result.customer, token: result.token, isLoading: false, error: null });
+  await createCustomerSession();
+  return true;
 }
 
 function clearCustomerSession() {
@@ -158,6 +231,73 @@ export const useAuthStore = create<AuthState>()(
             return true;
           }
           set({ isLoading: false, error: err instanceof Error ? err.message : 'Сүлжээний алдаа' });
+          return false;
+        }
+      },
+
+      requestEmailOtp: async (email) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await vendureShopFetch<{
+            requestCustomerEmailOtp: { success: boolean; message: string; otp?: string | null };
+          }>(REQUEST_EMAIL_OTP_MUTATION, { emailAddress: email });
+          set({ isLoading: false, error: data.requestCustomerEmailOtp.success ? null : data.requestCustomerEmailOtp.message });
+          return { ok: data.requestCustomerEmailOtp.success, otp: data.requestCustomerEmailOtp.otp };
+        } catch (err) {
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'Сүлжээний алдаа' });
+          return { ok: false };
+        }
+      },
+
+      verifyEmailOtp: async (email, otp) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await vendureShopFetch<{
+            verifyCustomerEmailOtp: { success: boolean; message: string; token?: string | null; customer?: ActiveCustomer | null };
+          }>(VERIFY_EMAIL_OTP_MUTATION, { emailAddress: email, otp });
+          return applyCustomerAuth(data.verifyCustomerEmailOtp, set);
+        } catch (err) {
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'Сүлжээний алдаа' });
+          return false;
+        }
+      },
+
+      loginWithGoogle: async (credential) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await vendureShopFetch<{
+            customerGoogleLogin: { success: boolean; message: string; token?: string | null; customer?: ActiveCustomer | null };
+          }>(GOOGLE_LOGIN_MUTATION, { credential });
+          return applyCustomerAuth(data.customerGoogleLogin, set);
+        } catch (err) {
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'Google нэвтрэлт амжилтгүй боллоо' });
+          return false;
+        }
+      },
+
+      requestPasswordResetOtp: async (email) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await vendureShopFetch<{
+            requestCustomerPasswordResetOtp: { success: boolean; message: string; otp?: string | null };
+          }>(REQUEST_PASSWORD_RESET_OTP_MUTATION, { emailAddress: email });
+          set({ isLoading: false, error: data.requestCustomerPasswordResetOtp.success ? null : data.requestCustomerPasswordResetOtp.message });
+          return { ok: data.requestCustomerPasswordResetOtp.success, otp: data.requestCustomerPasswordResetOtp.otp };
+        } catch (err) {
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'Сүлжээний алдаа' });
+          return { ok: false };
+        }
+      },
+
+      resetPasswordWithOtp: async (email, otp, password) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await vendureShopFetch<{
+            resetCustomerPasswordWithOtp: { success: boolean; message: string; token?: string | null; customer?: ActiveCustomer | null };
+          }>(RESET_PASSWORD_WITH_OTP_MUTATION, { emailAddress: email, otp, password });
+          return applyCustomerAuth(data.resetCustomerPasswordWithOtp, set);
+        } catch (err) {
+          set({ isLoading: false, error: err instanceof Error ? err.message : 'Нууц үг сэргээхэд алдаа гарлаа' });
           return false;
         }
       },
