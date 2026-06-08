@@ -1,5 +1,8 @@
 import { Body, Controller, Post, Res } from '@nestjs/common';
+import { Args, Mutation, Resolver } from '@nestjs/graphql';
+import { Allow, Permission } from '@vendure/core';
 import { VendurePlugin } from '@vendure/core';
+import gql from 'graphql-tag';
 import type { Response } from 'express';
 
 type ProductAnalysis = {
@@ -14,6 +17,8 @@ type AnalyzeProductBody = {
   image?: string;
   mediaType?: string;
 };
+
+const ANALYZE_TIMEOUT_MS = Number(process.env.CLAUDE_VISION_TIMEOUT_MS ?? 25000);
 
 function extractJsonObject(text: string) {
   const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
@@ -35,33 +40,25 @@ function normalizeAnalysis(value: any): ProductAnalysis {
   };
 }
 
-@Controller('analyze-product')
-class ProductAiController {
-  @Post()
-  async analyze(@Body() body: AnalyzeProductBody, @Res() res: Response) {
-    try {
-      res.status(200).json(await this.analyzeProductImage(body));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Product image analysis failed';
-      console.error('[ProductAI] analyze-product failed', message);
-      res.status(message.includes('ANTHROPIC_API_KEY') ? 503 : 500).json({ error: message });
-    }
+async function analyzeProductImage(input: AnalyzeProductBody): Promise<ProductAnalysis> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not configured');
   }
 
-  private async analyzeProductImage(input: AnalyzeProductBody): Promise<ProductAnalysis> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not configured');
-    }
+  const image = input.image?.includes(',') ? input.image.split(',').pop() ?? '' : input.image ?? '';
+  const mediaType = input.mediaType || input.image?.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+  if (!image || image.length < 20) {
+    throw new Error('Image payload is empty');
+  }
 
-    const image = input.image?.includes(',') ? input.image.split(',').pop() ?? '' : input.image ?? '';
-    const mediaType = input.mediaType || input.image?.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
-    if (!image || image.length < 20) {
-      throw new Error('Image payload is empty');
-    }
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+  let response: globalThis.Response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
@@ -99,19 +96,68 @@ JSON schema:
         }],
       }),
     });
-
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
-      throw new Error(`Claude Vision failed with HTTP ${response.status}: ${errorBody.slice(0, 300)}`);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Claude Vision request timed out');
     }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
-    const data = await response.json() as { content?: Array<{ type?: string; text?: string }> };
-    const text = data.content?.find((part) => part.type === 'text')?.text ?? data.content?.[0]?.text ?? '';
-    return normalizeAnalysis(extractJsonObject(text));
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`Claude Vision failed with HTTP ${response.status}: ${errorBody.slice(0, 300)}`);
+  }
+
+  const data = await response.json() as { content?: Array<{ type?: string; text?: string }> };
+  const text = data.content?.find((part) => part.type === 'text')?.text ?? data.content?.[0]?.text ?? '';
+  return normalizeAnalysis(extractJsonObject(text));
+}
+
+@Controller('analyze-product')
+class ProductAiController {
+  @Post()
+  async analyze(@Body() body: AnalyzeProductBody, @Res() res: Response) {
+    try {
+      res.status(200).json(await analyzeProductImage(body));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Product image analysis failed';
+      console.error('[ProductAI] analyze-product failed', message);
+      res.status(message.includes('timed out') ? 504 : message.includes('ANTHROPIC_API_KEY') ? 503 : 500).json({ error: message });
+    }
   }
 }
 
+@Resolver()
+class ProductAiResolver {
+  @Mutation()
+  @Allow(Permission.Public)
+  async analyzeProductImage(@Args('image') image: string, @Args('mediaType') mediaType?: string) {
+    return analyzeProductImage({ image, mediaType });
+  }
+}
+
+const PRODUCT_AI_SCHEMA_EXTENSION = gql`
+  type ProductImageAnalysis {
+    name: String!
+    description: String!
+    category: String!
+    unit: String!
+    confidence: Float!
+  }
+
+  extend type Mutation {
+    analyzeProductImage(image: String!, mediaType: String): ProductImageAnalysis!
+  }
+`;
+
 @VendurePlugin({
   controllers: [ProductAiController],
+  providers: [ProductAiResolver],
+  shopApiExtensions: {
+    schema: PRODUCT_AI_SCHEMA_EXTENSION,
+    resolvers: [ProductAiResolver],
+  },
 })
 export class ProductAiPlugin {}

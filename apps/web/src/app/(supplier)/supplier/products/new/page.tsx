@@ -62,6 +62,8 @@ const INITIAL_FORM: FormState = {
   inStock: true,
 };
 
+const AI_ANALYZE_TIMEOUT_MS = 35000;
+
 const CREATE_SUPPLIER_PRODUCT_MUTATION = `
   mutation CreateSupplierProduct($input: SupplierProductInput!) {
     createSupplierProduct(input: $input) {
@@ -244,9 +246,12 @@ export default function NewSupplierProductPage() {
 
     setAiAnalyzing(true);
     setAiStatus('AI зураг шинжилж байна...');
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), AI_ANALYZE_TIMEOUT_MS);
     try {
       const response = await fetch('/analyze-product', {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image }),
       });
@@ -267,8 +272,9 @@ export default function NewSupplierProductPage() {
       }));
       setAiStatus(`AI санал бөглөлөө${typeof result.confidence === 'number' ? ` · итгэлцүүр ${result.confidence}%` : ''}`);
     } catch (err) {
-      setAiStatus(err instanceof Error ? err.message : 'AI шинжилгээ амжилтгүй боллоо');
+      setAiStatus(err instanceof Error && err.name === 'AbortError' ? 'AI шинжилгээ хэт удаж байна. Дахин оролдоно уу.' : err instanceof Error ? err.message : 'AI шинжилгээ амжилтгүй боллоо');
     } finally {
+      window.clearTimeout(timeout);
       setAiAnalyzing(false);
     }
   }
