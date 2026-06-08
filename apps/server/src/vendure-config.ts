@@ -25,6 +25,7 @@ import { AdminStatsPlugin } from './plugins/admin-stats/admin-stats.plugin';
 import { DeviceTokenPlugin } from './plugins/device-token/device-token.plugin';
 import { CmsPlugin } from './plugins/cms/cms.plugin';
 import { SearchPlugin } from './plugins/search/search.plugin';
+import { ProductAiPlugin } from './plugins/product-ai/product-ai.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
 
@@ -190,6 +191,7 @@ export const config: VendureConfig = {
     DeviceTokenPlugin,
     CmsPlugin,
     SearchPlugin,
+    ProductAiPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),

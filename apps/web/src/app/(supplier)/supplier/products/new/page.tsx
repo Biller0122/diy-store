@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ImagePlus, Package, Save } from 'lucide-react';
+import { ArrowLeft, ImagePlus, Package, Save, Sparkles } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { vendureShopFetch } from '@/lib/vendure';
 import {
@@ -38,6 +38,15 @@ type SupplierProduct = {
   reviewCount: number;
   badge?: string;
   inStock: boolean;
+};
+
+type ProductAnalysis = {
+  name?: string;
+  description?: string;
+  category?: string;
+  unit?: string;
+  confidence?: number;
+  error?: string;
 };
 
 const INITIAL_FORM: FormState = {
@@ -91,6 +100,38 @@ function normalizePrice(value: string) {
   return Number(value.replace(/[^\d]/g, ''));
 }
 
+function onlyDigits(value: string) {
+  return value.replace(/[^\d]/g, '');
+}
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/ё/g, 'е').trim();
+}
+
+function findCategorySlug(categories: ProductCategoryOption[], aiCategory?: string) {
+  const normalized = normalizeText(aiCategory ?? '');
+  if (!normalized) return '';
+
+  const synonyms: Record<string, string[]> = {
+    'цемент': ['цемент', 'cement', 'tsement', 'sement', 'барилга'],
+    'төмөр': ['төмөр', 'tomor', 'armatur', 'арматур', 'rebar', 'металл'],
+    'мод': ['мод', 'wood', 'банз'],
+    'будаг': ['будаг', 'paint', 'лак', 'праймер'],
+    'тоосго': ['тоосго', 'toosgo', 'tosgo', 'brick'],
+    'сантехник': ['сантехник', 'ус', 'хоолой', 'холигч'],
+    'цахилгаан': ['цахилгаан', 'кабель', 'led', 'розетка'],
+    'багаж': ['багаж', 'tool', 'tools', 'өрөм', 'шлифлэгч'],
+    'барилга': ['барилга', 'building', 'хавтан', 'элс', 'хучилт'],
+  };
+
+  const candidates = synonyms[normalized] ?? [normalized];
+  const match = categories.find((category) => {
+    const haystack = normalizeText(`${category.name} ${category.slug} ${category.parent?.name ?? ''} ${category.parent?.slug ?? ''}`);
+    return candidates.some((candidate) => haystack.includes(normalizeText(candidate)));
+  });
+  return match?.slug ?? '';
+}
+
 function resizeImage(file: File, maxSize = 900, quality = 0.78): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -127,6 +168,8 @@ export default function NewSupplierProductPage() {
   const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [aiStatus, setAiStatus] = useState('');
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const storageKey = useMemo(() => `diy-supplier-products:${supplier?.id ?? 'guest'}`, [supplier?.id]);
 
@@ -184,11 +227,49 @@ export default function NewSupplierProductPage() {
         imageName: file.name,
       }));
       setErrors((prev) => ({ ...prev, image: '' }));
+      void analyzeSelectedImage(image);
     } catch (err) {
       setErrors((prev) => ({
         ...prev,
         image: err instanceof Error ? err.message : 'Зураг боловсруулахад алдаа гарлаа',
       }));
+    }
+  }
+
+  async function analyzeSelectedImage(image = form.image) {
+    if (!image) {
+      setErrors((prev) => ({ ...prev, image: 'Эхлээд зураг сонгоно уу' }));
+      return;
+    }
+
+    setAiAnalyzing(true);
+    setAiStatus('AI зураг шинжилж байна...');
+    try {
+      const response = await fetch('/analyze-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image }),
+      });
+      const result = (await response.json()) as ProductAnalysis;
+      if (!response.ok || result.error) {
+        throw new Error(result.error || `AI шинжилгээний алдаа: ${response.status}`);
+      }
+
+      const categorySlug = findCategorySlug(categories, result.category);
+      setForm((prev) => ({
+        ...prev,
+        name: result.name?.trim() || prev.name,
+        slug: prev.slug || makeSlug(result.name ?? ''),
+        description: result.description?.trim()
+          ? `${result.description.trim()}${result.unit ? `\nНэгж: ${result.unit}` : ''}`
+          : prev.description,
+        category: categorySlug || prev.category,
+      }));
+      setAiStatus(`AI санал бөглөлөө${typeof result.confidence === 'number' ? ` · итгэлцүүр ${result.confidence}%` : ''}`);
+    } catch (err) {
+      setAiStatus(err instanceof Error ? err.message : 'AI шинжилгээ амжилтгүй боллоо');
+    } finally {
+      setAiAnalyzing(false);
     }
   }
 
@@ -347,7 +428,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Үнэ *</span>
             <input
               value={form.price}
-              onChange={(event) => setField('price', event.target.value)}
+              onChange={(event) => setField('price', onlyDigits(event.target.value))}
               inputMode="numeric"
               placeholder="59900"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.price ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -359,7 +440,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Хямдралын өмнөх үнэ</span>
             <input
               value={form.originalPrice}
-              onChange={(event) => setField('originalPrice', event.target.value)}
+              onChange={(event) => setField('originalPrice', onlyDigits(event.target.value))}
               inputMode="numeric"
               placeholder="69900"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.originalPrice ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -371,7 +452,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Нөөц</span>
             <input
               value={form.stock}
-              onChange={(event) => setField('stock', event.target.value)}
+              onChange={(event) => setField('stock', onlyDigits(event.target.value))}
               inputMode="numeric"
               placeholder="12"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.stock ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -397,7 +478,7 @@ export default function NewSupplierProductPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-foreground">{form.imageName || 'Сонгосон зураг'}</p>
-                    <p className="mt-0.5 text-[11px] text-foreground-muted">Зураг бэлэн</p>
+                    <p className="mt-0.5 text-[11px] text-foreground-muted">{aiStatus || 'Зураг бэлэн'}</p>
                     <div className="mt-2 flex gap-2">
                       <button
                         type="button"
@@ -405,6 +486,15 @@ export default function NewSupplierProductPage() {
                         className="rounded-lg bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-foreground hover:bg-white/10"
                       >
                         Солих
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => analyzeSelectedImage()}
+                        disabled={aiAnalyzing}
+                        className="inline-flex items-center gap-1 rounded-lg bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/15 disabled:opacity-60"
+                      >
+                        <Sparkles size={12} />
+                        {aiAnalyzing ? 'Танин байна...' : 'AI-р таних'}
                       </button>
                       <button
                         type="button"
@@ -428,6 +518,11 @@ export default function NewSupplierProductPage() {
                 </button>
               )}
             </div>
+            {!form.image && (
+              <p className="text-[11px] text-foreground-muted">
+                Зураг сонгомогц AI нэр, ангилал, тайлбарыг санал болгоно. Үнэ ба нөөцийг та өөрөө оруулна.
+              </p>
+            )}
             {errors.image && <p className="text-xs text-error">{errors.image}</p>}
           </label>
 

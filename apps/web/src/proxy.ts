@@ -14,6 +14,7 @@ const sharedPrefixes = [
   '/sitemap.xml',
   '/shop-api',
   '/admin-api',
+  '/analyze-product',
   '/mailbox',
   '/socket.io',
 ];

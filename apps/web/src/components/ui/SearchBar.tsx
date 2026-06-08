@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
-import { Search, X, Clock, TrendingUp, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Search, X, Clock, TrendingUp, ArrowLeft, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
 import { vendureShopFetch } from '@/lib/vendure';
-import { trackSearch } from '@/lib/analytics/ga4';
+import { useCartStore } from '@/lib/cart-store';
+import { trackAddToCart, trackSearch } from '@/lib/analytics/ga4';
+import { fmt } from '@/lib/utils';
 
 const PLACEHOLDERS = [
   'Өрөм хайх...',
@@ -67,7 +69,132 @@ const ALGOLIA_APP_ID    = process.env.NEXT_PUBLIC_ALGOLIA_APP_ID;
 const ALGOLIA_SEARCH_KEY = process.env.NEXT_PUBLIC_ALGOLIA_SEARCH_KEY;
 const ALGOLIA_INDEX     = process.env.NEXT_PUBLIC_ALGOLIA_INDEX_NAME ?? 'diy_products';
 
-async function fetchResults(term: string): Promise<{ name: string; slug: string; price?: number; image?: string; category?: string }[]> {
+type SearchResult = {
+  id: string;
+  variantId: string;
+  name: string;
+  slug: string;
+  price?: number;
+  image?: string;
+  category?: string;
+  inStock?: boolean;
+};
+
+type ResultGroup = {
+  key: string;
+  title: string;
+  items: SearchResult[];
+};
+
+const TOKEN_LABELS: Record<string, string> = {
+  cement: 'Цемент',
+  tsement: 'Цемент',
+  sement: 'Цемент',
+  'цемент': 'Цемент',
+  'цемэнт': 'Цемент',
+  armatur: 'Арматур',
+  armature: 'Арматур',
+  rebar: 'Арматур',
+  'арматур': 'Арматур',
+  toosgo: 'Тоосго',
+  tosgo: 'Тоосго',
+  brick: 'Тоосго',
+  'тоосго': 'Тоосго',
+  barilga: 'Барилга',
+  building: 'Барилга',
+  material: 'Материал',
+  materialuud: 'Материал',
+  'барилга': 'Барилга',
+  'материал': 'Материал',
+  budag: 'Будаг',
+  paint: 'Будаг',
+  'будаг': 'Будаг',
+  bagaj: 'Багаж',
+  tool: 'Багаж',
+  tools: 'Багаж',
+  'багаж': 'Багаж',
+};
+
+const TOKEN_VARIANTS: Record<string, string[]> = {
+  cement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  tsement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  sement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемент': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемэнт': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  armatur: ['armatur', 'armature', 'rebar', 'арматур'],
+  armature: ['armatur', 'armature', 'rebar', 'арматур'],
+  rebar: ['armatur', 'armature', 'rebar', 'арматур'],
+  'арматур': ['armatur', 'armature', 'rebar', 'арматур'],
+  toosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  tosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  brick: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  'тоосго': ['toosgo', 'tosgo', 'brick', 'тоосго'],
+};
+
+function normalizeSearchText(text: string) {
+  return text.toLowerCase().replace(/ё/g, 'е');
+}
+
+function getSearchTokens(term: string) {
+  return normalizeSearchText(term)
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function getTokenVariants(token: string) {
+  return TOKEN_VARIANTS[token] ?? [token];
+}
+
+function getCanonicalToken(token: string) {
+  const variants = getTokenVariants(token);
+  return variants.find((variant) => TOKEN_LABELS[variant]) ?? token;
+}
+
+function matchesSearch(term: string, values: Array<string | null | undefined>) {
+  const normalized = normalizeSearchText(term.trim());
+  const tokens = getSearchTokens(term);
+  const variants = tokens.flatMap(getTokenVariants);
+  const haystack = normalizeSearchText(values.filter(Boolean).join(' '));
+
+  if (!normalized) return true;
+  if (haystack.includes(normalized)) return true;
+  return variants.some((variant) => haystack.includes(variant));
+}
+
+function tokenLabel(token: string) {
+  const normalized = getCanonicalToken(normalizeSearchText(token));
+  return TOKEN_LABELS[normalized] ?? normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function groupResults(results: SearchResult[], query: string): ResultGroup[] {
+  const tokens = getSearchTokens(query);
+  const canonicalTokens = tokens.map(getCanonicalToken);
+  const groups = new Map<string, ResultGroup>();
+
+  for (const item of results) {
+    const haystack = normalizeSearchText([item.name, item.slug, item.category].filter(Boolean).join(' '));
+    const matchedToken = tokens.find((token) =>
+      getTokenVariants(token).some((variant) => haystack.includes(variant)),
+    );
+    const key = matchedToken ? getCanonicalToken(matchedToken) : item.category ?? 'Бусад';
+    const title = matchedToken ? tokenLabel(matchedToken) : key;
+    const group = groups.get(key) ?? { key, title, items: [] };
+    group.items.push(item);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    const aIndex = canonicalTokens.indexOf(a.key);
+    const bIndex = canonicalTokens.indexOf(b.key);
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+    if (aIndex !== -1) return -1;
+    if (bIndex !== -1) return 1;
+    return b.items.length - a.items.length;
+  });
+}
+
+async function fetchResults(term: string): Promise<SearchResult[]> {
   const supplierResults = async () => {
     const [data, categories] = await Promise.all([
       vendureShopFetch<{ supplierProducts: { items: Array<{
@@ -83,21 +210,23 @@ async function fetchResults(term: string): Promise<{ name: string; slug: string;
       vendureShopFetch<{ collections: { items: Array<{ name: string; slug: string }> } }>(PRODUCT_CATEGORIES_QUERY, undefined, { revalidate: 0 }).catch(() => ({ collections: { items: [] } })),
     ]);
     const categoryNames = new Map(categories.collections.items.map((category) => [category.slug, category.name]));
-    const q = term.trim().toLowerCase();
     return data.supplierProducts.items
       .filter((item) => item.enabled && item.stock > 0)
-      .filter((item) =>
-        item.name.toLowerCase().includes(q) ||
-        item.slug.toLowerCase().includes(q) ||
-        (item.category ?? '').toLowerCase().includes(q) ||
-        (categoryNames.get(item.category ?? '') ?? '').toLowerCase().includes(q)
-      )
+      .filter((item) => matchesSearch(term, [
+        item.name,
+        item.slug,
+        item.category,
+        categoryNames.get(item.category ?? ''),
+      ]))
       .slice(0, 6)
       .map((item) => ({
+        id: `supplier-${item.id}`,
+        variantId: `supplier-${item.id}`,
         name: item.name,
         slug: item.slug,
         price: item.price,
         image: item.image ?? undefined,
+        inStock: item.stock > 0,
         category: categoryNames.get(item.category ?? '') ?? item.category ?? 'Нийлүүлэгч',
       }));
   };
@@ -109,17 +238,29 @@ async function fetchResults(term: string): Promise<{ name: string; slug: string;
       indexName: ALGOLIA_INDEX,
       searchParams: { query: term, hitsPerPage: 6 },
     });
-    const algoliaResults = (result.hits as any[]).map((h) => ({ name: h.name, slug: h.slug, price: h.price, image: h.imageUrl, category: h.category }));
+    const algoliaResults = (result.hits as any[]).map((h) => ({
+      id: String(h.objectID ?? h.id ?? h.slug),
+      variantId: String(h.variantId ?? h.objectID ?? h.id ?? h.slug),
+      name: h.name,
+      slug: h.slug,
+      price: h.price,
+      image: h.imageUrl,
+      category: h.category,
+      inStock: h.inStock,
+    }));
     const supplier = await supplierResults().catch(() => []);
     return [...supplier, ...algoliaResults].slice(0, 6);
   }
 
   const data = await vendureShopFetch<{ search: { totalItems: number; items: any[] } }>(SEARCH_QUERY, { term });
   const catalogResults = (data.search?.items ?? []).map((item: any) => ({
+    id: item.productId,
+    variantId: item.productVariantId,
     name:  item.productName,
     slug:  item.slug,
     price: item.priceWithTax?.value,
     image: item.productAsset?.preview,
+    inStock: item.inStock,
   }));
   const supplier = await supplierResults().catch(() => []);
   return [...supplier, ...catalogResults].slice(0, 6);
@@ -127,9 +268,10 @@ async function fetchResults(term: string): Promise<{ name: string; slug: string;
 
 export function SearchBar() {
   const router = useRouter();
-  const { searchOpen, closeSearch } = useUIStore();
+  const { searchOpen, closeSearch, addToast, openCart } = useUIStore();
+  const { addItem } = useCartStore();
   const [query, setQuery]               = useState('');
-  const [results, setResults]           = useState<{ name: string; slug: string; price?: number; image?: string; category?: string }[]>([]);
+  const [results, setResults]           = useState<SearchResult[]>([]);
   const [loading, setLoading]           = useState(false);
   const [focused, setFocused]           = useState(false);
   const [recent, setRecent]             = useState<string[]>([]);
@@ -213,9 +355,33 @@ export function SearchBar() {
     router.push(`/search?q=${encodeURIComponent(query.trim())}`);
   };
 
+  const handleAddToCart = (item: SearchResult) => {
+    if (item.inStock === false || !item.price) return;
+    addItem({
+      productId: item.id,
+      variantId: item.variantId,
+      name: item.name,
+      slug: item.slug,
+      image: item.image ?? null,
+      price: item.price,
+      currencyCode: 'MNT',
+      qty: 1,
+      mode: 'delivery',
+      storeId: null,
+      sku: '',
+      supplierId: item.id.startsWith('supplier-') ? item.id : undefined,
+      supplierName: item.id.startsWith('supplier-') ? 'Нийлүүлэгч' : undefined,
+    });
+    trackAddToCart({ id: item.id, variantId: item.variantId, name: item.name, price: item.price, qty: 1 });
+    addToast({ type: 'success', title: 'Сагсанд нэмлээ', message: item.name });
+    openCart();
+  };
+
   if (!searchOpen) return null;
 
   const showX = focused || !!query;
+  const queryTokens = getSearchTokens(query);
+  const resultGroups = groupResults(results, query);
 
   return (
     <AnimatePresence>
@@ -239,7 +405,7 @@ export function SearchBar() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.98, y: -10 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
-          className="relative w-full md:max-w-2xl glass-strong md:rounded-2xl overflow-hidden shadow-2xl mx-0 md:mx-4"
+          className="relative w-full md:max-w-5xl glass-strong md:rounded-2xl overflow-hidden shadow-2xl mx-0 md:mx-4"
         >
           {/* Input row */}
           <div className="flex items-center gap-2 px-3 md:px-4 py-3 md:py-4 border-b border-[var(--glass-border)]">
@@ -290,7 +456,7 @@ export function SearchBar() {
           </div>
 
           {/* Results */}
-          <div className="max-h-[calc(100dvh-160px)] md:max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[calc(100dvh-120px)] md:max-h-[75vh] overflow-y-auto">
 
             {loading && (
               <div className="p-3 space-y-2">
@@ -307,45 +473,91 @@ export function SearchBar() {
             )}
 
             {!loading && results.length > 0 && (
-              <div className="p-3" data-testid="search-results">
-                <p className="text-[10px] text-foreground-muted font-semibold uppercase tracking-wider mb-2 px-2">
-                  Хайлтын үр дүн
-                </p>
-                {results.map((item) => (
-                  <Link
-                    key={item.slug}
-                    href={`/product/${item.slug}`}
-                    onClick={() => { saveRecent(query); trackSearch(query, results.length); handleClose(); }}
-                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors group"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-surface overflow-hidden shrink-0">
-                      {item.image
-                        ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                        : <div className="w-full h-full flex items-center justify-center text-xl">📦</div>}
+              <div className="space-y-5 p-4 md:p-5" data-testid="search-results">
+                <div className="flex justify-end">
+                  <div className="max-w-[80%] rounded-2xl bg-surface px-4 py-2 text-sm font-semibold text-foreground break-words">
+                    {query}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Сайн байна уу. Таны хайлтад тохирох бараануудыг ангиллаар нь харууллаа.
+                  </p>
+                  <p className="text-sm text-foreground-muted">
+                    {resultGroups.map((group) => group.title).join(', ')} хэсгээс шууд сагсанд нэмэх боломжтой.
+                  </p>
+                  {queryTokens.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {queryTokens.slice(0, 6).map((token) => (
+                        <span
+                          key={token}
+                          className="rounded-full border border-[var(--glass-border)] bg-surface px-2.5 py-1 text-[10px] text-foreground-muted"
+                        >
+                          {token}
+                        </span>
+                      ))}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground group-hover:text-brand transition-colors truncate">
-                        {item.name}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        {item.category && <span className="text-[10px] text-foreground-muted">{item.category}</span>}
-                        {item.price && (
-                          <p className="text-xs font-mono text-brand">
-                            ₮{Math.round(item.price / 100).toLocaleString('mn-MN')}
-                          </p>
-                        )}
+                  )}
+                </div>
+
+                {resultGroups.map((group) => (
+                  <section key={group.key} className="space-y-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground">{group.title}</h3>
+                      <p className="text-xs text-foreground-muted">{group.items.length} бараа</p>
+                    </div>
+
+                    <div className="-mx-2 overflow-x-auto px-2 pb-2">
+                      <div className="grid auto-cols-[minmax(154px,174px)] grid-flow-col gap-3">
+                        {group.items.map((item) => (
+                          <div
+                            key={item.slug}
+                            className="rounded-xl border border-[var(--glass-border)] bg-card overflow-hidden"
+                          >
+                            <Link
+                              href={`/product/${item.slug}`}
+                              onClick={() => { saveRecent(query); trackSearch(query, results.length); handleClose(); }}
+                              className="block"
+                            >
+                              <div className="aspect-square bg-surface overflow-hidden">
+                                {item.image
+                                  ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                                  : <div className="flex h-full w-full items-center justify-center text-3xl">📦</div>}
+                              </div>
+                              <div className="min-h-[82px] p-2.5">
+                                <p className="font-mono text-sm font-bold text-foreground">
+                                  {item.price ? fmt(item.price) : 'Үнэ лавлах'}
+                                </p>
+                                <p className="mt-1 line-clamp-2 text-xs font-semibold leading-4 text-foreground">
+                                  {item.name}
+                                </p>
+                                <p className="mt-1 text-[10px] text-foreground-muted line-clamp-1">
+                                  {item.category ?? 'Бараа'} · {item.inStock === false ? 'Дууссан' : 'Бэлэн'}
+                                </p>
+                              </div>
+                            </Link>
+                            <div className="px-2.5 pb-2.5">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleAddToCart(item);
+                                }}
+                                disabled={item.inStock === false || !item.price}
+                                className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-brand text-[11px] font-bold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface disabled:text-foreground-muted"
+                              >
+                                <ShoppingCart size={12} />
+                                Сагсанд
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <ArrowRight size={14} className="text-foreground-muted group-hover:text-brand transition-colors" />
-                  </Link>
+                  </section>
                 ))}
-                <button
-                  onClick={handleSubmit}
-                  className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[var(--glass-border)] text-sm text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
-                >
-                  <Search size={13} />
-                  "{query}" — бүх үр дүнг харах
-                </button>
               </div>
             )}
 
