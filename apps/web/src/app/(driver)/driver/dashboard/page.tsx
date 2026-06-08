@@ -43,6 +43,68 @@ const ACCEPT_DELIVERY_GQL = `
   }
 `;
 
+const AVAILABLE_DELIVERIES_GQL = `
+  query AvailableDeliveries {
+    availableDeliveries {
+      id
+      orderId
+      orderNumber
+      customerName
+      customerPhone
+      dropoffAddress
+      dropoffLat
+      dropoffLng
+      pickupStops {
+        supplierId
+        supplierName
+        address
+        phone
+        lat
+        lng
+        status
+      }
+      orderItems {
+        supplierId
+        name
+        qty
+      }
+      distance
+      estimatedDuration
+      proposedFee
+      finalFee
+      status
+      createdAt
+    }
+  }
+`;
+
+type AvailableDeliveryResponse = {
+  id: string;
+  orderId: string;
+  orderNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
+  dropoffAddress: string;
+  dropoffLat: number;
+  dropoffLng: number;
+  pickupStops: Array<{
+    supplierId: string;
+    supplierName: string;
+    address: string;
+    phone?: string | null;
+    lat: number;
+    lng: number;
+    status: 'PENDING' | 'ARRIVED' | 'PICKED_UP';
+  }>;
+  orderItems: Array<{ supplierId: string; name: string; qty: number }>;
+  distance: number;
+  estimatedDuration: number;
+  proposedFee: number;
+  finalFee: number;
+  status: string;
+  createdAt: string;
+};
+
 async function refreshDriverToken(driverId: string, phone: string) {
   const response = await fetch(SHOP_API, {
     method: 'POST',
@@ -91,6 +153,22 @@ async function acceptDeliveryRequest(deliveryId: string, driverId: string, token
   if (json.errors?.length) throw new Error(json.errors[0].message);
 }
 
+async function fetchAvailableDeliveries() {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ query: AVAILABLE_DELIVERIES_GQL }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as {
+    data?: { availableDeliveries: AvailableDeliveryResponse[] };
+    errors?: Array<{ message: string }>;
+  };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+  return json.data?.availableDeliveries ?? [];
+}
+
 function getSocketUrl() {
   if (typeof window === 'undefined') return CONFIGURED_SOCKET_URL || 'http://localhost:3002';
   const { protocol, hostname, port, origin } = window.location;
@@ -117,6 +195,35 @@ function toDriverOnlinePayload(driver: DriverUser) {
   };
 }
 
+function toActiveDelivery(delivery: AvailableDeliveryResponse): ActiveDelivery {
+  return {
+    id: delivery.id,
+    orderId: delivery.orderId,
+    orderNumber: delivery.orderNumber,
+    customerName: delivery.customerName || 'Хэрэглэгч',
+    customerPhone: delivery.customerPhone || '',
+    dropoffAddress: delivery.dropoffAddress,
+    dropoffLat: delivery.dropoffLat,
+    dropoffLng: delivery.dropoffLng,
+    distance: delivery.distance || 0,
+    estimatedDuration: delivery.estimatedDuration || 25,
+    fee: delivery.proposedFee || delivery.finalFee || 0,
+    status: 'REQUESTED',
+    pickupStops: delivery.pickupStops.map((stop) => ({
+      supplierId: stop.supplierId,
+      supplierName: stop.supplierName,
+      address: stop.address,
+      phone: stop.phone ?? '',
+      lat: stop.lat,
+      lng: stop.lng,
+      status: stop.status,
+      items: delivery.orderItems
+        .filter((item) => item.supplierId === stop.supplierId)
+        .map((item) => ({ name: item.name, qty: item.qty })),
+    })),
+  };
+}
+
 export default function DriverDashboardPage() {
   const { driver, authToken, isOnline, activeDelivery, setAuthToken, setOnlineStatus, setActiveDelivery } = useDriverStore();
   const [showRequest, setShowRequest] = useState(false);
@@ -129,6 +236,7 @@ export default function DriverDashboardPage() {
   const isOnlineRef = useRef(isOnline);
   const activeDeliveryRef = useRef(activeDelivery);
   const driverIdRef = useRef(driver?.id);
+  const dismissedRequestIdsRef = useRef(new Set<string>());
 
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
   useEffect(() => { activeDeliveryRef.current = activeDelivery; }, [activeDelivery]);
@@ -175,6 +283,7 @@ export default function DriverDashboardPage() {
         estimatedMinutes?: number;
       }) => {
         if (!isOnlineRef.current || activeDeliveryRef.current) return;
+        if (dismissedRequestIdsRef.current.has(payload.orderId)) return;
         console.log('[socket] delivery:request received', payload.orderNumber);
 
         const stops = Array.isArray(payload.pickupStops) ? payload.pickupStops : [];
@@ -231,11 +340,46 @@ export default function DriverDashboardPage() {
     }
   }, [isOnline, driver?.id]);
 
+  // Production fallback: if the public /socket.io route is unavailable, keep
+  // checking SEARCHING deliveries through GraphQL so online drivers still get
+  // a visible order popup.
+  useEffect(() => {
+    if (!isOnline || !driver || activeDelivery || showRequest) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const deliveries = await fetchAvailableDeliveries();
+        if (cancelled || !isOnlineRef.current || activeDeliveryRef.current || showRequest) return;
+
+        const next = deliveries
+          .filter((delivery) => delivery.status === 'SEARCHING')
+          .filter((delivery) => !dismissedRequestIdsRef.current.has(delivery.id))
+          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
+
+        if (next) {
+          setPendingRequest(toActiveDelivery(next));
+          setShowRequest(true);
+        }
+      } catch (err) {
+        console.warn('[driver] available deliveries polling failed:', err instanceof Error ? err.message : err);
+      }
+    };
+
+    void poll();
+    const interval = window.setInterval(() => void poll(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeDelivery, driver, isOnline, showRequest]);
+
 
   const rejectRequest = useCallback(() => {
+    if (pendingRequest?.id) dismissedRequestIdsRef.current.add(pendingRequest.id);
     setShowRequest(false);
     setPendingRequest(undefined);
-  }, []);
+  }, [pendingRequest?.id]);
 
   const acceptRequest = useCallback(async (delivery: ActiveDelivery) => {
     if (!driver) return;
