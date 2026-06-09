@@ -11,6 +11,7 @@ import {
 import { useDriverStore } from '@/lib/driver-store';
 import { Providers } from '@/components/providers';
 import { getCustomerHomeHref } from '@/lib/portal-links';
+import { BrandLogo } from '@/components/BrandLogo';
 
 const NAV = [
   { href: '/driver/dashboard',       icon: LayoutDashboard, label: 'Хяналтын самбар' },
@@ -35,13 +36,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-[var(--glass-border)]">
         <Link href={getCustomerHomeHref()} onClick={onClose} className="flex min-w-0 items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-brand flex items-center justify-center shadow-lg shadow-brand/30 shrink-0">
-          <span className="text-lg">🏍️</span>
-        </div>
-        <div>
-          <p className="text-sm font-bold text-foreground leading-tight">DIY<span className="text-brand">Store</span></p>
-          <p className="text-[10px] text-foreground-muted">Жолооч портал</p>
-        </div>
+          <BrandLogo variant="sidebar" portalLabel="Жолооч портал" />
         </Link>
         <button onClick={onClose} className="ml-auto lg:hidden text-foreground-muted hover:text-foreground">
           <X size={18} />

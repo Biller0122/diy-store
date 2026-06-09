@@ -7,6 +7,7 @@ import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { HomepageBanner, type HomepageBannerData } from '@/components/ui/HomepageBanner';
 import { ARTICLES } from './how-to/articles';
 import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
+import { BrandLogo } from '@/components/BrandLogo';
 
 // ─── Data fetching ────────────────────────────────────────────
 
@@ -284,13 +285,10 @@ function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center">
-                <span className="text-white text-sm">🔨</span>
-              </div>
-              <span className="font-display font-black text-lg text-foreground">DIY<span className="text-brand">Store</span></span>
+              <BrandLogo imageClassName="w-40" />
             </div>
             <p className="text-sm text-foreground-muted leading-relaxed">
-              Монголын хамгийн том DIY маркетплейс. 100+ нийлүүлэгч, шуурхай хүргэлт.
+              Монголын барилгын материалын ухаалаг шийдэл. 100+ нийлүүлэгч, шуурхай хүргэлт.
             </p>
           </div>
           {[
@@ -311,7 +309,7 @@ function Footer() {
           ))}
         </div>
         <div className="border-t border-[var(--glass-border)] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-foreground-muted">© 2025 DIY Store Marketplace. Бүх эрх хуулиар хамгаалагдсан.</p>
+          <p className="text-xs text-foreground-muted">© 2025 shoptool.mn Marketplace. Бүх эрх хуулиар хамгаалагдсан.</p>
           <div className="flex items-center gap-4 text-xs text-foreground-muted">
             <Link href="/trade" className="hover:text-foreground transition-colors">Нууцлалын бодлого</Link>
             <Link href="/trade" className="hover:text-foreground transition-colors">Үйлчилгээний нөхцөл</Link>
@@ -422,7 +420,7 @@ export default async function HomePage() {
                 Таны бизнесийг онлайнд гаргаарай
               </h2>
               <p className="text-foreground-muted mb-6 leading-relaxed">
-                DIY Store Marketplace дээр нийлүүлэгч болж, хэдэн мянган хэрэглэгчид хүр. Бүртгэл үнэгүй.
+                shoptool.mn Marketplace дээр нийлүүлэгч болж, хэдэн мянган хэрэглэгчид хүр. Бүртгэл үнэгүй.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link href={merchantLoginHref} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30">

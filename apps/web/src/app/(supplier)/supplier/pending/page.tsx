@@ -104,7 +104,7 @@ export default function SupplierPendingPage() {
           <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Phone size={16} className="text-brand" /> Холбоо барих
           </p>
-          <p className="mt-2 text-sm text-foreground-muted">Тусламж: 7700-XXXX · supplier@diy-store.mn</p>
+          <p className="mt-2 text-sm text-foreground-muted">Тусламж: 7700-XXXX · supplier@shoptool.mn</p>
           <Link href="/" className="mt-4 inline-flex rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white">
             Нүүр хуудас руу буцах
           </Link>

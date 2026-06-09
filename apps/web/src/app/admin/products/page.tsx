@@ -184,7 +184,7 @@ export default function AdminProductsPage() {
     {
       id: 'supplier',
       header: 'Нийлүүлэгч',
-      accessorFn: (r) => r.supplierName ?? 'DIY Store',
+      accessorFn: (r) => r.supplierName ?? 'shoptool.mn',
       cell: ({ getValue }) => <span className="text-xs font-semibold text-foreground-muted">{getValue() as string}</span>,
     },
     {
@@ -286,7 +286,7 @@ export default function AdminProductsPage() {
 
   const handleExportCSV = () => {
     const rows = products.map(p =>
-      [p.name, p.supplierName ?? 'DIY Store', p.variants[0]?.sku, Math.round((p.variants[0]?.priceWithTax ?? 0) / 100), p.variants[0]?.stockOnHand, p.enabled].join(',')
+      [p.name, p.supplierName ?? 'shoptool.mn', p.variants[0]?.sku, Math.round((p.variants[0]?.priceWithTax ?? 0) / 100), p.variants[0]?.stockOnHand, p.enabled].join(',')
     );
     const csv = ['Нэр,Нийлүүлэгч,SKU,Үнэ,Нөөц,Идэвхтэй', ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });

@@ -642,7 +642,7 @@ export default function CheckoutPage() {
     const groups = getSupplierGroups(items);
     const fallbackStop = {
       supplierId: 'diy-store',
-      supplierName: 'DIY Store',
+      supplierName: 'shoptool.mn',
       address: 'Улаанбаатар',
       lat: 47.9185,
       lng: 106.917,
@@ -670,7 +670,7 @@ export default function CheckoutPage() {
         pickupStops,
         orderItems: items.map((item) => ({
           supplierId: item.supplierId ?? 'diy-store',
-          supplierName: item.supplierName ?? 'DIY Store',
+          supplierName: item.supplierName ?? 'shoptool.mn',
           productId: item.productId,
           variantId: item.variantId,
           name: item.name,

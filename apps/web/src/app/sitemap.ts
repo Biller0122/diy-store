@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { ARTICLES } from './how-to/articles';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://diy-store.mn';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://shoptool.mn';
 
 const CATEGORY_SLUGS = [
   'bagaj', 'barilga', 'santekhnik', 'tsakhilgaan',

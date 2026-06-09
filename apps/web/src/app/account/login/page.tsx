@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { BrandLogo } from '@/components/BrandLogo';
 
 type Tab = 'otp' | 'login' | 'register';
 
@@ -232,8 +233,8 @@ function LoginForm() {
     <div className="min-h-screen bg-dark flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-2xl font-bold text-foreground">
-            <span>DIY Store</span>
+          <Link href="/" className="inline-flex items-center justify-center">
+            <BrandLogo imageClassName="w-56" />
           </Link>
           <h1 className="text-xl font-black text-foreground mt-3">Хэрэглэгчийн нэвтрэлт</h1>
           <p className="text-sm text-foreground-muted mt-1">Gmail, email код эсвэл нууц үгээр нэвтэрнэ</p>

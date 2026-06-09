@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import { m } from 'framer-motion';
 import Link from 'next/link';
-import { Search, ShoppingCart, User, Hammer, Menu, X, Truck } from 'lucide-react';
+import { Search, ShoppingCart, User, Menu, X, Truck } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { MegaMenu } from './ui/MegaMenu';
 import { cn } from '@/lib/utils';
 import { getCustomerHomeHref, getPortalHref } from '@/lib/portal-links';
+import { BrandLogo } from './BrandLogo';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -39,19 +40,8 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center gap-4 h-16">
           {/* Logo */}
-          <Link href={customerHomeHref} data-testid="logo" className="flex items-center gap-2 shrink-0 group">
-            <m.div
-              whileHover={{ rotate: [0, -12, 12, 0] }}
-              transition={{ duration: 0.4 }}
-              className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center shadow-lg shadow-brand/30"
-            >
-              <Hammer size={16} className="text-white" />
-            </m.div>
-            <div className="hidden sm:block">
-              <span className="font-display font-black text-lg text-foreground tracking-tight">
-                DIY<span className="text-brand">Store</span>
-              </span>
-            </div>
+          <Link href={customerHomeHref} data-testid="logo" className="flex shrink-0 items-center">
+            <BrandLogo />
           </Link>
 
           {/* Desktop nav */}

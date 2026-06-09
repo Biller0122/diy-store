@@ -33,8 +33,8 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.algolia.net' },
       { protocol: 'https', hostname: '*.algolianet.com' },
       { protocol: 'https', hostname: '*.cloudfront.net', pathname: '/**' },
-      { protocol: 'https', hostname: 'diy-store.mn', pathname: '/**' },
-      { protocol: 'https', hostname: 'cdn.diy-store.mn', pathname: '/**' },
+      { protocol: 'https', hostname: 'shoptool.mn', pathname: '/**' },
+      { protocol: 'https', hostname: 'cdn.shoptool.mn', pathname: '/**' },
     ],
     formats: ['image/avif', 'image/webp'],
     minimumCacheTTL: 60 * 60 * 24 * 7, // 7 days
