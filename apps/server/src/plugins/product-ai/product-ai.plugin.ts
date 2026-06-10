@@ -16,6 +16,7 @@ type ProductAnalysis = {
 type AnalyzeProductBody = {
   image?: string;
   mediaType?: string;
+  category?: string;
 };
 
 const ANALYZE_TIMEOUT_MS = Number(process.env.CLAUDE_VISION_TIMEOUT_MS ?? 25000);
@@ -82,12 +83,21 @@ async function analyzeProductImage(input: AnalyzeProductBody): Promise<ProductAn
             {
               type: 'text',
               text: `Энэ DIY/барилгын материалын барааны зургийг шинжилж зөвхөн JSON буцаа.
+${input.category ? `\nАнгилал урьдчилан тодорхойлогдсон: "${input.category}". Энэ ангилалтай нийцүүлэн, гэхдээ зургаас хамаарч зөв category-г сонго.\n` : ''}
+Ангилалын зааврууд:
+- "обой" = ханын цаас, нийлэг обой, self-adhesive обой, давтагдсан хэвтэй загвар бүхий зурмал материал
+- "паркет" = хатуу мод эсвэл laminate шал, жижиг тавцан хэлбэртэй
+- "ламинат" = MDF суурьтай, impression хэвтэй нийлэг шал
+- "кафель" = шаазан эсвэл керамик плита, угаалгуур/гал тогоо/шалны хавтан
+- "будаг" = хайрцаг/лааз савтай будаг, уусгагч, праймер
+- "цемент" = уут, бетон, шавар, нунтаг буюу нойтон байдалтай
+
 JSON schema:
 {
   "name": "барааны нэр, Монгол хэлээр, боломжтой бол марк/хэмжээтэй",
   "description": "товч тайлбар 1-2 өгүүлбэр, Монгол хэлээр",
-  "category": "цемент|төмөр|мод|будаг|тоосго|сантехник|цахилгаан|багаж|барилга|бусад",
-  "unit": "ширхэг|кг|тонн|метр|м2|уут|литр",
+  "category": "обой|паркет|ламинат|кафель|будаг|цемент|төмөр|мод|тоосго|сантехник|цахилгаан|багаж|барилга|бусад",
+  "unit": "ширхэг|кг|тонн|метр|м2|рулон|уут|литр",
   "confidence": 0-100
 }
 Хэрэв сайн танихгүй бол category="бусад", confidence бага өг. JSON-оос өөр текст битгий бич.`,
@@ -133,8 +143,12 @@ class ProductAiController {
 class ProductAiResolver {
   @Mutation()
   @Allow(Permission.Public)
-  async analyzeProductImage(@Args('image') image: string, @Args('mediaType') mediaType?: string) {
-    return analyzeProductImage({ image, mediaType });
+  async analyzeProductImage(
+    @Args('image') image: string,
+    @Args('mediaType') mediaType?: string,
+    @Args('category') category?: string,
+  ) {
+    return analyzeProductImage({ image, mediaType, category });
   }
 }
 
@@ -148,7 +162,7 @@ const PRODUCT_AI_SCHEMA_EXTENSION = gql`
   }
 
   extend type Mutation {
-    analyzeProductImage(image: String!, mediaType: String): ProductImageAnalysis!
+    analyzeProductImage(image: String!, mediaType: String, category: String): ProductImageAnalysis!
   }
 `;
 

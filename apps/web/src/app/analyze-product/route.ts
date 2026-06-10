@@ -43,6 +43,7 @@ export async function POST(request: Request) {
     let image = '';
     let mediaType = 'image/jpeg';
 
+    let category = '';
     if (contentType.includes('multipart/form-data')) {
       const form = await request.formData();
       const file = form.get('image');
@@ -54,10 +55,12 @@ export async function POST(request: Request) {
       }
       image = await fileToBase64(file);
       mediaType = file.type || mediaType;
+      category = String(form.get('category') ?? '');
     } else {
       const body = await request.json();
       image = String(body?.image ?? '');
       mediaType = String(body?.mediaType ?? getMediaTypeFromDataUrl(image) ?? mediaType);
+      category = String(body?.category ?? '');
     }
 
     if (!image) {
@@ -69,8 +72,8 @@ export async function POST(request: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: `
-          mutation AnalyzeProductImage($image: String!, $mediaType: String) {
-            analyzeProductImage(image: $image, mediaType: $mediaType) {
+          mutation AnalyzeProductImage($image: String!, $mediaType: String, $category: String) {
+            analyzeProductImage(image: $image, mediaType: $mediaType, category: $category) {
               name
               description
               category
@@ -79,7 +82,7 @@ export async function POST(request: Request) {
             }
           }
         `,
-        variables: { image, mediaType },
+        variables: { image, mediaType, ...(category ? { category } : {}) },
       }),
       cache: 'no-store',
     });

@@ -150,7 +150,7 @@ async function getSupplierProductAsProduct(slug: string): Promise<Product | null
   const asset = supplierAsset(product);
   const category = product.category?.trim();
   const supplier = await getDbSupplierById(product.supplierId);
-  if (supplier?.status && supplier.status !== 'ACTIVE') return null;
+  if (supplier?.status === 'SUSPENDED' || supplier?.status === 'REJECTED') return null;
 
   return {
     id: product.id,

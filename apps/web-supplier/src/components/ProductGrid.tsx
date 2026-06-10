@@ -99,18 +99,59 @@ async function uploadImage(file: File): Promise<string | undefined> {
   }
 }
 
-async function analyzeImage(file: File): Promise<AnalyzeResponse> {
-  const formData = new FormData();
-  formData.append('image', file);
+async function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const [prefix, data] = dataUrl.split(',');
+      const mediaType = prefix.match(/data:([^;]+)/)?.[1] ?? file.type ?? 'image/jpeg';
+      resolve({ data, mediaType });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function analyzeImage(file: File, category?: string): Promise<AnalyzeResponse> {
+  const { data, mediaType } = await fileToBase64(file);
 
   const apiBase = String(import.meta.env.VITE_API_URL ?? '').replace(/\/(shop-api|admin-api)$/, '');
   const response = await fetch(`${apiBase}/analyze-product`, {
     method: 'POST',
-    body: formData,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ image: data, mediaType, ...(category ? { category } : {}) }),
   });
 
   if (!response.ok) throw new Error(`AI шинжилгээний алдаа: ${response.status}`);
   return response.json() as Promise<AnalyzeResponse>;
+}
+
+const WALLPAPER_CATEGORIES = new Set(['обой', 'кафель', 'ламинат', 'паркет']);
+
+async function createTiledPreview(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const srcUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const W = 640;
+      const H = 320;
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d')!;
+      const tw = Math.min(img.width, 200);
+      const th = Math.round(tw * (img.height / img.width));
+      for (let x = 0; x < W; x += tw) {
+        for (let y = 0; y < H; y += th) {
+          ctx.drawImage(img, x, y, tw, th);
+        }
+      }
+      URL.revokeObjectURL(srcUrl);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.src = srcUrl;
+  });
 }
 
 export function ProductGrid() {
@@ -232,12 +273,20 @@ export function ProductGrid() {
 
     updateRow(rowId, { analyzing: true });
     try {
-      const result = await analyzeImage(imageFile);
+      const result = await analyzeImage(imageFile, row?.category || undefined);
+      const finalCategory = result.category ?? '';
+
+      let previewUrl: string | undefined;
+      if (WALLPAPER_CATEGORIES.has(finalCategory)) {
+        previewUrl = await createTiledPreview(imageFile);
+      }
+
       updateRow(rowId, {
         name: result.name ?? '',
-        category: result.category ?? '',
+        category: finalCategory,
         unit: result.unit ?? '',
         confidence: result.confidence ?? 0,
+        ...(previewUrl ? { imageUrl: previewUrl } : {}),
         status: 'new',
         analyzing: false,
       });

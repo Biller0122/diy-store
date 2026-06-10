@@ -61,9 +61,10 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-async function analyzeImage(file: File): Promise<AnalyzeResponse> {
+async function analyzeImage(file: File, category?: string): Promise<AnalyzeResponse> {
   const formData = new FormData();
   formData.append('image', file);
+  if (category) formData.append('category', category);
   const response = await fetch('/analyze-product', { method: 'POST', body: formData });
   if (!response.ok) throw new Error(`AI шинжилгээний алдаа: ${response.status}`);
   return response.json() as Promise<AnalyzeResponse>;
@@ -123,7 +124,7 @@ export function BulkProductGrid({ onSaved }: { onSaved?: () => void }) {
     if (!imageFile) return;
     updateRow(rowId, { analyzing: true });
     try {
-      const result = await analyzeImage(imageFile);
+      const result = await analyzeImage(imageFile, row?.category || undefined);
       updateRow(rowId, {
         name: result.name ?? '',
         category: result.category ?? '',
