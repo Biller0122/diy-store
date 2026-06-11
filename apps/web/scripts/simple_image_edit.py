@@ -63,9 +63,9 @@ def encode_jpeg(img):
 def logo_path():
     candidates = [
         os.environ.get("PRODUCT_LOGO_PATH"),
-        os.path.join(os.getcwd(), "apps/web/public/shoptool-logo.png"),
-        os.path.join(os.getcwd(), "public/shoptool-logo.png"),
-        os.path.join(os.getcwd(), "shoptool-logo.png"),
+        os.path.join(os.getcwd(), "apps/web/public/logo_black.png"),
+        os.path.join(os.getcwd(), "public/logo_black.png"),
+        os.path.join(os.getcwd(), "logo_black.png"),
     ]
     for candidate in candidates:
         if candidate and os.path.exists(candidate):
@@ -73,28 +73,34 @@ def logo_path():
     return None
 
 
-def make_white_logo_with_black_border(max_size):
+def load_logo(max_size):
     path = logo_path()
     if not path:
         return None
 
     logo = Image.open(path).convert("RGBA")
+    bbox = logo.getbbox()
+    if bbox:
+        logo = logo.crop(bbox)
     logo.thumbnail(max_size, Image.Resampling.LANCZOS)
-    alpha = logo.getchannel("A")
-    outline = alpha.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(0.4))
-
-    bordered = Image.new("RGBA", logo.size, (0, 0, 0, 0))
-    bordered.paste((0, 0, 0, 255), (0, 0), outline)
-    bordered.paste((255, 255, 255, 255), (0, 0), alpha)
-    return bordered
+    return logo
 
 
 def add_bottom_logo(canvas):
-    logo = make_white_logo_with_black_border((int(canvas.width * 0.34), int(canvas.height * 0.12)))
+    logo = load_logo((int(canvas.width * 0.40), int(canvas.height * 0.14)))
     if logo is None:
         return canvas
     x = (canvas.width - logo.width) // 2
     y = canvas.height - logo.height - int(canvas.height * 0.045)
+    canvas.paste(logo, (x, y), logo)
+    return canvas
+
+
+def paste_logo(canvas, logo, bottom_margin):
+    if logo is None:
+        return canvas
+    x = (canvas.width - logo.width) // 2
+    y = canvas.height - logo.height - bottom_margin
     canvas.paste(logo, (x, y), logo)
     return canvas
 
@@ -135,8 +141,14 @@ def run_onnx_cpu_ecommerce_pipeline(image_value, padding_percent=3, target_size=
     polished = ImageEnhance.Color(polished).enhance(1.15)
 
     canvas_w, canvas_h = target_size
+    logo = load_logo((int(canvas_w * 0.40), int(canvas_h * 0.14)))
+    top_margin = int(canvas_h * padding_percent / 100)
+    bottom_margin = int(canvas_h * 0.045)
+    logo_gap = int(canvas_h * 0.03)
+    reserved_logo_h = (logo.height + bottom_margin + logo_gap) if logo else 0
+    item_area_h = max(1, canvas_h - top_margin - reserved_logo_h)
     padded_max_w = canvas_w * (100 - (padding_percent * 2)) / 100
-    padded_max_h = canvas_h * (100 - (padding_percent * 2)) / 100
+    padded_max_h = max(1, item_area_h)
     obj_w, obj_h = polished.size
     scale_factor = min(padded_max_w / obj_w, padded_max_h / obj_h)
     new_obj_w = max(1, int(obj_w * scale_factor))
@@ -145,9 +157,9 @@ def run_onnx_cpu_ecommerce_pipeline(image_value, padding_percent=3, target_size=
 
     white_canvas = Image.new("RGB", target_size, (255, 255, 255))
     paste_x = (canvas_w - new_obj_w) // 2
-    paste_y = max(int(canvas_h * 0.03), (canvas_h - int(canvas_h * 0.12) - new_obj_h) // 2)
+    paste_y = top_margin + max(0, (item_area_h - new_obj_h) // 2)
     white_canvas.paste(resized_obj, (paste_x, paste_y), resized_obj)
-    white_canvas = add_bottom_logo(white_canvas)
+    white_canvas = paste_logo(white_canvas, logo, bottom_margin)
     elapsed = time.time() - start_time
     return {"image": encode_jpeg(white_canvas), "engine": "birefnet-lite-onnx-cpu", "seconds": elapsed}
 

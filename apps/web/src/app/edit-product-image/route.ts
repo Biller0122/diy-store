@@ -144,55 +144,19 @@ function growMask(mask: Uint8Array, width: number, height: number, radius: numbe
 
 async function makeLogoOverlay(maxWidth: number, maxHeight: number) {
   const logoPath = [
-    path.join(process.cwd(), 'apps/web/public/shoptool-logo.png'),
-    path.join(process.cwd(), 'public/shoptool-logo.png'),
-    path.join(process.cwd(), 'shoptool-logo.png'),
+    path.join(process.cwd(), 'apps/web/public/logo_black.png'),
+    path.join(process.cwd(), 'public/logo_black.png'),
+    path.join(process.cwd(), 'logo_black.png'),
   ].find((candidate) => existsSync(candidate));
   if (!logoPath) throw new Error('Лого файл олдсонгүй');
 
-  const { data, info } = await sharp(logoPath)
+  const trimmed = await sharp(logoPath).ensureAlpha().trim().toBuffer();
+  const { data, info } = await sharp(trimmed)
     .resize({ width: maxWidth, height: maxHeight, fit: 'inside', withoutEnlargement: true })
-    .ensureAlpha()
-    .raw()
+    .png()
     .toBuffer({ resolveWithObject: true });
 
-  const alpha = new Uint8Array(info.width * info.height);
-  for (let i = 0; i < alpha.length; i += 1) alpha[i] = data[i * 4 + 3];
-
-  const overlay = Buffer.alloc(info.width * info.height * 4);
-  const radius = 3;
-  for (let y = 0; y < info.height; y += 1) {
-    for (let x = 0; x < info.width; x += 1) {
-      const pixel = y * info.width + x;
-      const out = pixel * 4;
-      if (alpha[pixel] > 12) {
-        overlay[out] = 255;
-        overlay[out + 1] = 255;
-        overlay[out + 2] = 255;
-        overlay[out + 3] = alpha[pixel];
-        continue;
-      }
-
-      let outline = 0;
-      for (let dy = -radius; dy <= radius; dy += 1) {
-        const yy = y + dy;
-        if (yy < 0 || yy >= info.height) continue;
-        for (let dx = -radius; dx <= radius; dx += 1) {
-          const xx = x + dx;
-          if (xx >= 0 && xx < info.width) outline = Math.max(outline, alpha[yy * info.width + xx]);
-        }
-      }
-      if (outline > 12) {
-        overlay[out + 3] = Math.min(230, outline);
-      }
-    }
-  }
-
-  return {
-    buffer: await sharp(overlay, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer(),
-    width: info.width,
-    height: info.height,
-  };
+  return { buffer: data, width: info.width, height: info.height };
 }
 
 async function editLocallyWithLogo(image: string, outputSize = LOCAL_EDIT_SIZE) {
@@ -280,7 +244,7 @@ async function editLocallyWithLogo(image: string, outputSize = LOCAL_EDIT_SIZE) 
   const scale = Math.min(productMax / Math.max(cropW, cropH), 1);
   const drawW = Math.max(1, Math.round(cropW * scale));
   const drawH = Math.max(1, Math.round(cropH * scale));
-  const logo = await makeLogoOverlay(Math.round(size * 0.34), Math.round(size * 0.12));
+  const logo = await makeLogoOverlay(Math.round(size * 0.40), Math.round(size * 0.14));
   const product = await sharp(crop, { raw: { width: cropW, height: cropH, channels: 4 } })
     .resize(drawW, drawH)
     .png()

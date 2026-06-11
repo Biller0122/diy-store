@@ -319,30 +319,27 @@ def logo_path() -> Path:
     configured = os.environ.get("PRODUCT_LOGO_PATH")
     if configured:
         return Path(configured)
-    return Path(__file__).resolve().parents[2] / "logo.jpg"
+    return Path(__file__).resolve().parents[2] / "logo_black.png"
 
 
-def make_white_logo_with_black_border(size: tuple[int, int]) -> Image.Image | None:
+def load_logo(size: tuple[int, int]) -> Image.Image | None:
     path = logo_path()
     if not path.exists():
         print(f"[ai-image] logo not found at {path}", flush=True)
         return None
 
     logo = Image.open(path).convert("RGBA")
+    bbox = logo.getbbox()
+    if bbox:
+        logo = logo.crop(bbox)
     logo.thumbnail(size, Image.LANCZOS)
-    alpha = logo.getchannel("A")
-    outline = alpha.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(0.4))
-
-    bordered = Image.new("RGBA", logo.size, (0, 0, 0, 0))
-    bordered.paste((0, 0, 0, 255), (0, 0), outline)
-    bordered.paste((255, 255, 255, 255), (0, 0), alpha)
-    return bordered
+    return logo
 
 
 def add_bottom_logo(canvas: Image.Image) -> Image.Image:
     out = canvas.convert("RGB")
-    max_logo_size = (int(out.width * 0.34), int(out.height * 0.12))
-    logo = make_white_logo_with_black_border(max_logo_size)
+    max_logo_size = (int(out.width * 0.40), int(out.height * 0.14))
+    logo = load_logo(max_logo_size)
     if logo is None:
         return out
 
