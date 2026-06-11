@@ -48,11 +48,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="categories"
         options={{
-          title: 'Хайх',
+          title: 'Ангилал',
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'search' : 'search-outline'} size={24} color={color} />
+            <Ionicons name={focused ? 'grid' : 'grid-outline'} size={24} color={color} />
           ),
         }}
       />
@@ -66,21 +66,26 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="orders"
-        options={{
-          title: 'Захиалга',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'bag' : 'bag-outline'} size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="account"
         options={{
           title: 'Бүртгэл',
           tabBarIcon: ({ focused, color }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{
+          href: null,
+          title: 'Хайх',
+        }}
+      />
+      <Tabs.Screen
+        name="orders"
+        options={{
+          href: null,
+          title: 'Захиалга',
         }}
       />
     </Tabs>

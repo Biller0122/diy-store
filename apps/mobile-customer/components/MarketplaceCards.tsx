@@ -109,9 +109,9 @@ export function SupplierTile({ supplier, onPress }: { supplier: MarketplaceSuppl
   );
 }
 
-export function CategoryTile({ category, onPress }: { category: MarketplaceCategory; onPress: () => void }) {
+export function CategoryTile({ category, onPress, selected = false }: { category: MarketplaceCategory; onPress: () => void; selected?: boolean }) {
   return (
-    <TouchableOpacity style={styles.categoryTile} onPress={onPress} activeOpacity={0.82}>
+    <TouchableOpacity style={[styles.categoryTile, selected && styles.categoryTileSelected]} onPress={onPress} activeOpacity={0.82}>
       <Text style={styles.categoryIcon}>{category.icon}</Text>
       <Text style={styles.categoryName} numberOfLines={2}>{category.name}</Text>
       <Text style={styles.categoryCount}>{category.productCount.toLocaleString('mn-MN')} бараа</Text>
@@ -225,6 +225,7 @@ const styles = StyleSheet.create({
     padding: 11,
     justifyContent: 'space-between',
   },
+  categoryTileSelected: { borderColor: C.primary, backgroundColor: C.primaryGlow },
   categoryIcon: { fontSize: 27 },
   categoryName: { color: C.text, fontSize: 12, fontWeight: '800', lineHeight: 16 },
   categoryCount: { color: C.textTertiary, fontSize: 10 },

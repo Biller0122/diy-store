@@ -64,6 +64,23 @@ export const LOGIN_MUTATION = `
   }
 `;
 
+export const PASSWORD_LOGIN_MUTATION = `
+  mutation CustomerPasswordLogin($identifier: String!, $password: String!) {
+    customerPasswordLogin(identifier: $identifier, password: $password) {
+      success
+      message
+      token
+      customer {
+        id
+        firstName
+        lastName
+        emailAddress
+        phoneNumber
+      }
+    }
+  }
+`;
+
 export const LOGOUT_MUTATION = `
   mutation Logout {
     logout {
@@ -73,15 +90,67 @@ export const LOGOUT_MUTATION = `
 `;
 
 export const REGISTER_MUTATION = `
-  mutation Register($input: RegisterCustomerInput!) {
-    registerCustomerAccount(input: $input) {
-      ... on Success {
-        success
+  mutation CustomerPasswordRegister($input: CustomerPasswordRegisterInput!) {
+    customerPasswordRegister(input: $input) {
+      success
+      message
+      token
+      customer {
+        id
+        firstName
+        lastName
+        emailAddress
+        phoneNumber
       }
-      ... on ErrorResult {
-        errorCode
-        message
-      }
+    }
+  }
+`;
+
+const CUSTOMER_AUTH_FIELDS = `
+  success
+  message
+  token
+  customer {
+    id
+    firstName
+    lastName
+    emailAddress
+    phoneNumber
+  }
+`;
+
+export const REQUEST_EMAIL_OTP_MUTATION = `
+  mutation RequestCustomerEmailOtp($emailAddress: String!) {
+    requestCustomerEmailOtp(emailAddress: $emailAddress) {
+      success
+      message
+      otp
+    }
+  }
+`;
+
+export const VERIFY_EMAIL_OTP_MUTATION = `
+  mutation VerifyCustomerEmailOtp($emailAddress: String!, $otp: String!) {
+    verifyCustomerEmailOtp(emailAddress: $emailAddress, otp: $otp) {
+      ${CUSTOMER_AUTH_FIELDS}
+    }
+  }
+`;
+
+export const REQUEST_PASSWORD_RESET_OTP_MUTATION = `
+  mutation RequestCustomerPasswordResetOtp($emailAddress: String!) {
+    requestCustomerPasswordResetOtp(emailAddress: $emailAddress) {
+      success
+      message
+      otp
+    }
+  }
+`;
+
+export const RESET_PASSWORD_WITH_OTP_MUTATION = `
+  mutation ResetCustomerPasswordWithOtp($emailAddress: String!, $otp: String!, $password: String!) {
+    resetCustomerPasswordWithOtp(emailAddress: $emailAddress, otp: $otp, password: $password) {
+      ${CUSTOMER_AUTH_FIELDS}
     }
   }
 `;
@@ -214,6 +283,17 @@ export const COLLECTIONS_QUERY = `
         featuredAsset {
           preview
         }
+        children {
+          id
+          name
+          slug
+          customFields {
+            icon
+          }
+          productVariants(options: { take: 1 }) {
+            totalItems
+          }
+        }
         productVariants(options: { take: 1 }) {
           totalItems
         }
@@ -279,12 +359,55 @@ export const SUPPLIER_BY_SLUG_QUERY = `
       businessName
       slug
       description
+      phone
+      address
       district
+      lat
+      lng
       rating
       reviewCount
       productCount
       pickupEnabled
       deliveryEnabled
+    }
+  }
+`;
+
+export const COLLECTION_BY_SLUG_QUERY = `
+  query CollectionBySlug($slug: String!) {
+    collection(slug: $slug) {
+      id
+      name
+      slug
+      customFields {
+        icon
+      }
+      children {
+        id
+        name
+        slug
+        customFields {
+          icon
+        }
+        productVariants(options: { take: 1 }) {
+          totalItems
+        }
+      }
+    }
+  }
+`;
+
+export const SUPPLIER_QUERY = `
+  query Supplier($id: ID!) {
+    supplier(id: $id) {
+      id
+      businessName
+      slug
+      phone
+      address
+      district
+      lat
+      lng
     }
   }
 `;
@@ -482,6 +605,8 @@ export const CREATE_DELIVERY_REQUEST_MUTATION = `
     $customerId: String!
     $customerName: String!
     $customerPhone: String!
+    $pickupStops: [PickupStopInput!]
+    $orderItems: [DeliveryOrderItemInput!]
     $dropoffAddress: String!
     $dropoffLat: Float!
     $dropoffLng: Float!
@@ -493,6 +618,8 @@ export const CREATE_DELIVERY_REQUEST_MUTATION = `
       customerId: $customerId
       customerName: $customerName
       customerPhone: $customerPhone
+      pickupStops: $pickupStops
+      orderItems: $orderItems
       dropoffAddress: $dropoffAddress
       dropoffLat: $dropoffLat
       dropoffLng: $dropoffLng

@@ -17,7 +17,7 @@ interface AuthState {
   token: string | null;
   isLoading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (identifier: string, password: string) => Promise<boolean>;
   requestEmailOtp: (email: string) => Promise<{ ok: boolean; otp?: string | null }>;
   verifyEmailOtp: (email: string, otp: string) => Promise<boolean>;
   loginWithGoogle: (credential: string) => Promise<boolean>;
@@ -37,49 +37,41 @@ interface RegisterInput {
   phoneNumber?: string;
 }
 
-const LOGIN_MUTATION = `
-  mutation Login($username: String!, $password: String!, $rememberMe: Boolean) {
-    login(username: $username, password: $password, rememberMe: $rememberMe) {
-      ... on CurrentUser {
+const PASSWORD_LOGIN_MUTATION = `
+  mutation CustomerPasswordLogin($identifier: String!, $password: String!) {
+    customerPasswordLogin(identifier: $identifier, password: $password) {
+      success
+      message
+      token
+      customer {
         id
-        identifier
-      }
-      ... on InvalidCredentialsError {
-        errorCode
-        message
-      }
-      ... on NotVerifiedError {
-        errorCode
-        message
-      }
-      ... on NativeAuthStrategyError {
-        errorCode
-        message
+        firstName
+        lastName
+        emailAddress
+        phoneNumber
       }
     }
   }
 `;
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
-  INVALID_CREDENTIALS_ERROR: 'И-мэйл эсвэл нууц үг буруу байна',
+  INVALID_CREDENTIALS_ERROR: 'И-мэйл/утас эсвэл нууц үг буруу байна',
   NOT_VERIFIED_ERROR: 'И-мэйл баталгаажаагүй байна. Имэйлээ шалгана уу.',
   NATIVE_AUTH_STRATEGY_ERROR: 'Нэвтрэх боломжгүй байна. Дахин оролдоно уу.',
 };
 
 const REGISTER_MUTATION = `
-  mutation Register($input: RegisterCustomerInput!) {
-    registerCustomerAccount(input: $input) {
-      ... on Success {
-        success
-      }
-      ... on MissingPasswordError {
-        message
-      }
-      ... on PasswordValidationError {
-        message
-      }
-      ... on NativeAuthStrategyError {
-        message
+  mutation CustomerPasswordRegister($input: CustomerPasswordRegisterInput!) {
+    customerPasswordRegister(input: $input) {
+      success
+      message
+      token
+      customer {
+        id
+        firstName
+        lastName
+        emailAddress
+        phoneNumber
       }
     }
   }
@@ -204,18 +196,18 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
 
-      login: async (email, password) => {
+      login: async (identifier, password) => {
         set({ isLoading: true, error: null });
         try {
           const data = await vendureShopFetch<{
-            login: { id?: string; identifier?: string; message?: string };
-          }>(LOGIN_MUTATION, { username: email, password, rememberMe: true });
+            customerPasswordLogin: { success?: boolean; message?: string; token?: string | null; customer?: ActiveCustomer | null };
+          }>(PASSWORD_LOGIN_MUTATION, { identifier, password });
 
-          const result = data.login;
-          if (result.id) {
-            await get().fetchActiveCustomer();
+          const result = data.customerPasswordLogin;
+          if (result.success && result.customer) {
+            if (result.token) setVendureAuthToken(result.token);
+            set({ customer: result.customer, token: result.token ?? null, isLoading: false, error: null });
             await createCustomerSession();
-            set({ isLoading: false });
             return true;
           } else {
             const errorCode = (result as any).errorCode as string | undefined;
@@ -224,12 +216,6 @@ export const useAuthStore = create<AuthState>()(
             return false;
           }
         } catch (err: unknown) {
-          if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
-            const customer = createMockCustomer(email);
-            set({ customer, isLoading: false, error: null });
-            await createCustomerSession();
-            return true;
-          }
           set({ isLoading: false, error: err instanceof Error ? err.message : 'Сүлжээний алдаа' });
           return false;
         }
@@ -306,37 +292,11 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const data = await vendureShopFetch<{
-            registerCustomerAccount: { success?: boolean; message?: string };
+            customerPasswordRegister: { success?: boolean; message?: string; token?: string | null; customer?: ActiveCustomer | null };
           }>(REGISTER_MUTATION, { input });
 
-          const result = data.registerCustomerAccount;
-          if (result.success) {
-            const loginOk = await get().login(input.emailAddress, input.password);
-            if (!loginOk) {
-              set((state) => ({
-                isLoading: false,
-                error: state.error ?? 'Бүртгэл үүслээ, гэхдээ автоматаар нэвтрэхэд алдаа гарлаа. Нэвтрэх хэсгээс дахин оролдоно уу.',
-              }));
-              return false;
-            }
-            return true;
-          } else {
-            set({ isLoading: false, error: result.message ?? 'Бүртгүүлэхэд алдаа гарлаа' });
-            return false;
-          }
+          return applyCustomerAuth(data.customerPasswordRegister, set);
         } catch (err: unknown) {
-          if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
-            const customer: ActiveCustomer = {
-              id: `customer-dev-${Date.now()}`,
-              firstName: input.firstName,
-              lastName: input.lastName,
-              emailAddress: input.emailAddress,
-              phoneNumber: input.phoneNumber,
-            };
-            set({ customer, isLoading: false, error: null });
-            await createCustomerSession();
-            return true;
-          }
           set({ isLoading: false, error: err instanceof Error ? err.message : 'Сүлжээний алдаа' });
           return false;
         }

@@ -6,6 +6,7 @@ import {
   CustomerService,
   isGraphQlErrorResult,
   RequestContext,
+  TransactionalConnection,
   User,
   UserService,
 } from '@vendure/core';
@@ -24,6 +25,14 @@ type GoogleTokenInfo = {
   picture?: string;
 };
 
+type CustomerPasswordRegisterInput = {
+  firstName: string;
+  lastName: string;
+  emailAddress: string;
+  phoneNumber?: string;
+  password: string;
+};
+
 @Injectable()
 export class CustomerAuthService {
   private ensureTablePromise?: Promise<void>;
@@ -35,7 +44,55 @@ export class CustomerAuthService {
     private readonly userService: UserService,
     private readonly authService: AuthService,
     private readonly emailOtpService: EmailOtpService,
+    private readonly connection: TransactionalConnection,
   ) {}
+
+  async registerWithPassword(ctx: RequestContext, input: CustomerPasswordRegisterInput) {
+    const emailAddress = this.normalizeEmail(input.emailAddress);
+    this.assertEmail(emailAddress);
+    if (input.password.length < 8) throw new Error('Нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой');
+    if (await this.findCustomerByEmail(ctx, emailAddress)) {
+      throw new Error('Энэ и-мэйлээр хэрэглэгч бүртгэлтэй байна');
+    }
+
+    const phoneNumber = this.normalizePhone(input.phoneNumber);
+    if (phoneNumber && await this.findCustomerByPhone(ctx, phoneNumber)) {
+      throw new Error('Энэ утасны дугаараар хэрэглэгч бүртгэлтэй байна');
+    }
+
+    const created = await this.customerService.create(ctx, {
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
+      emailAddress,
+      phoneNumber,
+    }, input.password);
+    if (isGraphQlErrorResult(created)) {
+      throw new Error(created.message);
+    }
+
+    return this.createSession(ctx, created.user!);
+  }
+
+  async loginWithPassword(ctx: RequestContext, identifierInput: string, password: string) {
+    const identifier = identifierInput.trim();
+    if (!identifier || !password) throw new Error('Нэвтрэх мэдээлэл дутуу байна');
+
+    const username = await this.resolveLoginIdentifier(ctx, identifier);
+    const session = await this.authService.authenticate(ctx, 'shop', 'native', {
+      username,
+      password,
+    });
+    if (isGraphQlErrorResult(session)) {
+      throw new Error(session.message);
+    }
+    const customer = await this.customerService.findOneByUserId(ctx, session.user.id, false);
+    return {
+      success: true,
+      message: 'Амжилттай нэвтэрлээ',
+      token: session.token,
+      customer: customer ? this.serializeCustomer(customer) : null,
+    };
+  }
 
   async requestEmailOtp(emailInput: string, purpose: CustomerOtpPurpose = 'login') {
     await this.ensureOtpTable();
@@ -208,6 +265,25 @@ export class CustomerAuthService {
     return this.customerService.findOneByUserId(ctx, user.id, false);
   }
 
+  private async findCustomerByPhone(ctx: RequestContext, phone: string) {
+    const digits = this.normalizePhone(phone);
+    if (!digits) return undefined;
+    const repo = this.connection.getRepository(ctx, Customer);
+    const customers = await repo.find({
+      relations: ['user'],
+    });
+    return customers.find((customer) => this.normalizePhone(customer.phoneNumber) === digits);
+  }
+
+  private async resolveLoginIdentifier(ctx: RequestContext, identifier: string) {
+    const value = identifier.trim().toLowerCase();
+    if (value.includes('@')) return value;
+
+    const customer = await this.findCustomerByPhone(ctx, value);
+    if (!customer?.emailAddress) throw new Error('Энэ утасны дугаартай хэрэглэгч олдсонгүй');
+    return this.normalizeEmail(customer.emailAddress);
+  }
+
   private async verifyGoogleCredential(credential: string): Promise<GoogleTokenInfo> {
     const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) throw new Error('GOOGLE_CLIENT_ID тохируулаагүй байна');
@@ -246,6 +322,10 @@ export class CustomerAuthService {
 
   private normalizeEmail(value: string) {
     return value.trim().toLowerCase();
+  }
+
+  private normalizePhone(value?: string | null) {
+    return (value ?? '').replace(/\D/g, '');
   }
 
   private assertEmail(value: string) {

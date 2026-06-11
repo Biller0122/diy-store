@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,14 +7,16 @@ import { C } from '@/lib/colors';
 import { COLLECTIONS_QUERY, HOMEPAGE_BANNERS_QUERY, SEARCH_QUERY, shopFetch, SUPPLIERS_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 import {
   CATEGORY_ICONS,
-  DIY_GUIDES,
+  encodeRoutePart,
   HomepageBanner,
   HOW_IT_WORKS,
   mapSearchProduct,
+  mapSupplier,
   mapSupplierProduct,
   MarketplaceCategory,
   MarketplaceProduct,
   MarketplaceSupplier,
+  supplierProductMatchesCategory,
 } from '@/lib/marketplace';
 import { CategoryTile, ProductTile, RemoteImage, SectionHeading, SupplierTile } from '@/components/MarketplaceCards';
 
@@ -34,18 +36,25 @@ const TRUST_ITEMS = [
   { icon: 'storefront-outline', label: 'Дэлгүүрээс авах' },
 ] as const;
 
-function mapSupplier(item: any): MarketplaceSupplier {
-  return {
-    id: item.id,
-    name: item.businessName,
-    slug: item.slug,
-    rating: item.rating || 5,
-    reviewCount: item.reviewCount || 0,
-    district: item.district || 'Улаанбаатар',
-    productCount: item.productCount || 0,
-    isOpen: item.isOpen !== false,
-    deliveryTime: item.deliveryTime || '30-45 мин',
-  };
+const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL || 'https://shoptool.mn').replace(/\/$/, '');
+
+function openWebPath(path: string) {
+  Linking.openURL(`${WEB_URL}${path}`).catch(() => {});
+}
+
+function getCollectionProductCount(collection: any) {
+  return collection.productVariants?.totalItems ?? 0;
+}
+
+function getBackendCategoryProductCount(collection: any, supplierProducts: any[]) {
+  const catalogCount = [collection, ...(collection.children ?? [])].reduce(
+    (total, item) => total + getCollectionProductCount(item),
+    0,
+  );
+  const supplierCount = supplierProducts.filter((product) => (
+    product.enabled !== false && supplierProductMatchesCategory(product, collection, true)
+  )).length;
+  return catalogCount + supplierCount;
 }
 
 function FeaturedBanner({ banner }: { banner?: HomepageBanner }) {
@@ -105,7 +114,7 @@ export default function HomeScreen() {
               name: item.name,
               slug: item.slug,
               icon: item.customFields?.icon || CATEGORY_ICONS[index % CATEGORY_ICONS.length],
-              productCount: item.productVariants?.totalItems ?? 0,
+              productCount: getBackendCategoryProductCount(item, supplierProductData.supplierProducts?.items ?? []),
             })),
           products: [
             ...(supplierProductData.supplierProducts?.items ?? []).map(mapSupplierProduct),
@@ -129,7 +138,10 @@ export default function HomeScreen() {
   }, []);
 
   const saleProducts = useMemo(
-    () => data.products.slice(4, 8).map((product) => ({ ...product, badge: 'ХЯМДРАЛ' as const })),
+    () => data.products
+      .filter((product) => product.originalPrice && product.originalPrice > product.price)
+      .slice(0, 8)
+      .map((product) => ({ ...product, badge: 'ХЯМДРАЛ' as const })),
     [data.products],
   );
 
@@ -138,8 +150,7 @@ export default function HomeScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.logoRow}>
-            <View style={styles.logoDot} />
-            <Text style={styles.logoText}>DIY Store</Text>
+            <Image source={require('../../assets/shoptool-logo.png')} style={styles.logoImage} resizeMode="contain" />
           </View>
           <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/(tabs)/cart' as never)}>
             <Ionicons name="cart-outline" size={22} color={C.primary} />
@@ -152,38 +163,47 @@ export default function HomeScreen() {
           <Ionicons name="options-outline" size={18} color={C.primary} />
         </Pressable>
 
-        <View style={styles.hero}>
-          <View style={styles.heroAccent} />
-          <Text style={styles.heroKicker}>Backend нийлүүлэгч нэг платформд</Text>
-          <Text style={styles.heroTitle}>Хэрэгтэй бараагаа ойр дэлгүүрээс захиал</Text>
-          <Text style={styles.heroText}>Нэг сагс, олон нийлүүлэгч, шууд хүргэлт. Захиалга бүрийн явцыг апп дээрээс хянана.</Text>
-          <View style={styles.heroActions}>
-            <TouchableOpacity style={styles.primaryAction} onPress={() => router.push('/(tabs)/search' as never)}>
-              <Ionicons name="storefront-outline" size={17} color="#fff" />
-              <Text style={styles.primaryActionText}>Бараа үзэх</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryAction} onPress={() => router.push('/(tabs)/orders' as never)}>
-              <Ionicons name="navigate-outline" size={17} color={C.text} />
-              <Text style={styles.secondaryActionText}>Захиалга</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>{data.supplierTotal.toLocaleString('mn-MN')}</Text>
-              <Text style={styles.statLabel}>Нийлүүлэгч</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>{data.productTotal.toLocaleString('mn-MN')}</Text>
-              <Text style={styles.statLabel}>Бүтээгдэхүүн</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>30 мин</Text>
-              <Text style={styles.statLabel}>Дундаж хүргэлт</Text>
-            </View>
-          </View>
-        </View>
-
         <FeaturedBanner banner={data.banners[0]} />
+
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color={C.primary} />
+            <Text style={styles.loadingText}>Marketplace өгөгдөл ачаалж байна...</Text>
+          </View>
+        ) : null}
+
+        <SectionHeading title="Дэлгүүрүүд" subtitle="Найдвартай нийлүүлэгчдээс шууд захиалаарай" action="Бүгд" onPress={() => router.push('/suppliers' as never)} />
+        <FlatList
+          horizontal
+          data={data.suppliers}
+          keyExtractor={(item) => item.id}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalList}
+          renderItem={({ item }) => <SupplierTile supplier={item} onPress={() => router.push(`/supplier/${encodeRoutePart(item.slug)}` as never)} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>Backend дээр идэвхтэй нийлүүлэгч алга байна.</Text>}
+        />
+
+        <SectionHeading title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" action="Бүгдийг харах" onPress={() => router.push('/products?mode=new' as never)} />
+        <FlatList
+          horizontal
+          data={data.products.slice(0, 8)}
+          keyExtractor={(item) => item.variantId}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalList}
+          renderItem={({ item }) => <ProductTile product={item} onPress={() => router.push(`/product/${encodeRoutePart(item.slug)}` as never)} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>Backend дээр бараа бүртгэгдээгүй байна.</Text>}
+        />
+
+        {saleProducts.length > 0 ? (
+          <>
+            <SectionHeading title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" action="Бүгдийг харах" onPress={() => router.push('/products?mode=sale' as never)} />
+            <View style={styles.productGrid}>
+              {saleProducts.map((product) => (
+                <ProductTile key={product.variantId} product={product} wide onPress={() => router.push(`/product/${encodeRoutePart(product.slug)}` as never)} />
+              ))}
+            </View>
+          </>
+        ) : null}
 
         <View style={styles.trustStrip}>
           {TRUST_ITEMS.map((item) => (
@@ -194,28 +214,10 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {loading ? (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator color={C.primary} />
-            <Text style={styles.loadingText}>Marketplace өгөгдөл ачаалж байна...</Text>
-          </View>
-        ) : null}
-
-        <SectionHeading title="Онцлох нийлүүлэгчид" subtitle="Найдвартай дэлгүүрүүдээс шууд захиалаарай" action="Бүгд" onPress={() => router.push('/(tabs)/search' as never)} />
-        <FlatList
-          horizontal
-          data={data.suppliers}
-          keyExtractor={(item) => item.id}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.horizontalList}
-          renderItem={({ item }) => <SupplierTile supplier={item} onPress={() => router.push(`/supplier/${item.slug}` as never)} />}
-          ListEmptyComponent={<Text style={styles.emptyText}>Backend дээр идэвхтэй нийлүүлэгч алга байна.</Text>}
-        />
-
-        <SectionHeading title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" action="Хайх" onPress={() => router.push('/(tabs)/search' as never)} />
+        <SectionHeading title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" action="Бүгд" onPress={() => router.push('/(tabs)/categories' as never)} />
         <View style={styles.categoryGrid}>
           {data.categories.slice(0, 9).map((category) => (
-            <CategoryTile key={category.id} category={category} onPress={() => router.push(`/category/${category.slug}` as never)} />
+            <CategoryTile key={category.id} category={category} onPress={() => router.push(`/category/${encodeRoutePart(category.slug)}` as never)} />
           ))}
         </View>
 
@@ -233,40 +235,22 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <SectionHeading title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" action="Хайх" onPress={() => router.push('/(tabs)/search' as never)} />
-        <FlatList
-          horizontal
-          data={data.products.slice(0, 8)}
-          keyExtractor={(item) => item.variantId}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.horizontalList}
-          renderItem={({ item }) => <ProductTile product={item} onPress={() => router.push(`/product/${item.slug}` as never)} />}
-          ListEmptyComponent={<Text style={styles.emptyText}>Backend дээр бараа бүртгэгдээгүй байна.</Text>}
-        />
-
-        {saleProducts.length > 0 ? (
-          <>
-            <SectionHeading title="Хямдралтай бараа" subtitle="Онцлох санал, хурдан авах боломжтой" />
-            <View style={styles.productGrid}>
-              {saleProducts.map((product) => (
-                <ProductTile key={product.variantId} product={product} wide onPress={() => router.push(`/product/${product.slug}` as never)} />
-              ))}
-            </View>
-          </>
-        ) : null}
-
-        <SectionHeading title="DIY Заавар" subtitle="Мэргэжилтнээс суралц, зөв бараагаа сонго" action="Бүгд" onPress={() => router.push('/how-to' as never)} />
-        <View style={styles.guideGrid}>
-          {DIY_GUIDES.map((guide) => (
-            <TouchableOpacity key={guide.title} style={styles.guideCard} onPress={() => router.push(`/(tabs)/search?query=${encodeURIComponent(guide.query)}` as never)}>
-              <Text style={styles.guideEmoji}>{guide.emoji}</Text>
-              <Text style={styles.guideTitle} numberOfLines={2}>{guide.title}</Text>
-              <View style={styles.guideMeta}>
-                <Ionicons name="time-outline" size={12} color={C.textTertiary} />
-                <Text style={styles.guideMetaText}>{guide.readTime} уншлага</Text>
-              </View>
+        <View style={styles.tradeCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.tradeKicker}>Shoptool network</Text>
+            <Text style={styles.tradeTitle}>Бизнесээ платформд холбоорой</Text>
+            <Text style={styles.tradeText}>Нийлүүлэгчээр бараагаа борлуулах эсвэл жолоочоор хүргэлтийн захиалга авах боломжтой.</Text>
+          </View>
+          <View style={styles.tradeActions}>
+            <TouchableOpacity style={styles.tradePrimary} onPress={() => openWebPath('/register')}>
+              <Ionicons name="storefront-outline" size={15} color="#fff" />
+              <Text style={styles.tradePrimaryText}>Нийлүүлэгч</Text>
             </TouchableOpacity>
-          ))}
+            <TouchableOpacity style={styles.tradeSecondary} onPress={() => openWebPath('/driver/register')}>
+              <Ionicons name="bicycle-outline" size={15} color={C.primary} />
+              <Text style={styles.tradeSecondaryText}>Жолооч болох</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.bottomSpacer} />
@@ -280,9 +264,8 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16, paddingBottom: 18 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, paddingBottom: 14 },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
-  logoText: { color: C.text, fontSize: 24, fontWeight: '900' },
+  logoRow: { flexDirection: 'row', alignItems: 'center' },
+  logoImage: { width: 190, height: 64 },
   iconButton: {
     width: 42,
     height: 42,
@@ -306,54 +289,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   searchText: { color: C.textTertiary, fontSize: 14, flex: 1 },
-  hero: {
-    overflow: 'hidden',
-    borderRadius: 22,
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 18,
-    marginBottom: 14,
-  },
-  heroAccent: {
-    position: 'absolute',
-    right: -44,
-    top: -36,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: C.primaryGlow,
-  },
-  heroKicker: { color: C.primary, fontSize: 12, fontWeight: '800', marginBottom: 8 },
-  heroTitle: { color: C.text, fontSize: 28, fontWeight: '900', lineHeight: 33, maxWidth: 305 },
-  heroText: { color: C.textSub, fontSize: 13, lineHeight: 20, marginTop: 10, maxWidth: 310 },
-  heroActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  primaryAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: C.primary,
-    borderRadius: 14,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-  },
-  primaryActionText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  secondaryAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: C.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-  },
-  secondaryActionText: { color: C.text, fontSize: 13, fontWeight: '800' },
-  statsRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  statBox: { flex: 1, backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 10 },
-  statValue: { color: C.primary, fontSize: 16, fontWeight: '900', fontFamily: 'monospace' },
-  statLabel: { color: C.textTertiary, fontSize: 10, marginTop: 2 },
   bannerCard: {
     minHeight: 170,
     overflow: 'hidden',
@@ -430,20 +365,42 @@ const styles = StyleSheet.create({
   stepTitle: { color: C.text, fontSize: 13, fontWeight: '800' },
   stepDesc: { color: C.textSub, fontSize: 11, lineHeight: 16, marginTop: 4 },
   productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
-  guideGrid: { gap: 10 },
-  guideCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  tradeCard: {
     backgroundColor: C.card,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: C.border,
-    padding: 12,
+    padding: 16,
+    marginBottom: 24,
+    gap: 14,
   },
-  guideEmoji: { fontSize: 31, width: 42, textAlign: 'center' },
-  guideTitle: { color: C.text, flex: 1, fontSize: 13, fontWeight: '800', lineHeight: 18 },
-  guideMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  guideMetaText: { color: C.textTertiary, fontSize: 10 },
+  tradeKicker: { color: C.primary, fontSize: 11, fontWeight: '900', marginBottom: 5, textTransform: 'uppercase' },
+  tradeTitle: { color: C.text, fontSize: 18, fontWeight: '900', lineHeight: 23 },
+  tradeText: { color: C.textSub, fontSize: 12, lineHeight: 18, marginTop: 6 },
+  tradeActions: { flexDirection: 'row', gap: 10 },
+  tradePrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: C.primary,
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  tradePrimaryText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  tradeSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,69,0,0.26)',
+    paddingVertical: 12,
+  },
+  tradeSecondaryText: { color: C.primary, fontSize: 12, fontWeight: '800' },
   bottomSpacer: { height: 30 },
 });

@@ -29,7 +29,17 @@ const CUSTOMER_AUTH_SCHEMA_EXTENSION = gql`
     customer: CustomerAuthCustomer
   }
 
+  input CustomerPasswordRegisterInput {
+    firstName: String!
+    lastName: String!
+    emailAddress: String!
+    phoneNumber: String
+    password: String!
+  }
+
   extend type Mutation {
+    customerPasswordRegister(input: CustomerPasswordRegisterInput!): CustomerAuthResult!
+    customerPasswordLogin(identifier: String!, password: String!): CustomerAuthResult!
     requestCustomerEmailOtp(emailAddress: String!): CustomerOtpRequestResult!
     verifyCustomerEmailOtp(emailAddress: String!, otp: String!): CustomerAuthResult!
     customerGoogleLogin(credential: String!): CustomerAuthResult!

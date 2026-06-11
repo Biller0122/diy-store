@@ -7,7 +7,7 @@ import { Eye, EyeOff, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { BrandLogo } from '@/components/BrandLogo';
 
-type Tab = 'otp' | 'login' | 'register';
+type Tab = 'otp' | 'login';
 
 declare global {
   interface Window {
@@ -44,7 +44,7 @@ function LoginForm() {
     customer,
   } = useAuthStore();
 
-  const [tab, setTab] = useState<Tab>('otp');
+  const [tab, setTab] = useState<Tab>('login');
   const [formError, setFormError] = useState('');
   const [info, setInfo] = useState('');
 
@@ -70,11 +70,21 @@ function LoginForm() {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
   const [showRegPwd, setShowRegPwd] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [regSuccess, setRegSuccess] = useState(false);
 
   useEffect(() => {
     if (customer) router.replace(redirect);
   }, [customer, redirect, router]);
+
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    const reset = searchParams.get('reset');
+    if (mode === 'reset' || reset === '1' || reset === 'true') {
+      setTab('login');
+      setResetOpen(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
@@ -153,7 +163,7 @@ function LoginForm() {
     event.preventDefault();
     setFormError('');
     if (!loginEmail || !loginPassword) {
-      setFormError('И-мэйл болон нууц үгээ оруулна уу');
+      setFormError('И-мэйл/утас болон нууц үгээ оруулна уу');
       return;
     }
     const ok = await login(loginEmail, loginPassword);
@@ -236,27 +246,13 @@ function LoginForm() {
           <Link href="/" className="inline-flex items-center justify-center">
             <BrandLogo imageClassName="w-56" />
           </Link>
-          <h1 className="text-xl font-black text-foreground mt-3">Хэрэглэгчийн нэвтрэлт</h1>
-          <p className="text-sm text-foreground-muted mt-1">Gmail, email код эсвэл нууц үгээр нэвтэрнэ</p>
+          <h1 className="text-xl font-black text-foreground mt-3">Нэвтрэх</h1>
+          <p className="text-sm text-foreground-muted mt-1">Эхлээд email-ээр бүртгүүлээд, дараа нь email эсвэл утсаараа нэвтэрнэ</p>
         </div>
 
         <div className="bg-card rounded-2xl p-8">
-          <div className="mb-5">
-            {GOOGLE_CLIENT_ID ? (
-              <div ref={googleButtonRef} className="flex justify-center" />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setFormError('Google login ажиллуулахын тулд NEXT_PUBLIC_GOOGLE_CLIENT_ID ба GOOGLE_CLIENT_ID тохируулна уу')}
-                className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm font-semibold text-foreground hover:bg-white/5"
-              >
-                Gmail-ээр үргэлжлүүлэх
-              </button>
-            )}
-          </div>
-
           <div className="flex border-b border-[var(--glass-border)] mb-6">
-            {(['otp', 'login', 'register'] as const).map((item) => (
+            {(['login', 'otp'] as const).map((item) => (
               <button
                 key={item}
                 type="button"
@@ -265,7 +261,7 @@ function LoginForm() {
                   tab === item ? 'border-b-2 border-amber-500 text-brand' : 'text-foreground-muted hover:text-foreground'
                 }`}
               >
-                {item === 'otp' ? 'Email код' : item === 'login' ? 'Нууц үг' : 'Бүртгэл'}
+                {item === 'login' ? 'Email/утсаар нэвтрэх' : 'Email код'}
               </button>
             ))}
           </div>
@@ -290,6 +286,9 @@ function LoginForm() {
                 </div>
               </Field>
               <SubmitButton loading={isLoading} label="Код авах" loadingLabel="Илгээж байна..." />
+              <button type="button" onClick={() => { setTab('login'); setResetOpen(true); setResetEmail(otpEmail); setInfo(''); setFormError(''); }} className="w-full text-xs font-semibold text-brand hover:underline">
+                Нууц үг сэргээх
+              </button>
             </form>
           )}
 
@@ -313,8 +312,8 @@ function LoginForm() {
 
           {tab === 'login' && !resetOpen && (
             <form data-testid="login-form" onSubmit={handleLogin} className="space-y-4">
-              <Field label="И-мэйл">
-                <input data-testid="login-email" type="email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="example@mail.com" autoComplete="email" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              <Field label="И-мэйл эсвэл утас">
+                <input data-testid="login-email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="example@mail.com эсвэл 99112233" autoComplete="username" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
               </Field>
               <Field label="Нууц үг">
                 <PasswordInput value={loginPassword} onChange={setLoginPassword} show={showLoginPwd} setShow={setShowLoginPwd} autoComplete="current-password" />
@@ -357,8 +356,29 @@ function LoginForm() {
             </form>
           )}
 
-          {tab === 'register' && !regSuccess && (
-            <form data-testid="register-form" onSubmit={handleRegister} className="space-y-4">
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[var(--glass-border)] bg-card/70 p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-bold text-foreground">Шинэ хэрэглэгч үү?</h2>
+              <p className="mt-1 text-xs text-foreground-muted">Email-ээр бүртгүүлнэ. Дараа нь email эсвэл утсаараа нэвтэрч болно.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setRegisterOpen((value) => !value);
+                setFormError('');
+                clearError();
+              }}
+              className="rounded-xl border border-brand/30 px-4 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white transition-colors"
+            >
+              Бүртгэл үүсгэх
+            </button>
+          </div>
+
+          {registerOpen && !regSuccess && (
+            <form data-testid="register-form" onSubmit={handleRegister} className="mt-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Нэр">
                   <input data-testid="reg-firstname" value={regFirstName} onChange={(event) => setRegFirstName(event.target.value)} className="w-full rounded-xl border border-[var(--glass-border)] px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
@@ -379,16 +399,16 @@ function LoginForm() {
               <Field label="Нууц үг давтах">
                 <input type={showRegPwd ? 'text' : 'password'} value={regConfirm} onChange={(event) => setRegConfirm(event.target.value)} autoComplete="new-password" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
               </Field>
-              <SubmitButton loading={isLoading} label="Бүртгүүлэх" loadingLabel="Бүртгэж байна..." />
+              <SubmitButton loading={isLoading} label="Бүртгэл үүсгэх" loadingLabel="Бүртгэж байна..." />
             </form>
           )}
 
-          {tab === 'register' && regSuccess && (
-            <div className="py-8 text-center">
+          {registerOpen && regSuccess && (
+            <div className="mt-6 rounded-xl border border-success/20 bg-success/10 p-5 text-center">
               <h3 className="mb-2 text-lg font-bold text-foreground">Бүртгэл амжилттай</h3>
-              <p className="mb-6 text-sm text-foreground-muted">{regEmail} хаягаар бүртгэл үүслээ.</p>
-              <button onClick={() => handleTabChange('login')} className="rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white">
-                Нэвтрэх
+              <p className="mb-4 text-sm text-foreground-muted">{regEmail} хаягаар бүртгэл үүслээ.</p>
+              <button onClick={() => { setRegisterOpen(false); handleTabChange('login'); }} className="rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white">
+                Нэвтрэх хэсэг рүү очих
               </button>
             </div>
           )}

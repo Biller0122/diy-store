@@ -5,12 +5,138 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { C } from '@/lib/colors';
-import { SEARCH_QUERY, SEMANTIC_SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
-import { mapSearchProduct, mapSemanticProduct, mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
+import { COLLECTIONS_QUERY, SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
+import { encodeRoutePart, mapSearchProduct, mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
 import { ProductTile, SectionHeading } from '@/components/MarketplaceCards';
 
 const POPULAR_CHIPS = ['Перфоратор', 'LED гэрэл', 'PVC хоолой', 'Цемент', 'Мод', 'Кабель', 'Будаг', 'Плита'];
 const RECENT_KEY = 'recent_searches';
+
+type SearchProduct = MarketplaceProduct & {
+  category?: string | null;
+  categorySlug?: string | null;
+  source: 'supplier' | 'catalog';
+};
+
+type ResultGroup = {
+  key: string;
+  title: string;
+  products: SearchProduct[];
+};
+
+const TOKEN_LABELS: Record<string, string> = {
+  cement: 'Цемент',
+  tsement: 'Цемент',
+  sement: 'Цемент',
+  'цемент': 'Цемент',
+  'цемэнт': 'Цемент',
+  armatur: 'Арматур',
+  armature: 'Арматур',
+  rebar: 'Арматур',
+  'арматур': 'Арматур',
+  toosgo: 'Тоосго',
+  tosgo: 'Тоосго',
+  brick: 'Тоосго',
+  'тоосго': 'Тоосго',
+  barilga: 'Барилга',
+  building: 'Барилга',
+  material: 'Материал',
+  materialuud: 'Материал',
+  'барилга': 'Барилга',
+  'материал': 'Материал',
+  budag: 'Будаг',
+  paint: 'Будаг',
+  'будаг': 'Будаг',
+  bagaj: 'Багаж',
+  tool: 'Багаж',
+  tools: 'Багаж',
+  'багаж': 'Багаж',
+};
+
+const TOKEN_VARIANTS: Record<string, string[]> = {
+  cement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  tsement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  sement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемент': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемэнт': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  armatur: ['armatur', 'armature', 'rebar', 'арматур'],
+  armature: ['armatur', 'armature', 'rebar', 'арматур'],
+  rebar: ['armatur', 'armature', 'rebar', 'арматур'],
+  'арматур': ['armatur', 'armature', 'rebar', 'арматур'],
+  toosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  tosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  brick: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  'тоосго': ['toosgo', 'tosgo', 'brick', 'тоосго'],
+};
+
+function normalizeSearchText(text: string) {
+  return text.toLowerCase().replace(/ё/g, 'е');
+}
+
+function getSearchTokens(term: string) {
+  return normalizeSearchText(term)
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function getTokenVariants(token: string) {
+  return TOKEN_VARIANTS[token] ?? [token];
+}
+
+function getCanonicalToken(token: string) {
+  const variants = getTokenVariants(token);
+  return variants.find((variant) => TOKEN_LABELS[variant]) ?? token;
+}
+
+function tokenLabel(token: string) {
+  const normalized = getCanonicalToken(normalizeSearchText(token));
+  return TOKEN_LABELS[normalized] ?? normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function matchesSearch(term: string, values: Array<string | null | undefined>) {
+  const normalized = normalizeSearchText(term.trim());
+  const tokens = getSearchTokens(term);
+  const variants = tokens.flatMap(getTokenVariants);
+  const haystack = normalizeSearchText(values.filter(Boolean).join(' '));
+
+  if (!normalized) return true;
+  if (haystack.includes(normalized)) return true;
+  return variants.some((variant) => haystack.includes(variant));
+}
+
+function buildCategoryNames(items: any[]) {
+  const entries = items.flatMap((item) => [
+    [item.slug, item.name],
+    ...((item.children ?? []).map((child: any) => [child.slug, child.name])),
+  ]);
+  return new Map<string, string>(entries);
+}
+
+function groupResults(results: SearchProduct[], query: string): ResultGroup[] {
+  const tokens = getSearchTokens(query);
+  const canonicalTokens = tokens.map(getCanonicalToken);
+  const groups = new Map<string, ResultGroup>();
+
+  for (const product of results) {
+    const haystack = normalizeSearchText([product.name, product.slug, product.category, product.categorySlug].filter(Boolean).join(' '));
+    const matchedToken = tokens.find((token) => getTokenVariants(token).some((variant) => haystack.includes(variant)));
+    const key = matchedToken ? getCanonicalToken(matchedToken) : product.category ?? 'Бусад';
+    const title = matchedToken ? tokenLabel(matchedToken) : key;
+    const group = groups.get(key) ?? { key, title, products: [] };
+    group.products.push(product);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    const aIndex = canonicalTokens.indexOf(a.key);
+    const bIndex = canonicalTokens.indexOf(b.key);
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+    if (aIndex !== -1) return -1;
+    if (bIndex !== -1) return 1;
+    return b.products.length - a.products.length;
+  });
+}
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -18,7 +144,7 @@ export default function SearchScreen() {
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [query, setQuery] = useState(params.query ? String(params.query) : '');
-  const [results, setResults] = useState<MarketplaceProduct[]>([]);
+  const [results, setResults] = useState<SearchProduct[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [searching, setSearching] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -46,33 +172,36 @@ export default function SearchScreen() {
     }
     setSearching(true);
     try {
-      const semanticData = await shopFetch<{ semanticSearch: { items: any[]; total: number } }>(SEMANTIC_SEARCH_QUERY, {
-        query: q.trim(),
-        take: 40,
-      });
-      const semanticProducts = (semanticData.semanticSearch?.items ?? []).map(mapSemanticProduct);
-      if (semanticProducts.length > 0) {
-        setResults(semanticProducts);
-        setTotalItems(semanticData.semanticSearch?.total ?? semanticProducts.length);
-        setSearching(false);
-        return;
-      }
-    } catch {
-      // Fall back to Vendure keyword search while semantic indexing is not ready.
-    }
-
-    try {
-      const [catalogData, supplierProductData] = await Promise.all([
+      const [catalogData, supplierProductData, collectionData] = await Promise.all([
         shopFetch<{ search: { items: any[]; totalItems: number } }>(SEARCH_QUERY, {
-          input: { term: q.trim(), take: 40 },
+          input: { term: q.trim(), take: 48, groupByProduct: true },
         }),
         shopFetch<{ supplierProducts: { items: any[]; total: number } }>(SUPPLIER_PRODUCTS_QUERY),
+        shopFetch<{ collections: { items: any[] } }>(COLLECTIONS_QUERY, {
+          options: { take: 100, sort: { position: 'ASC' } },
+        }).catch(() => ({ collections: { items: [] } })),
       ]);
-      const term = q.trim().toLowerCase();
+      const categoryNames = buildCategoryNames(collectionData.collections?.items ?? []);
       const supplierProducts = (supplierProductData.supplierProducts?.items ?? [])
-        .filter((item) => item.enabled !== false && item.name?.toLowerCase().includes(term))
-        .map(mapSupplierProduct);
-      const catalogProducts = (catalogData.search?.items ?? []).map(mapSearchProduct);
+        .filter((item) => item.enabled !== false)
+        .filter((item) => matchesSearch(q, [
+          item.name,
+          item.slug,
+          item.category,
+          categoryNames.get(item.category ?? ''),
+        ]))
+        .map((item, index) => ({
+          ...mapSupplierProduct(item, index),
+          category: categoryNames.get(item.category ?? '') ?? item.category ?? 'Нийлүүлэгч',
+          categorySlug: item.category ?? 'supplier',
+          source: 'supplier' as const,
+        }));
+      const catalogProducts = (catalogData.search?.items ?? []).map((item, index) => ({
+        ...mapSearchProduct(item, index),
+        category: 'Каталог',
+        categorySlug: 'catalog',
+        source: 'catalog' as const,
+      }));
       setResults([...supplierProducts, ...catalogProducts]);
       setTotalItems(supplierProducts.length + (catalogData.search?.totalItems ?? 0));
     } catch {
@@ -123,6 +252,7 @@ export default function SearchScreen() {
   };
 
   const showEmpty = !query.trim();
+  const resultGroups = groupResults(results, query);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -201,14 +331,27 @@ export default function SearchScreen() {
             <>
               <Text style={styles.resultCount}>{totalItems.toLocaleString('mn-MN')} бүтээгдэхүүн олдлоо</Text>
               <FlatList
-                data={results}
-                keyExtractor={(item) => item.variantId}
+                data={resultGroups}
+                keyExtractor={(item) => item.key}
                 contentContainerStyle={styles.resultList}
-                numColumns={2}
-                columnWrapperStyle={styles.columnWrapper}
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item }) => (
-                  <ProductTile product={item} wide onPress={() => router.push(`/product/${item.slug}` as never)} />
+                  <View style={styles.resultGroup}>
+                    <View style={styles.groupHeader}>
+                      <Text style={styles.groupTitle}>{item.title}</Text>
+                      <Text style={styles.groupCount}>{item.products.length.toLocaleString('mn-MN')} бараа</Text>
+                    </View>
+                    <View style={styles.productGrid}>
+                      {item.products.map((product) => (
+                        <ProductTile
+                          key={`${product.source}-${product.variantId}`}
+                          product={product}
+                          wide
+                          onPress={() => router.push(`/product/${encodeRoutePart(product.slug)}` as never)}
+                        />
+                      ))}
+                    </View>
+                  </View>
                 )}
               />
             </>
@@ -269,6 +412,10 @@ const styles = StyleSheet.create({
   loadingText: { color: C.textSub, fontSize: 14 },
   noResultText: { color: C.textSub, fontSize: 14, textAlign: 'center' },
   resultCount: { color: C.textSub, fontSize: 13, paddingHorizontal: 16, paddingBottom: 10 },
-  resultList: { paddingHorizontal: 12, paddingBottom: 24 },
-  columnWrapper: { gap: 12, marginBottom: 12 },
+  resultList: { paddingHorizontal: 16, paddingBottom: 24 },
+  resultGroup: { marginBottom: 24 },
+  groupHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  groupTitle: { flex: 1, color: C.text, fontSize: 18, fontWeight: '900', lineHeight: 23 },
+  groupCount: { color: C.textTertiary, fontSize: 11, fontWeight: '700' },
+  productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 });

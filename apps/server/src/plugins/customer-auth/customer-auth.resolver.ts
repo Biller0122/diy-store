@@ -2,9 +2,36 @@ import { Args, Mutation, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
 import { CustomerAuthService } from './customer-auth.service';
 
+type CustomerPasswordRegisterInput = {
+  firstName: string;
+  lastName: string;
+  emailAddress: string;
+  phoneNumber?: string;
+  password: string;
+};
+
 @Resolver()
 export class CustomerAuthResolver {
   constructor(private readonly customerAuthService: CustomerAuthService) {}
+
+  @Mutation()
+  @Allow(Permission.Public)
+  customerPasswordRegister(
+    @Ctx() ctx: RequestContext,
+    @Args('input') input: CustomerPasswordRegisterInput,
+  ) {
+    return this.customerAuthService.registerWithPassword(ctx, input);
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  customerPasswordLogin(
+    @Ctx() ctx: RequestContext,
+    @Args('identifier') identifier: string,
+    @Args('password') password: string,
+  ) {
+    return this.customerAuthService.loginWithPassword(ctx, identifier, password);
+  }
 
   @Mutation()
   @Allow(Permission.Public)
