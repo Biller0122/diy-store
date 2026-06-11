@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react';
 import { m } from 'framer-motion';
 import Link from 'next/link';
-import { Search, ShoppingCart, User, Menu, X, Truck } from 'lucide-react';
+import { Search, ShoppingCart, User, Menu, X } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { MegaMenu } from './ui/MegaMenu';
 import { cn } from '@/lib/utils';
-import { getCustomerHomeHref, getPortalHref } from '@/lib/portal-links';
+import { getCustomerHomeHref } from '@/lib/portal-links';
 import { BrandLogo } from './BrandLogo';
 
 export function Header() {
@@ -20,7 +20,6 @@ export function Header() {
   const { customer } = useAuthStore();
   const cartCount = items.reduce((a, i) => a + i.qty, 0);
   const customerHomeHref = getCustomerHomeHref();
-  const driverLoginHref = getPortalHref('driver', '/driver/login');
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 20);
@@ -48,9 +47,7 @@ export function Header() {
           <nav className="hidden md:flex items-center gap-1 ml-2">
             <MegaMenu />
             {[
-              { href: '/how-to', label: 'DIY Зөвлөгөө' },
               { href: '/trade', label: 'Trade данс' },
-              ...(!customer ? [{ href: driverLoginHref, label: 'Жолооч' }] : []),
             ].map(({ href, label }) => (
               <Link
                 key={href}
@@ -87,17 +84,6 @@ export function Header() {
             >
               <Search size={18} />
             </button>
-
-            {/* Driver — hidden for logged-in customers */}
-            {!customer && (
-              <Link
-                href={driverLoginHref}
-                className="hidden lg:flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white transition-colors"
-              >
-                <Truck size={16} />
-                <span>Жолооч</span>
-              </Link>
-            )}
 
             {/* Account */}
             <Link
@@ -158,7 +144,6 @@ export function Header() {
           <div className="px-4 py-4 space-y-1">
             {[
               { href: '/category', label: '📦 Ангилал' },
-              { href: '/how-to', label: '🔨 DIY Зөвлөгөө' },
               { href: '/trade', label: '🏢 Trade данс' },
               { href: '/account', label: '👤 Миний данс' },
             ].map(({ href, label }) => (

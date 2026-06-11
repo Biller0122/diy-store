@@ -47,6 +47,11 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "mn.diystore.driver",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      },
       "config": {
         "googleMapsApiKey": "YOUR_GOOGLE_MAPS_KEY"
       }

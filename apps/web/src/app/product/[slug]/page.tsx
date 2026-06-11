@@ -110,13 +110,14 @@ interface RelatedItem {
 // ─── Data fetching ────────────────────────────────────────────
 
 async function getProduct(slug: string): Promise<Product | null> {
+  const decodedSlug = safeDecodeSlug(slug);
   try {
-    const data = await vendureShopFetch<{ product: Product | null }>(GET_PRODUCT, { slug });
+    const data = await vendureShopFetch<{ product: Product | null }>(GET_PRODUCT, { slug: decodedSlug });
     if (data.product) return data.product;
   } catch {
     // Supplier products are stored in the custom supplier catalog.
   }
-  return getSupplierProductAsProduct(slug);
+  return getSupplierProductAsProduct(decodedSlug);
 }
 
 async function getRelated(collectionSlug: string, excludeSlug: string): Promise<RelatedItem[]> {
@@ -140,6 +141,14 @@ function relatedPrice(p: RelatedItem['priceWithTax']): string {
   if (p.__typename === 'SinglePrice') return formatMNT(p.value);
   if (p.min === p.max) return formatMNT(p.min);
   return `${formatMNT(p.min)} – ${formatMNT(p.max)}`;
+}
+
+function safeDecodeSlug(slug: string) {
+  try {
+    return decodeURIComponent(slug);
+  } catch {
+    return slug;
+  }
 }
 
 async function getSupplierProductAsProduct(slug: string): Promise<Product | null> {

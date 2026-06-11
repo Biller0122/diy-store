@@ -8,7 +8,15 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": { "backgroundColor": "#08080E" },
-    "ios": { "supportsTablet": true, "bundleIdentifier": "mn.diy.supplier" },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "mn.diy.supplier",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
     "android": { "package": "mn.diy.supplier", "adaptiveIcon": { "backgroundColor": "#08080E" } },
     "web": { "favicon": "./assets/favicon.png", "bundler": "metro" },
     "plugins": ["expo-router"],

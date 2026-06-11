@@ -32,6 +32,8 @@ export default function RootLayout() {
           <Stack.Screen name="product/[slug]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="supplier/[slug]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="category/[slug]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="suppliers" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="products" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="how-to" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="cart" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="checkout" options={{ animation: 'slide_from_bottom' }} />

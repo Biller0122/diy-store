@@ -1,8 +1,9 @@
 import { io, Socket } from 'socket.io-client';
+import { API_URL } from '@/app/config';
 import type { Driver } from '../api/client';
 import { ActiveOrder } from '../store/delivery';
 
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? 'http://192.168.0.13:13002';
+const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? API_URL;
 
 type OrderPayload = {
   orderId?: string;

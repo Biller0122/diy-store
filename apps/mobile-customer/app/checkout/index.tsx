@@ -68,7 +68,7 @@ const PAYMENT_METHODS = [
 
 export default function CheckoutScreen() {
   const router = useRouter();
-  const { customer } = useAppStore();
+  const { customer, supplierCart, clearSupplierCart } = useAppStore();
 
   const [order, setOrder] = useState<ActiveOrder | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
@@ -97,7 +97,7 @@ export default function CheckoutScreen() {
       Alert.alert('Нэвтэрнэ үү', 'Захиалахын тулд нэвтэрнэ үү');
       return;
     }
-    if (!order || order.lines.length === 0) {
+    if ((!order || order.lines.length === 0) && supplierCart.length === 0) {
       Alert.alert('Сагс хоосон', 'Эхлээд бүтээгдэхүүн нэмнэ үү');
       return;
     }
@@ -108,27 +108,67 @@ export default function CheckoutScreen() {
 
     setSubmitting(true);
     try {
-      await shopFetch(SET_SHIPPING_ADDRESS_MUTATION, {
-        input: {
-          streetLine1: dropoffAddress,
-          city: 'Улаанбаатар',
-          phoneNumber: phone.trim(),
-        },
+      if (order) {
+        await shopFetch(SET_SHIPPING_ADDRESS_MUTATION, {
+          input: {
+            streetLine1: dropoffAddress,
+            city: 'Улаанбаатар',
+            phoneNumber: phone.trim(),
+          },
+        });
+      }
+
+      const supplierGroups = new Map<string, typeof supplierCart>();
+      for (const item of supplierCart) {
+        const next = supplierGroups.get(item.supplierId) ?? [];
+        next.push(item);
+        supplierGroups.set(item.supplierId, next);
+      }
+
+      const pickupStops = Array.from(supplierGroups.values()).map((items) => {
+        const first = items[0];
+        return {
+          supplierId: first.supplierId,
+          supplierName: first.supplierName,
+          district: first.supplierDistrict ?? 'Улаанбаатар',
+          address: first.supplierAddress || first.supplierDistrict || 'Улаанбаатар',
+          phone: first.supplierPhone || '',
+          lat: first.supplierLat ?? 47.9185,
+          lng: first.supplierLng ?? 106.917,
+          status: 'PENDING',
+        };
       });
 
+      const orderItems = supplierCart.map((item) => ({
+        supplierId: item.supplierId,
+        supplierName: item.supplierName,
+        productId: item.productId,
+        variantId: item.variantId,
+        name: item.name,
+        sku: item.slug,
+        qty: item.qty,
+        price: item.price,
+      }));
+
+      const supplierTotal = supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const orderId = order?.id ?? `MOB-${Date.now()}`;
+
       await shopFetch(CREATE_DELIVERY_REQUEST_MUTATION, {
-        orderId: order.id,
+        orderId,
         customerId: customer.id,
         customerName: fullName.trim(),
         customerPhone: phone.trim(),
+        pickupStops,
+        orderItems,
         dropoffAddress,
         dropoffLat: 47.9185,
         dropoffLng: 106.917,
-        orderTotal: Math.round(order.total / 100),
+        orderTotal: Math.round((order?.total ?? 0) / 100) + supplierTotal,
         paymentMethod,
       });
 
-      router.replace(`/track/${order.id}` as never);
+      clearSupplierCart();
+      router.replace(`/track/${orderId}` as never);
     } catch (e) {
       Alert.alert('Алдаа', e instanceof Error ? e.message : 'Захиалга хийх боломжгүй');
     } finally {
@@ -176,6 +216,9 @@ export default function CheckoutScreen() {
     );
   }
 
+  const supplierTotal = supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const displayTotal = (order?.total ?? 0) + supplierTotal * 100;
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -198,10 +241,10 @@ export default function CheckoutScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Order summary */}
-        {order && order.lines.length > 0 && (
+        {((order && order.lines.length > 0) || supplierCart.length > 0) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Захиалга</Text>
-            {order.lines.map((line) => (
+            {order?.lines.map((line) => (
               <View key={line.id} style={styles.lineRow}>
                 <Text style={styles.lineName} numberOfLines={1}>
                   {line.productVariant.product.name}
@@ -210,9 +253,18 @@ export default function CheckoutScreen() {
                 <Text style={styles.linePrice}>{formatPrice(line.linePriceWithTax)}</Text>
               </View>
             ))}
+            {supplierCart.map((item) => (
+              <View key={item.id} style={styles.lineRow}>
+                <Text style={styles.lineName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.lineQty}>x{item.qty}</Text>
+                <Text style={styles.linePrice}>{'₮' + Math.round(item.price * item.qty).toLocaleString('mn-MN')}</Text>
+              </View>
+            ))}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Нийт</Text>
-              <Text style={styles.totalValue}>{formatPrice(order.total)}</Text>
+              <Text style={styles.totalValue}>
+                {formatPrice((order?.total ?? 0) + supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0) * 100)}
+              </Text>
             </View>
           </View>
         )}
@@ -315,7 +367,7 @@ export default function CheckoutScreen() {
           <View>
             <Text style={styles.bottomLabel}>Нийт дүн</Text>
             <Text style={styles.bottomTotal}>
-              {order ? formatPrice(order.total) : '—'}
+              {displayTotal > 0 ? formatPrice(displayTotal) : '—'}
             </Text>
           </View>
           <TouchableOpacity

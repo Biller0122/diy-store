@@ -4,9 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
-import { SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
-import { mapSearchProduct, mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
+import { COLLECTION_BY_SLUG_QUERY, SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
+import { encodeRoutePart, mapSearchProduct, mapSupplierProduct, MarketplaceProduct, supplierProductMatchesCategory } from '@/lib/marketplace';
 import { ProductTile } from '@/components/MarketplaceCards';
+
+type CollectionDetail = {
+  id: string;
+  name: string;
+  slug: string;
+  customFields?: { icon?: string | null } | null;
+  children?: Array<{ id: string; name: string; slug: string }>;
+};
 
 export default function CategoryScreen() {
   const router = useRouter();
@@ -14,26 +22,32 @@ export default function CategoryScreen() {
   const [products, setProducts] = useState<MarketplaceProduct[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [collection, setCollection] = useState<CollectionDetail | null>(null);
 
   useEffect(() => {
     if (!slug) return;
+    const decodedSlug = safeDecode(String(slug));
     setLoading(true);
     Promise.all([
+      shopFetch<{ collection: CollectionDetail | null }>(COLLECTION_BY_SLUG_QUERY, { slug: decodedSlug }),
       shopFetch<{ search: { items: any[]; totalItems: number } }>(SEARCH_QUERY, {
-        input: { collectionSlug: slug, take: 40 },
+        input: { collectionSlug: decodedSlug, take: 40 },
       }),
       shopFetch<{ supplierProducts: { items: any[]; total: number } }>(SUPPLIER_PRODUCTS_QUERY),
     ])
-      .then(([catalogData, supplierProductData]) => {
-        const key = slug.toLowerCase();
+      .then(([collectionData, catalogData, supplierProductData]) => {
+        const nextCollection = collectionData.collection;
+        setCollection(nextCollection);
+        const categoryForMatch = nextCollection ?? { slug: decodedSlug };
         const supplierProducts = (supplierProductData.supplierProducts?.items ?? [])
-          .filter((item) => item.enabled !== false && (item.category || '').toLowerCase().includes(key))
+          .filter((item) => item.enabled !== false && supplierProductMatchesCategory(item, categoryForMatch, true))
           .map(mapSupplierProduct);
         const catalogProducts = (catalogData.search?.items ?? []).map(mapSearchProduct);
         setProducts([...supplierProducts, ...catalogProducts]);
         setTotalItems(supplierProducts.length + (catalogData.search?.totalItems ?? 0));
       })
       .catch(() => {
+        setCollection(null);
         setProducts([]);
         setTotalItems(0);
       })
@@ -47,7 +61,7 @@ export default function CategoryScreen() {
           <Ionicons name="chevron-back" size={22} color={C.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title} numberOfLines={1}>{slug}</Text>
+          <Text style={styles.title} numberOfLines={1}>{collection?.name ?? safeDecode(String(slug))}</Text>
           <Text style={styles.subtitle}>{totalItems.toLocaleString('mn-MN')} бүтээгдэхүүн</Text>
         </View>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.push('/(tabs)/search' as never)}>
@@ -74,12 +88,20 @@ export default function CategoryScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
-            <ProductTile product={item} wide onPress={() => router.push(`/product/${item.slug}` as never)} />
+            <ProductTile product={item} wide onPress={() => router.push(`/product/${encodeRoutePart(item.slug)}` as never)} />
           )}
         />
       )}
     </SafeAreaView>
   );
+}
+
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 const styles = StyleSheet.create({

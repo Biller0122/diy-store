@@ -17,11 +17,11 @@ export function BrandLogo({
   if (variant === 'mark') {
     return (
       <Image
-        src="/shoptool-icon.png"
+        src="/shoptool-logo.png"
         alt="shoptool.mn"
-        width={44}
-        height={44}
-        className={cn('rounded-xl object-cover', imageClassName)}
+        width={210}
+        height={131}
+        className={cn('h-auto w-24 object-contain', imageClassName)}
         priority
       />
     );
@@ -29,26 +29,16 @@ export function BrandLogo({
 
   if (variant === 'sidebar') {
     return (
-      <div className={cn('flex min-w-0 items-center gap-3', className)}>
+      <div className={cn('flex min-w-0 flex-col items-start', className)}>
         <Image
-          src="/shoptool-icon.png"
+          src="/shoptool-logo.png"
           alt="shoptool.mn"
-          width={40}
-          height={40}
-          className={cn('h-10 w-10 shrink-0 rounded-xl object-cover shadow-lg shadow-brand/20', imageClassName)}
+          width={210}
+          height={131}
+          className={cn('h-auto w-36 object-contain', imageClassName)}
           priority
         />
-        <div className="min-w-0">
-          <Image
-            src="/shoptool-logo.png"
-            alt="shoptool.mn"
-            width={180}
-            height={40}
-            className="h-auto w-32 object-contain"
-            priority
-          />
-          {portalLabel && <p className="mt-0.5 text-[10px] text-foreground-muted">{portalLabel}</p>}
-        </div>
+        {portalLabel && <p className="mt-0.5 text-[10px] text-foreground-muted">{portalLabel}</p>}
       </div>
     );
   }
@@ -58,7 +48,7 @@ export function BrandLogo({
       src="/shoptool-logo.png"
       alt="shoptool.mn"
       width={210}
-      height={46}
+      height={131}
       className={cn('h-auto w-36 object-contain sm:w-44', imageClassName)}
       priority
     />

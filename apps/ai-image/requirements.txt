@@ -1,8 +1,15 @@
---extra-index-url https://download.pytorch.org/whl/cu121
+# Install torch first from the CUDA 12.1 index, then the rest:
+#   pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements.txt
+#
+# Pinned to a known-good combo: diffusers 0.35.x has FluxKontextPipeline and
+# works with torch 2.4.x; transformers 5.x / diffusers 0.38 break this combo.
 torch==2.4.1
 torchvision==0.19.1
-diffusers>=0.35.1
-transformers>=4.44.0
+diffusers==0.35.1
+transformers==4.55.0
+tokenizers>=0.21,<0.22
+huggingface_hub>=0.34,<1.0
 accelerate>=0.34.0
 safetensors
 sentencepiece
@@ -12,4 +19,3 @@ numpy
 fastapi
 uvicorn[standard]
 python-multipart
-huggingface_hub

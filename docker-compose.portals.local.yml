@@ -2,12 +2,30 @@ services:
   server:
     ports:
       - '13001:3001'
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: postgres-vendure
+      DB_PORT: 5432
+      DB_NAME: vendure
+      DB_USERNAME: vendure
+      DB_PASSWORD: vendure
+      DB_SSL: 'false'
+      DB_SSL_REJECT_UNAUTHORIZED: 'false'
+      DB_SYNCHRONIZE: 'true'
+      ASSET_STORAGE: local
+      REALTIME_WEBHOOK_SECRET: local-realtime-secret
 
   realtime-server:
     ports:
       - '13002:3002'
+    environment:
+      REALTIME_WEBHOOK_SECRET: local-realtime-secret
 
   web-customer:
+    build:
+      args:
+        NEXT_PUBLIC_SITE_URL: http://localhost:18080
+        NEXT_PUBLIC_SOCKET_URL: http://localhost:13002
     ports:
       - '18080:3000'
     environment:
@@ -15,6 +33,10 @@ services:
       NEXT_PUBLIC_SOCKET_URL: http://localhost:13002
 
   web-admin:
+    build:
+      args:
+        NEXT_PUBLIC_SITE_URL: http://localhost:18081
+        NEXT_PUBLIC_SOCKET_URL: http://localhost:13002
     ports:
       - '18081:3000'
     environment:
@@ -22,6 +44,10 @@ services:
       NEXT_PUBLIC_SOCKET_URL: http://localhost:13002
 
   web-driver:
+    build:
+      args:
+        NEXT_PUBLIC_SITE_URL: http://localhost:18082
+        NEXT_PUBLIC_SOCKET_URL: http://localhost:13002
     ports:
       - '18082:3000'
     environment:
@@ -29,6 +55,10 @@ services:
       NEXT_PUBLIC_SOCKET_URL: http://localhost:13002
 
   web-merchant:
+    build:
+      args:
+        NEXT_PUBLIC_SITE_URL: http://localhost:18083
+        NEXT_PUBLIC_SOCKET_URL: http://localhost:13002
     ports:
       - '18083:3000'
     environment:

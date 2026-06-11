@@ -1,5 +1,7 @@
-const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || 'https://shop.example.com/shop-api';
-const ADMIN_API = process.env.EXPO_PUBLIC_ADMIN_API_URL || 'https://admin.example.com/admin-api';
+import { API_URL } from '@/app/config';
+
+const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || `${API_URL}/shop-api`;
+const ADMIN_API = process.env.EXPO_PUBLIC_ADMIN_API_URL || `${API_URL}/admin-api`;
 const REQUEST_TIMEOUT_MS = 12000;
 
 async function postGraphql<T>(

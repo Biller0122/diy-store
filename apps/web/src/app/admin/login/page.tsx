@@ -28,7 +28,6 @@ export default function AdminLoginPage() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <BrandLogo variant="mark" imageClassName="mx-auto mb-4 h-14 w-14 rounded-2xl" />
           <BrandLogo imageClassName="mx-auto w-56" />
           <p className="text-sm text-foreground-muted mt-1">Удирдлагын самбар</p>
         </div>

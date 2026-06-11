@@ -176,7 +176,7 @@ export async function getDbSuppliers(options: { status?: string; take?: number; 
 
 export async function getDbSupplierProducts(supplierId?: string) {
   try {
-    const data = await vendureShopFetch<{ supplierProducts: { items: DbSupplierProduct[] } }>(
+    const data = await vendureShopFetch<{ supplierProducts: { items: DbSupplierProduct[]; total: number } }>(
       SUPPLIER_PRODUCTS_QUERY,
       { supplierId },
       { revalidate: 0 },
@@ -185,6 +185,47 @@ export async function getDbSupplierProducts(supplierId?: string) {
   } catch {
     return [];
   }
+}
+
+export async function getDbSupplierProductCount(supplierId?: string) {
+  try {
+    const data = await vendureShopFetch<{ supplierProducts: { total: number } }>(
+      SUPPLIER_PRODUCTS_QUERY,
+      { supplierId },
+      { revalidate: 0 },
+    );
+    return data.supplierProducts.total ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+type CategoryLike = {
+  name: string;
+  slug: string;
+  children?: Array<{ name: string; slug: string }>;
+};
+
+function normalizeCategory(value?: string | null) {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[,&/()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function supplierProductMatchesCategory(product: Pick<DbSupplierProduct, 'category'>, category: CategoryLike, includeChildren = false) {
+  const productCategory = normalizeCategory(product.category);
+  if (!productCategory) return false;
+
+  const categories = includeChildren ? [category, ...(category.children ?? [])] : [category];
+  const keys = categories.flatMap((item) => [normalizeCategory(item.slug), normalizeCategory(item.name)]).filter(Boolean);
+  return keys.some((key) => key === productCategory || key.includes(productCategory) || productCategory.includes(key));
+}
+
+export function getSupplierProductCategoryCount(products: DbSupplierProduct[], category: CategoryLike, includeChildren = false) {
+  return products.filter((product) => product.enabled && supplierProductMatchesCategory(product, category, includeChildren)).length;
 }
 
 export function dbSupplierToCard(supplier: DbSupplier): SupplierCard {

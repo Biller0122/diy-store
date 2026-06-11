@@ -6,7 +6,7 @@ import { CategoryCard } from '@/components/ui/CategoryCard';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { HomepageBanner, type HomepageBannerData } from '@/components/ui/HomepageBanner';
 import { ARTICLES } from './how-to/articles';
-import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierProductCount, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
 import { BrandLogo } from '@/components/BrandLogo';
 
 // ─── Data fetching ────────────────────────────────────────────
@@ -160,14 +160,14 @@ function MarketplaceHero({ supplierCount, productCount }: { supplierCount: numbe
       <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 30% 50%, rgba(255,69,0,0.15) 0%, transparent 60%)' }} />
       <div className="relative max-w-7xl mx-auto text-center">
         <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 text-xs font-semibold text-brand border border-brand/20 mb-6">
-          <Sparkles size={12} /> Backend нийлүүлэгч нэг платформд
+          <Sparkles size={12} /> Барилгын материалын ухаалаг шийдэл
         </div>
         <h1 className="font-display font-black text-5xl sm:text-6xl lg:text-7xl text-foreground leading-tight mb-6">
-          Барилгын материал.{' '}
-          <span className="text-brand">Хүргэлттэй.</span>
+          Барилгын материалыг{' '}
+          <span className="text-brand">нэг платформоос.</span>
         </h1>
         <p className="text-xl text-foreground-muted max-w-2xl mx-auto mb-10 leading-relaxed">
-          Backend-д бүртгэлтэй нийлүүлэгчийн бараа. Шуурхай хүргэлт. Нэг сагсаар олон дэлгүүрээс захиалаарай.
+          Нийлүүлэгч, бүтээгдэхүүн, хүргэлтийг нэг дор холбосон shoptool.mn платформ. Бодит нөөц, шуурхай хүргэлт, найдвартай захиалга.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link href="/suppliers" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-brand text-white font-bold text-base hover:bg-brand-hover transition-all shadow-xl shadow-brand/30 hover:scale-105">
@@ -341,10 +341,11 @@ function footerHref(label: string) {
 // ─── Page ─────────────────────────────────────────────────────
 
 export default async function HomePage() {
-  const [collections, catalogProducts, supplierProducts, suppliersResult, catalogProductCount, banners] = await Promise.all([
+  const [collections, catalogProducts, supplierProducts, supplierProductCount, suppliersResult, catalogProductCount, banners] = await Promise.all([
     getCollections(),
     getFeaturedProducts(),
     getDbSupplierProducts(),
+    getDbSupplierProductCount(),
     getDbSuppliers({ status: 'ACTIVE', take: 12 }),
     getCatalogProductCount(),
     getHomepageBanners(),
@@ -355,7 +356,7 @@ export default async function HomePage() {
     ...supplierProducts.map((product) => dbProductToCard(product, supplierById.get(product.supplierId))),
     ...catalogProducts,
   ];
-  const productCount = catalogProductCount + supplierProducts.length;
+  const productCount = catalogProductCount + supplierProductCount;
   const displayCategories = collections;
   const displayProducts = products;
   const newProducts = displayProducts.slice(0, 4);
@@ -366,27 +367,6 @@ export default async function HomePage() {
     <>
       <MarketplaceHero supplierCount={suppliersResult.total} productCount={productCount} />
       <HomepageBanner banners={banners} />
-      <TrustStrip />
-
-      {/* Supplier spotlight */}
-      <SupplierSection suppliers={suppliers} />
-
-      {/* Categories */}
-      <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6">
-        <SectionHeader icon={Sparkles} title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" href="/category" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {displayCategories.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-3 lg:col-span-4 xl:col-span-6">
-              Backend дээр ангилал бүртгэгдээгүй байна.
-            </div>
-          ) : displayCategories.slice(0, 12).map((cat, i) => (
-            <CategoryCard key={cat.id} name={cat.name} slug={cat.slug} icon={cat.customFields?.icon ?? '📦'} index={i} />
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <HowItWorksSection />
 
       {/* New products */}
       <section id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
@@ -405,6 +385,40 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Sale products grid */}
+      {saleProducts.length > 0 && (
+        <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/search?sort=price_asc" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {saleProducts.map((product, i) => (
+              <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Supplier spotlight */}
+      <SupplierSection suppliers={suppliers} />
+
+      <TrustStrip />
+
+      {/* Categories */}
+      <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6">
+        <SectionHeader icon={Sparkles} title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" href="/category" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          {displayCategories.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-3 lg:col-span-4 xl:col-span-6">
+              Backend дээр ангилал бүртгэгдээгүй байна.
+            </div>
+          ) : displayCategories.slice(0, 12).map((cat, i) => (
+            <CategoryCard key={cat.id} name={cat.name} slug={cat.slug} icon={cat.customFields?.icon ?? '📦'} index={i} />
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <HowItWorksSection />
 
       {/* Trade banner */}
       <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
@@ -426,6 +440,9 @@ export default async function HomePage() {
                 <Link href={merchantLoginHref} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30">
                   Нийлүүлэгч болох <ArrowRight size={15} />
                 </Link>
+                <Link href={driverRegisterHref} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl glass glass-hover text-foreground font-semibold text-sm transition-colors">
+                  <Truck size={15} /> Жолооч болох
+                </Link>
               </div>
             </div>
             <div className="hidden md:grid grid-cols-2 gap-3">
@@ -444,18 +461,6 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
-
-      {/* Sale products grid */}
-      {saleProducts.length > 0 && (
-        <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/search?sort=price_asc" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {saleProducts.map((product, i) => (
-              <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* How-to articles */}
       <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">

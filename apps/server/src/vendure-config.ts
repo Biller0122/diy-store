@@ -14,6 +14,7 @@ import { AdminUiPlugin } from '@vendure/admin-ui-plugin';
 import { defaultEmailHandlers, EmailPlugin } from '@vendure/email-plugin';
 import { config as loadEnv } from 'dotenv';
 import { json } from 'body-parser';
+import { existsSync } from 'fs';
 import path from 'path';
 import { qpayPaymentHandler, monpayPaymentHandler } from './plugins/payment';
 import { ReviewPlugin } from './plugins/review/review.plugin';
@@ -57,6 +58,11 @@ const s3AssetPrefix = (process.env.S3_PREFIX || '').replace(/^\/+|\/+$/g, '');
 const assetUrlPrefix = process.env.ASSET_URL_PREFIX
   ? process.env.ASSET_URL_PREFIX.replace(/\/?$/, '/')
   : undefined;
+const appEmailTemplatePath = path.join(__dirname, '../static/email/templates');
+const defaultEmailTemplatePath = path.join(__dirname, '../../../node_modules/@vendure/email-plugin/templates');
+const emailTemplatePath = existsSync(path.join(appEmailTemplatePath, 'email-verification/body.hbs'))
+  ? appEmailTemplatePath
+  : defaultEmailTemplatePath;
 
 class PrefixedAssetNamingStrategy extends HashedAssetNamingStrategy {
   constructor(private readonly prefix: string) {
@@ -206,7 +212,7 @@ export const config: VendureConfig = {
       outputPath: path.join(__dirname, '../static/email/test-emails'),
       route: 'mailbox',
       handlers: defaultEmailHandlers,
-      templatePath: path.join(__dirname, '../static/email/templates'),
+      templatePath: emailTemplatePath,
       ...(!process.env.SMTP_HOST ? { devMode: true as const } : {}),
       ...(process.env.SMTP_HOST
         ? {

@@ -18,9 +18,19 @@ Env:
                      uses model CPU offload which fits comfortably on a 24GB card.
 """
 
+import os
+
+# Windows without Developer Mode/admin cannot create symlinks; make the HF cache
+# copy files instead of symlinking (avoids WinError 1314). Must be set before
+# huggingface_hub is imported.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+# The Xet transfer backend stalls on this machine (0-byte .incomplete, frozen);
+# force the standard, resumable HTTP downloader instead.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 import base64
 import io
-import os
 from contextlib import asynccontextmanager
 
 import numpy as np

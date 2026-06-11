@@ -12,7 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
 import { shopFetch, SUPPLIER_BY_SLUG_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
-import { mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
+import { encodeRoutePart, mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
 import { ProductTile } from '@/components/MarketplaceCards';
 
 type SupplierDetail = {
@@ -37,8 +37,9 @@ export default function SupplierScreen() {
 
   useEffect(() => {
     if (!slug) return;
+    const decodedSlug = safeDecode(String(slug));
     setLoading(true);
-    shopFetch<{ supplierBySlug: SupplierDetail | null }>(SUPPLIER_BY_SLUG_QUERY, { slug })
+    shopFetch<{ supplierBySlug: SupplierDetail | null }>(SUPPLIER_BY_SLUG_QUERY, { slug: decodedSlug })
       .then(async (data) => {
         const nextSupplier = data.supplierBySlug;
         setSupplier(nextSupplier);
@@ -136,7 +137,7 @@ export default function SupplierScreen() {
                   key={product.id}
                   product={product}
                   wide
-                  onPress={() => router.push(`/product/${product.slug}` as never)}
+                  onPress={() => router.push(`/product/${encodeRoutePart(product.slug)}` as never)}
                 />
               ))}
             </View>
@@ -147,6 +148,14 @@ export default function SupplierScreen() {
       </ScrollView>
     </View>
   );
+}
+
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 const styles = StyleSheet.create({

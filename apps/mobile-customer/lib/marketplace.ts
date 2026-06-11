@@ -67,6 +67,30 @@ export function formatProductPrice(product: Pick<MarketplaceProduct, 'price' | '
   return '₮' + value.toLocaleString('mn-MN');
 }
 
+export type CategoryLike = {
+  name?: string | null;
+  slug?: string | null;
+  children?: Array<{ name?: string | null; slug?: string | null }>;
+};
+
+export function normalizeCategory(value?: string | null) {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[,&/()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function supplierProductMatchesCategory(product: { category?: string | null }, category: CategoryLike, includeChildren = false) {
+  const productCategory = normalizeCategory(product.category);
+  if (!productCategory) return false;
+
+  const categories = includeChildren ? [category, ...(category.children ?? [])] : [category];
+  const keys = categories.flatMap((item) => [normalizeCategory(item.slug), normalizeCategory(item.name)]).filter(Boolean);
+  return keys.some((key) => key === productCategory || key.includes(productCategory) || productCategory.includes(key));
+}
+
 export function mapSearchProduct(item: any, index = 0): MarketplaceProduct {
   return {
     id: item.productId,
@@ -112,6 +136,20 @@ export function mapSupplierProduct(item: any, index = 0): MarketplaceProduct {
   };
 }
 
+export function mapSupplier(item: any): MarketplaceSupplier {
+  return {
+    id: item.id,
+    name: item.businessName,
+    slug: item.slug,
+    rating: item.rating || 5,
+    reviewCount: item.reviewCount || 0,
+    district: item.district || 'Улаанбаатар',
+    productCount: item.productCount || 0,
+    isOpen: item.isOpen !== false,
+    deliveryTime: item.deliveryTime || '30-45 мин',
+  };
+}
+
 export function mapSemanticProduct(item: any, index = 0): MarketplaceProduct {
   const isSupplierProduct = item.source === 'supplier';
   return {
@@ -125,4 +163,8 @@ export function mapSemanticProduct(item: any, index = 0): MarketplaceProduct {
     badge: index === 0 ? 'ТОП' : index < 4 ? 'ШИНЭ' : undefined,
     inStock: true,
   };
+}
+
+export function encodeRoutePart(value: string) {
+  return encodeURIComponent(value);
 }

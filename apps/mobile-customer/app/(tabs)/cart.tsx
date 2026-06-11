@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
-import { useAppStore } from '@/lib/store';
+import { SupplierCartItem, useAppStore } from '@/lib/store';
 import {
   shopFetch,
   ACTIVE_ORDER_QUERY,
@@ -49,6 +50,10 @@ function formatPrice(price: number) {
   return '₮' + Math.round(price / 100).toLocaleString('mn-MN');
 }
 
+function formatMajorPrice(price: number) {
+  return '₮' + Math.round(price).toLocaleString('mn-MN');
+}
+
 function CartLineRow({
   line,
   onAdjust,
@@ -60,9 +65,17 @@ function CartLineRow({
 }) {
   return (
     <View style={styles.lineRow}>
-      <View style={styles.lineImage}>
-        <Ionicons name="cube-outline" size={28} color={C.textTertiary} />
-      </View>
+      {line.productVariant.product.featuredAsset?.preview ? (
+        <Image
+          source={{ uri: line.productVariant.product.featuredAsset.preview }}
+          style={styles.lineImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={styles.lineImage}>
+          <Ionicons name="cube-outline" size={28} color={C.textTertiary} />
+        </View>
+      )}
       <View style={styles.lineInfo}>
         <Text style={styles.lineName} numberOfLines={2}>
           {line.productVariant.product.name}
@@ -102,9 +115,57 @@ function CartLineRow({
   );
 }
 
+function SupplierLineRow({
+  item,
+  onAdjust,
+  onRemove,
+}: {
+  item: SupplierCartItem;
+  onAdjust: (id: string, qty: number) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <View style={styles.lineRow}>
+      {item.image ? (
+        <Image source={{ uri: item.image }} style={styles.lineImage} resizeMode="cover" />
+      ) : (
+        <View style={styles.lineImage}>
+          <Ionicons name="cube-outline" size={28} color={C.textTertiary} />
+        </View>
+      )}
+      <View style={styles.lineInfo}>
+        <Text style={styles.lineName} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.lineVariant} numberOfLines={1}>{item.supplierName}</Text>
+        <Text style={styles.linePrice}>{formatMajorPrice(item.price * item.qty)}</Text>
+      </View>
+      <View style={styles.lineActions}>
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={() => onRemove(item.id)}
+        >
+          <Ionicons name="trash-outline" size={15} color="#FF4444" />
+        </TouchableOpacity>
+        <View style={styles.qtyRow}>
+          <TouchableOpacity
+            style={styles.qtyBtn}
+            onPress={() => onAdjust(item.id, item.qty - 1)}
+            disabled={item.qty <= 1}
+          >
+            <Ionicons name="remove" size={16} color={item.qty <= 1 ? C.textTertiary : C.text} />
+          </TouchableOpacity>
+          <Text style={styles.qtyText}>{item.qty}</Text>
+          <TouchableOpacity style={styles.qtyBtn} onPress={() => onAdjust(item.id, item.qty + 1)}>
+            <Ionicons name="add" size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function CartScreen() {
   const router = useRouter();
-  const { customer, setCartCount } = useAppStore();
+  const { customer, supplierCart, setCartCount, updateSupplierCartQty, removeSupplierCartItem } = useAppStore();
   const [order, setOrder] = useState<ActiveOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
@@ -123,8 +184,12 @@ export default function CartScreen() {
   }, [setCartCount]);
 
   useEffect(() => {
-    fetchCart();
-  }, [fetchCart]);
+    if (customer) {
+      fetchCart();
+    } else {
+      setLoading(false);
+    }
+  }, [customer, fetchCart]);
 
   const handleAdjust = async (lineId: string, qty: number) => {
     if (qty < 1) return;
@@ -151,7 +216,7 @@ export default function CartScreen() {
     }
   };
 
-  if (!customer) {
+  if (!customer && supplierCart.length === 0) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
@@ -185,7 +250,7 @@ export default function CartScreen() {
     );
   }
 
-  const isEmpty = !order || order.lines.length === 0;
+  const isEmpty = (!order || order.lines.length === 0) && supplierCart.length === 0;
 
   if (isEmpty) {
     return (
@@ -205,16 +270,22 @@ export default function CartScreen() {
     );
   }
 
-  const subtotal = order.subTotal;
-  const shippingAmt = order.total - order.subTotal;
-  const total = order.total;
+  const vendureSubtotal = order?.subTotal ?? 0;
+  const supplierSubtotal = supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const subtotal = vendureSubtotal + supplierSubtotal * 100;
+  const shippingAmt = order ? order.total - order.subTotal : 0;
+  const total = (order?.total ?? 0) + supplierSubtotal * 100;
+  const rows = [
+    ...(order?.lines ?? []).map((line) => ({ type: 'order' as const, line })),
+    ...supplierCart.map((item) => ({ type: 'supplier' as const, item })),
+  ];
 
   return (
     <View style={styles.flex}>
       <SafeAreaView style={{ backgroundColor: C.bg }} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Сагс</Text>
-          <Text style={styles.headerCount}>{order.lines.length} бараа</Text>
+          <Text style={styles.headerCount}>{rows.length} бараа</Text>
         </View>
       </SafeAreaView>
 
@@ -226,12 +297,20 @@ export default function CartScreen() {
       )}
 
       <FlatList
-        data={order.lines}
-        keyExtractor={(item) => item.id}
+        data={rows}
+        keyExtractor={(item) => item.type === 'order' ? item.line.id : item.item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <CartLineRow line={item} onAdjust={handleAdjust} onRemove={handleRemove} />
+          item.type === 'order'
+            ? <CartLineRow line={item.line} onAdjust={handleAdjust} onRemove={handleRemove} />
+            : (
+              <SupplierLineRow
+                item={item.item}
+                onAdjust={updateSupplierCartQty}
+                onRemove={removeSupplierCartItem}
+              />
+            )
         )}
         ListFooterComponent={
           <View style={styles.summary}>

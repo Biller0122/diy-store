@@ -14,7 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '@/lib/colors';
 import { useAppStore } from '@/lib/store';
-import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
+import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY, SUPPLIER_PRODUCTS_QUERY, SUPPLIER_QUERY } from '@/lib/api';
 
 interface ProductVariant {
   id: string;
@@ -34,6 +34,16 @@ interface Product {
   variants: ProductVariant[];
   collections: { id: string; name: string }[];
   supplierProduct?: boolean;
+  supplier?: {
+    id: string;
+    businessName: string;
+    slug?: string;
+    phone?: string | null;
+    address?: string | null;
+    district?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+  } | null;
 }
 
 function formatPrice(price: number) {
@@ -43,7 +53,7 @@ function formatPrice(price: number) {
 export default function ProductDetailScreen() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { customer, setCartCount } = useAppStore();
+  const { customer, setCartCount, addSupplierCartItem } = useAppStore();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,17 +63,30 @@ export default function ProductDetailScreen() {
 
   useEffect(() => {
     if (!slug) return;
-    shopFetch<{ product: Product | null }>(PRODUCT_QUERY, { slug })
+    const decodedSlug = safeDecode(String(slug));
+    shopFetch<{ product: Product | null }>(PRODUCT_QUERY, { slug: decodedSlug })
       .then(async (data) => {
         if (data.product) {
           setProduct(data.product);
           return;
         }
         const supplierData = await shopFetch<{ supplierProducts: { items: any[] } }>(SUPPLIER_PRODUCTS_QUERY);
-        const supplierProduct = (supplierData.supplierProducts?.items ?? []).find((item) => item.slug === slug);
+        const supplierProduct = (supplierData.supplierProducts?.items ?? []).find((item) => item.slug === decodedSlug);
         if (!supplierProduct) {
           setProduct(null);
           return;
+        }
+        let supplier: Product['supplier'] = null;
+        if (supplierProduct.supplierId) {
+          try {
+            const supplierData = await shopFetch<{ supplier: NonNullable<Product['supplier']> | null }>(
+              SUPPLIER_QUERY,
+              { id: supplierProduct.supplierId },
+            );
+            supplier = supplierData.supplier;
+          } catch {
+            supplier = null;
+          }
         }
         setProduct({
           id: supplierProduct.id,
@@ -81,6 +104,7 @@ export default function ProductDetailScreen() {
           }],
           collections: supplierProduct.category ? [{ id: supplierProduct.category, name: supplierProduct.category }] : [],
           supplierProduct: true,
+          supplier,
         });
       })
       .catch(() => {})
@@ -89,8 +113,31 @@ export default function ProductDetailScreen() {
 
   const handleAddToCart = async () => {
     if (!product) return;
+    const variant = product.variants[selectedVariant] ?? product.variants[0];
+    const price = variant?.priceWithTax ?? 0;
     if (product.supplierProduct) {
-      Alert.alert('Тун удахгүй', 'Нийлүүлэгчийн барааг mobile сагсанд нэмэх холболтыг дараагийн алхамд идэвхжүүлнэ.');
+      const supplier = product.supplier;
+      addSupplierCartItem({
+        productId: product.id,
+        variantId: product.id,
+        name: product.name,
+        slug: product.slug,
+        image: product.featuredAsset?.preview,
+        price: Math.round(price),
+        qty: quantity,
+        supplierId: supplier?.id ?? 'unknown',
+        supplierName: supplier?.businessName ?? 'Нийлүүлэгч',
+        supplierSlug: supplier?.slug,
+        supplierDistrict: supplier?.district,
+        supplierAddress: supplier?.address,
+        supplierPhone: supplier?.phone,
+        supplierLat: supplier?.lat,
+        supplierLng: supplier?.lng,
+      });
+      Alert.alert('Амжилттай', `${product.name} (${quantity} ш) сагсанд нэмэгдлээ`, [
+        { text: 'Сагс харах', onPress: () => router.push('/(tabs)/cart' as never) },
+        { text: 'Үргэлжлүүлэх' },
+      ]);
       return;
     }
     if (!customer) {
@@ -100,7 +147,6 @@ export default function ProductDetailScreen() {
       ]);
       return;
     }
-    const variant = product.variants[selectedVariant];
     if (!variant) return;
     setAdding(true);
     try {
@@ -289,6 +335,14 @@ export default function ProductDetailScreen() {
       </SafeAreaView>
     </View>
   );
+}
+
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 const styles = StyleSheet.create({
