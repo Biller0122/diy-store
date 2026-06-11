@@ -1,6 +1,6 @@
 # DIY Store Deployment Inventory
 
-Last verified: 2026-06-07
+Last verified: 2026-06-11
 
 This file answers: what is deployed, where it is deployed, and what each
 resource does. Do not put secret values in this file.
@@ -19,6 +19,8 @@ resource does. Do not put secret values in this file.
 | Surface | URL / Route | Routed to |
 | --- | --- | --- |
 | Main ALB DNS | `http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com` | Application Load Balancer |
+| Primary domain | `https://shoptool.mn` | Route 53 alias to ALB |
+| WWW domain | `https://www.shoptool.mn` | Route 53 alias to ALB |
 | Customer storefront | `/` | `diy-store-web-customer` |
 | Admin portal | `/admin` | `diy-store-web-admin` |
 | Driver portal | `/driver` | `diy-store-web-driver` |
@@ -30,19 +32,28 @@ resource does. Do not put secret values in this file.
 | Vendure mailbox | `/mailbox` | `diy-store-server` |
 | Asset CDN | `https://d2tf7pwvqo3y9.cloudfront.net/` | CloudFront -> private S3 bucket |
 
-Custom domains and HTTPS are still pending. For now, production uses the ALB DNS
-over HTTP and CloudFront for asset delivery.
+`shoptool.mn` DNS is delegated to Route 53. HTTPS is live on the ALB, and HTTP
+redirects to HTTPS.
 
 ## Network
 
 | Resource | Value |
 | --- | --- |
 | VPC | `vpc-06aa654ba26bb3bc9` |
-| Subnets | `subnet-03ad2abad464b963f`, `subnet-08a2425675adabb4e`, `subnet-0a66503b5d195b404` |
+| Public subnets | `subnet-03ad2abad464b963f`, `subnet-08a2425675adabb4e`, `subnet-0a66503b5d195b404` |
+| Private ECS subnets | `subnet-0e2f381379ebe607d`, `subnet-08407e546da9746d1`, `subnet-037ce35e3e53d93b8` |
+| Private ECS route table | `rtb-0e9ee3ae9051dcfb6` |
+| Backend outbound NAT gateway | `nat-08366329e697ee4e9` |
+| Backend static outbound IP | `47.131.110.129` |
+| Backend outbound Elastic IP allocation | `eipalloc-0e7ae5e276f30f320` |
 | ALB security group | `sg-077e08e8cfb383615` |
 | ECS backend task security group | `sg-073a55a1844cf12cb` |
 | Web task security group | `sg-035dc2b5ce02a41d8` |
 | RDS security group | `sg-0bf36e8328825ae79` |
+
+The backend ECS service runs in private subnets with `assignPublicIp=DISABLED`.
+Outbound calls from the backend, including QPay API calls, leave through the
+NAT gateway and should appear as `47.131.110.129`.
 
 ## Load Balancer
 
@@ -51,8 +62,29 @@ over HTTP and CloudFront for asset delivery.
 | ALB name | `diy-store-alb` |
 | ALB DNS | `diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com` |
 | ALB type | Internet-facing Application Load Balancer |
-| Listener | HTTP `80` |
+| Listeners | HTTP `80` redirects to HTTPS; HTTPS `443` forwards app traffic |
 | ALB ARN | `arn:aws:elasticloadbalancing:ap-southeast-1:235951409953:loadbalancer/app/diy-store-alb/8a56d0cadcdb42d2` |
+
+## Domain And TLS
+
+| Item | Value |
+| --- | --- |
+| Domain | `shoptool.mn` |
+| Route 53 hosted zone | `Z08226412DIQUXOLSSNJJ` |
+| Route 53 nameservers | `ns-1838.awsdns-37.co.uk`, `ns-1390.awsdns-45.org`, `ns-362.awsdns-45.com`, `ns-639.awsdns-15.net` |
+| Root DNS record | `shoptool.mn` A/alias -> `diy-store-alb` |
+| WWW DNS record | `www.shoptool.mn` A/alias -> `diy-store-alb` |
+| ACM certificate | `arn:aws:acm:ap-southeast-1:235951409953:certificate/3b461dfd-ecce-414e-88f0-e44f69634f46` |
+| Certificate names | `shoptool.mn`, `www.shoptool.mn` |
+| Certificate status | `ISSUED` |
+| ALB security group | Allows HTTP `80` and HTTPS `443` from the internet |
+
+The helper below is idempotent and can be rerun if the ALB listener needs to be
+recreated.
+
+```bash
+./deploy/finish-shoptool-domain.sh
+```
 
 ### ALB Routing
 
@@ -80,11 +112,11 @@ over HTTP and CloudFront for asset delivery.
 
 | Service | Purpose | Current task definition | Desired / running | Target group |
 | --- | --- | --- | --- | --- |
-| `diy-store-server` | Vendure/NestJS backend API | `diy-store-server:5` | `1 / 1` | `diy-store-server-tg` |
-| `diy-store-web-customer` | Customer storefront | `diy-store-web-customer:3` | `1 / 1` | `diy-web-customer-tg` |
-| `diy-store-web-admin` | Admin portal | `diy-store-web-admin:3` | `1 / 1` | `diy-web-admin-tg` |
-| `diy-store-web-driver` | Driver portal | `diy-store-web-driver:2` | `1 / 1` | `diy-web-driver-tg` |
-| `diy-store-web-merchant` | Supplier / merchant portal | `diy-store-web-merchant:2` | `1 / 1` | `diy-web-merchant-tg` |
+| `diy-store-server` | Vendure/NestJS backend API | `diy-store-server:16` | `1 / 1` | `diy-store-server-tg` |
+| `diy-store-web-customer` | Customer storefront | `diy-store-web-customer:24` | `1 / 1` | `diy-web-customer-tg` |
+| `diy-store-web-admin` | Admin portal | `diy-store-web-admin:24` | `1 / 1` | `diy-web-admin-tg` |
+| `diy-store-web-driver` | Driver portal | `diy-store-web-driver:24` | `1 / 1` | `diy-web-driver-tg` |
+| `diy-store-web-merchant` | Supplier / merchant portal | `diy-store-web-merchant:24` | `1 / 1` | `diy-web-merchant-tg` |
 
 ### ECS Task Roles
 
@@ -102,6 +134,13 @@ over HTTP and CloudFront for asset delivery.
 
 One `diy-store-web` image is used for the customer, admin, driver, and merchant
 portal ECS services.
+
+Current web image tag: `shoptool-image-onnx-fast1024-20260611233541`.
+
+Current web task size: `2048` CPU units / `8192` MiB memory. Supplier product
+`Энгийн` image editing runs BiRefNet-Lite ONNX in the web container with
+`BIREFNET_ONNX_INPUT_SIZE=1024`, `BIREFNET_ONNX_OPTIMIZATION=basic`, and
+`BIREFNET_ONNX_THREADS=2`.
 
 ## Database
 
@@ -192,15 +231,27 @@ GitHub environment secret and variables are configured.
 | `docs/CI_CD.md` | CI/CD operating guide. |
 | `docs/GITHUB_AWS_OIDC.md` | GitHub-to-AWS OIDC setup guide. |
 | `docs/DEPLOYMENT_INVENTORY.md` | This deployment inventory. |
+| `deploy/finish-shoptool-domain.sh` | Finalizes ALB HTTPS after `shoptool.mn` ACM validation succeeds. |
 
 ## Quick Verification Commands
 
 ```bash
 curl -I http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com/health
+curl -I http://shoptool.mn/health
+curl -I https://shoptool.mn/health
+curl -I https://www.shoptool.mn/health
 curl -I http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com/
 curl -I http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com/admin
 curl -I http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com/driver
 curl -I http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com/supplier
+```
+
+```bash
+dig NS shoptool.mn
+aws acm describe-certificate \
+  --region ap-southeast-1 \
+  --certificate-arn arn:aws:acm:ap-southeast-1:235951409953:certificate/3b461dfd-ecce-414e-88f0-e44f69634f46 \
+  --query 'Certificate.Status'
 ```
 
 ```bash

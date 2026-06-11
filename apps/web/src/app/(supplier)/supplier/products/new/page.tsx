@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ImagePlus, Package, Save, Sparkles } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ImagePlus, Package, Save, Sparkles, Wand2 } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { vendureShopFetch } from '@/lib/vendure';
 import {
@@ -69,6 +69,8 @@ const PATTERN_GENERATE_TIMEOUT_MS = 120000;
 const WALLPAPER_AI_CATEGORIES = new Set(['обой', 'ламинат', 'кафель', 'паркет']);
 
 type GeneratedPattern = { flat: string; roll?: string | null };
+type EditedProductImage = { image: string; error?: string };
+type ImageEditMode = 'simple' | 'ai';
 
 async function generatePattern(image: string, category: string): Promise<GeneratedPattern> {
   const controller = new AbortController();
@@ -88,6 +90,19 @@ async function generatePattern(image: string, category: string): Promise<Generat
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function editProductImage(image: string, mode: ImageEditMode): Promise<EditedProductImage> {
+  const response = await fetch('/edit-product-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image, outputSize: 900, mode }),
+  });
+  const result = (await response.json()) as EditedProductImage;
+  if (!response.ok || result.error) {
+    throw new Error(result.error || `Зураг янзлах алдаа: ${response.status}`);
+  }
+  return result;
 }
 
 const CREATE_SUPPLIER_PRODUCT_MUTATION = `
@@ -198,6 +213,8 @@ export default function NewSupplierProductPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [aiStatus, setAiStatus] = useState('');
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [imageEditing, setImageEditing] = useState(false);
+  const [imageEditMenuOpen, setImageEditMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [patterns, setPatterns] = useState<GeneratedPattern | null>(null);
   const [patternStatus, setPatternStatus] = useState('');
@@ -333,6 +350,42 @@ export default function NewSupplierProductPage() {
       );
     } finally {
       setPatternBusy(false);
+    }
+  }
+
+  async function handleEditProductImage(mode: ImageEditMode, image = form.image) {
+    if (!image) {
+      setErrors((prev) => ({ ...prev, image: 'Эхлээд зураг сонгоно уу' }));
+      return;
+    }
+
+    setImageEditMenuOpen(false);
+    setImageEditing(true);
+    setAiStatus(mode === 'simple' ? 'Энгийн янзалж байна: BiRefNet + лого...' : 'AI-аар янзалж байна...');
+    try {
+      const result = await editProductImage(image, mode);
+      if (!result.image) {
+        throw new Error('AI зураг сервер зураг буцаасангүй');
+      }
+      setForm((prev) => ({
+        ...prev,
+        image: result.image,
+        imageName: prev.imageName ? `edited-${prev.imageName}` : 'AI янзалсан зураг',
+      }));
+      setPatterns(null);
+      setPatternStatus('');
+      setErrors((prev) => ({ ...prev, image: '' }));
+      setAiStatus(mode === 'simple'
+        ? 'Энгийн янзаллаа: гол объект цагаан дэвсгэр дээр, доод хэсэгт лого нэмэгдсэн.'
+        : 'AI-аар зураг янзлагдлаа: гол объект цагаан дэвсгэр дээр төвлөрсөн.');
+    } catch (err) {
+      setAiStatus(
+        err instanceof Error && err.name === 'AbortError'
+          ? 'Зураг янзлах хугацаа хэтэрлээ. Дахин оролдоно уу.'
+          : err instanceof Error ? err.message : 'Зураг янзлахад алдаа гарлаа',
+      );
+    } finally {
+      setImageEditing(false);
     }
   }
 
@@ -544,7 +597,7 @@ export default function NewSupplierProductPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-foreground">{form.imageName || 'Сонгосон зураг'}</p>
                     <p className="mt-0.5 text-[11px] text-foreground-muted">{aiStatus || 'Зураг бэлэн'}</p>
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -552,6 +605,36 @@ export default function NewSupplierProductPage() {
                       >
                         Солих
                       </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setImageEditMenuOpen((open) => !open)}
+                          disabled={imageEditing}
+                          className="inline-flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-foreground hover:bg-white/10 disabled:opacity-60"
+                        >
+                          <Wand2 size={12} />
+                          {imageEditing ? 'Янзалж байна...' : 'Зураг янзлах'}
+                          <ChevronDown size={12} />
+                        </button>
+                        {imageEditMenuOpen && (
+                          <div className="absolute left-0 top-full z-20 mt-1 w-32 overflow-hidden rounded-lg border border-[var(--glass-border)] bg-card shadow-xl shadow-black/30">
+                            <button
+                              type="button"
+                              onClick={() => handleEditProductImage('simple')}
+                              className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-foreground hover:bg-white/5"
+                            >
+                              Энгийн
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEditProductImage('ai')}
+                              className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-brand hover:bg-brand/10"
+                            >
+                              AI-аар
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => analyzeSelectedImage()}

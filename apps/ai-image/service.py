@@ -32,10 +32,11 @@ os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 import base64
 import io
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -54,11 +55,15 @@ SWATCH_PROMPT = (
 )
 
 pipe = None
+birefnet = None
+BirefNetTransform = None
+BirefNetToPIL = None
+BirefNetDevice = None
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global pipe
+    global pipe, birefnet, BirefNetTransform, BirefNetToPIL, BirefNetDevice
     from diffusers import FluxKontextPipeline
 
     token = os.environ.get("HF_TOKEN")
@@ -73,8 +78,39 @@ async def lifespan(_app: FastAPI):
         pipe.enable_model_cpu_offload()
     pipe.set_progress_bar_config(disable=True)
     print(f"[ai-image] loaded {MODEL_ID} (low_vram={LOW_VRAM})", flush=True)
+
+    if os.environ.get("LOAD_BIREFNET", "1") == "1":
+        try:
+            from torchvision import transforms
+            from transformers import AutoModelForImageSegmentation
+
+            model_id = os.environ.get("BIREFNET_MODEL", "ZhengPeng7/BiRefNet")
+            BirefNetDevice = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            birefnet = AutoModelForImageSegmentation.from_pretrained(
+                model_id,
+                trust_remote_code=True,
+                token=token,
+            )
+            birefnet.to(BirefNetDevice)
+            birefnet.eval()
+            BirefNetTransform = transforms.Compose(
+                [
+                    transforms.Resize((1024, 1024)),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )
+            BirefNetToPIL = transforms.ToPILImage()
+            print(f"[ai-image] loaded {model_id} on {BirefNetDevice}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            birefnet = None
+            BirefNetTransform = None
+            BirefNetToPIL = None
+            BirefNetDevice = None
+            print(f"[ai-image] BiRefNet unavailable, falling back to color mask: {exc}", flush=True)
     yield
     pipe = None
+    birefnet = None
 
 
 app = FastAPI(lifespan=lifespan)
@@ -165,9 +201,24 @@ class GenerateResponse(BaseModel):
     roll: str | None = None    # data URL — roll mockup (wallpaper-like only)
 
 
+class EditProductPhotoRequest(BaseModel):
+    image: str                 # base64 or data URL of the original photo
+    output_size: int = 900
+    processing_mode: str = "ai"  # "simple" uses BiRefNet + logo; "ai" keeps cleanup only
+
+
+class EditProductPhotoResponse(BaseModel):
+    image: str                 # data URL — product centered on white background
+
+
 @app.get("/health")
 def health():
-    return {"ok": pipe is not None, "model": MODEL_ID, "low_vram": LOW_VRAM}
+    return {
+        "ok": pipe is not None,
+        "model": MODEL_ID,
+        "low_vram": LOW_VRAM,
+        "birefnet": birefnet is not None,
+    }
 
 
 @app.post("/generate-pattern", response_model=GenerateResponse)
@@ -204,3 +255,166 @@ def generate_pattern(req: GenerateRequest):
         roll = encode_image(make_roll(seamless))
 
     return GenerateResponse(flat=encode_image(seamless), roll=roll)
+
+
+def product_foreground_mask(img: Image.Image) -> Image.Image:
+    """Estimate the main product mask from edge/background color differences."""
+    small = img.copy()
+    small.thumbnail((900, 900), Image.LANCZOS)
+    arr = np.asarray(small.convert("RGB")).astype(np.float32)
+    h, w = arr.shape[:2]
+    edge = max(8, min(h, w) // 18)
+
+    samples = np.concatenate(
+        [
+            arr[:edge].reshape(-1, 3),
+            arr[-edge:].reshape(-1, 3),
+            arr[:, :edge].reshape(-1, 3),
+            arr[:, -edge:].reshape(-1, 3),
+        ],
+        axis=0,
+    )
+    bg = np.median(samples, axis=0)
+    distance = np.linalg.norm(arr - bg[None, None, :], axis=2)
+
+    # Pick a conservative threshold from the current photo, with a floor for
+    # white/light products on white-ish backgrounds.
+    threshold = max(24.0, float(np.percentile(distance, 78)))
+    mask = distance > threshold
+
+    # Add saturated or dark details, useful for labels/logos on white products.
+    maxc = arr.max(axis=2)
+    minc = arr.min(axis=2)
+    saturation = maxc - minc
+    brightness = arr.mean(axis=2)
+    mask |= (saturation > 34) & (distance > 12)
+    mask |= (brightness < 180) & (distance > 18)
+
+    # Keep the largest connected-ish visual region by growing/filling the mask
+    # with PIL filters. This is deliberately dependency-light for deployment.
+    mask_img = Image.fromarray((mask.astype(np.uint8) * 255), "L")
+    mask_img = mask_img.filter(ImageFilter.MaxFilter(13))
+    mask_img = mask_img.filter(ImageFilter.MinFilter(9))
+    mask_img = mask_img.filter(ImageFilter.GaussianBlur(2.0))
+    mask_img = mask_img.point(lambda p: 255 if p > 32 else 0)
+    return mask_img.resize(img.size, Image.LANCZOS)
+
+
+def birefnet_foreground_mask(img: Image.Image) -> Image.Image | None:
+    if birefnet is None or BirefNetTransform is None or BirefNetToPIL is None or BirefNetDevice is None:
+        return None
+
+    source = ImageOps.exif_transpose(img.convert("RGB"))
+    with torch.no_grad():
+        tensor = BirefNetTransform(source).unsqueeze(0).to(BirefNetDevice)
+        pred = birefnet(tensor)
+        if isinstance(pred, (list, tuple)):
+            pred = pred[-1]
+        mask = pred.sigmoid().detach().cpu()[0].squeeze()
+    mask_img = BirefNetToPIL(mask).resize(source.size, Image.LANCZOS)
+    return mask_img.filter(ImageFilter.GaussianBlur(0.7)).point(lambda p: 255 if p > 24 else 0)
+
+
+def logo_path() -> Path:
+    configured = os.environ.get("PRODUCT_LOGO_PATH")
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parents[2] / "logo.jpg"
+
+
+def make_white_logo_with_black_border(size: tuple[int, int]) -> Image.Image | None:
+    path = logo_path()
+    if not path.exists():
+        print(f"[ai-image] logo not found at {path}", flush=True)
+        return None
+
+    logo = Image.open(path).convert("RGBA")
+    logo.thumbnail(size, Image.LANCZOS)
+    alpha = logo.getchannel("A")
+    outline = alpha.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(0.4))
+
+    bordered = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+    bordered.paste((0, 0, 0, 255), (0, 0), outline)
+    bordered.paste((255, 255, 255, 255), (0, 0), alpha)
+    return bordered
+
+
+def add_bottom_logo(canvas: Image.Image) -> Image.Image:
+    out = canvas.convert("RGB")
+    max_logo_size = (int(out.width * 0.34), int(out.height * 0.12))
+    logo = make_white_logo_with_black_border(max_logo_size)
+    if logo is None:
+        return out
+
+    x = (out.width - logo.width) // 2
+    y = out.height - logo.height - int(out.height * 0.045)
+    out.paste(logo, (x, y), logo)
+    return out
+
+
+def clean_product_photo(source: Image.Image, output_size: int = 900, use_birefnet: bool = False, add_logo: bool = False) -> Image.Image:
+    output_size = int(np.clip(output_size, 512, 1400))
+    source = ImageOps.exif_transpose(source.convert("RGB"))
+    source.thumbnail((1400, 1400), Image.LANCZOS)
+
+    mask = birefnet_foreground_mask(source) if use_birefnet else None
+    if mask is None:
+        mask = product_foreground_mask(source)
+    bbox = mask.getbbox()
+    if not bbox:
+        bbox = source.getbbox() or (0, 0, source.width, source.height)
+
+    # Pad before cropping so the object keeps a natural amount of breathing room.
+    left, top, right, bottom = bbox
+    pad = max(12, int(max(right - left, bottom - top) * 0.08))
+    crop_box = (
+        max(0, left - pad),
+        max(0, top - pad),
+        min(source.width, right + pad),
+        min(source.height, bottom + pad),
+    )
+    product = source.crop(crop_box)
+    product_mask = mask.crop(crop_box).filter(ImageFilter.GaussianBlur(1.2))
+
+    # Normalize common phone-camera shadows without flattening the product.
+    product = ImageOps.autocontrast(product, cutoff=1)
+    product = ImageEnhance.Brightness(product).enhance(1.06)
+    product = ImageEnhance.Contrast(product).enhance(1.08)
+    product = ImageEnhance.Color(product).enhance(1.03)
+
+    canvas = Image.new("RGB", (output_size, output_size), "white")
+    max_product = int(output_size * 0.78)
+    scale = min(max_product / max(product.width, product.height), 1.0)
+    new_size = (
+        max(1, int(product.width * scale)),
+        max(1, int(product.height * scale)),
+    )
+    product = product.resize(new_size, Image.LANCZOS)
+    product_mask = product_mask.resize(new_size, Image.LANCZOS)
+
+    x = (output_size - new_size[0]) // 2
+    logo_space = int(output_size * 0.14) if add_logo else 0
+    y = max(int(output_size * 0.045), (output_size - logo_space - new_size[1]) // 2)
+    canvas.paste(product, (x, y), product_mask)
+    return add_bottom_logo(canvas) if add_logo else canvas
+
+
+@app.post("/edit-product-photo", response_model=EditProductPhotoResponse)
+def edit_product_photo(req: EditProductPhotoRequest):
+    try:
+        source = decode_image(req.image)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"bad image: {exc}") from exc
+
+    try:
+        mode = (req.processing_mode or "ai").strip().lower()
+        edited = clean_product_photo(
+            source,
+            req.output_size,
+            use_birefnet=mode == "simple",
+            add_logo=mode == "simple",
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"could not edit product photo: {exc}") from exc
+
+    return EditProductPhotoResponse(image=encode_image(edited, quality=92))

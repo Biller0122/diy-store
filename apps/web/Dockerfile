@@ -1,4 +1,4 @@
-FROM node:20-alpine AS deps
+FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
@@ -33,14 +33,26 @@ ENV INTERNAL_VENDURE_MAILBOX=$INTERNAL_VENDURE_MAILBOX
 ENV NODE_OPTIONS=--max-old-space-size=1024
 RUN npm run build --workspace @diy-store/web
 
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV APP_PORTAL=customer
+ENV BIREFNET_MODEL_DIR=/opt/diy-store-models
+ENV BIREFNET_ONNX_INPUT_SIZE=1024
+ENV BIREFNET_ONNX_OPTIMIZATION=basic
+ENV BIREFNET_ONNX_THREADS=2
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates \
+    && pip3 install --break-system-packages --no-cache-dir numpy pillow onnxruntime \
+    && mkdir -p /opt/diy-store-models \
+    && python3 -c "import urllib.request; urllib.request.urlretrieve('https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx', '/opt/diy-store-models/birefnet_lite.onnx')" \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/scripts ./apps/web/scripts
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 

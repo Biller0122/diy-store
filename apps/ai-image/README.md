@@ -53,6 +53,20 @@ POST /generate-pattern
 
 `roll` is only returned for roll-like categories (обой, ламинат).
 
+```
+POST /edit-product-photo
+{ "image": "<base64 or data URL>", "output_size": 900, "processing_mode": "simple" }
+
+→ { "image": "data:image/jpeg;base64,..." }
+```
+
+This endpoint crops the estimated main object, centers it on a white square
+background, and normalizes common phone-camera shadows for product photos.
+`processing_mode: "simple"` uses BiRefNet foreground segmentation when available
+and adds the bottom `logo.jpg` mark as white text with a black outline.
+`processing_mode: "ai"` keeps the previous cleanup behavior without adding the
+logo.
+
 ## Production note
 
 The app calls this service via `GPU_SERVICE_URL` (see `apps/web`). EC2 has no GPU,
