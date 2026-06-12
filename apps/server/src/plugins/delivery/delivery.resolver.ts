@@ -169,11 +169,19 @@ export class DeliveryResolver {
               driverId: result.driver.id,
               status: DeliveryStatus.ACCEPTED,
             });
+            emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status: DeliveryStatus.ACCEPTED });
+            if (current.orderNumber) {
+              emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status: DeliveryStatus.ACCEPTED });
+            }
           }
         } else if (result.status === 'TIMEOUT') {
           const current = await this.deliveryRepo.findOne({ where: { id: saved.id } });
           if (current?.status === DeliveryStatus.SEARCHING) {
             await this.deliveryRepo.update(saved.id, { status: DeliveryStatus.CANCELLED });
+            emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status: DeliveryStatus.CANCELLED });
+            if (current.orderNumber) {
+              emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status: DeliveryStatus.CANCELLED });
+            }
           }
         }
       })

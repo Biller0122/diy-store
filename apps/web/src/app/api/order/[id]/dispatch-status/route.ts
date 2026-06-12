@@ -71,10 +71,17 @@ const DRIVER_GQL = `
   }
 `;
 
-async function vendureFetch<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+async function vendureFetch<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  token?: string | null,
+): Promise<T> {
   const response = await fetch(SHOP_API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ query, variables }),
     cache: 'no-store',
   });
@@ -115,15 +122,17 @@ async function getDriver(driverId?: string | null): Promise<DriverSummary | unde
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1] ?? null;
 
   try {
     const data = await vendureFetch<{ deliveryRequest: DeliveryRequestResult | null }>(
       DELIVERY_STATUS_GQL,
       { orderId: id },
+      token,
     );
     const delivery = data.deliveryRequest;
     if (!delivery) {

@@ -14,6 +14,7 @@ interface Props {
 }
 
 type DeliveryStatus = 'SEARCHING' | 'OFFERED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+const CUSTOMER_AUTH_TOKEN_KEY = 'diy-vendure-auth-token';
 
 interface DispatchData {
   status: DeliveryStatus;
@@ -368,7 +369,11 @@ export default function TrackOrderPage({ params }: Props) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`/api/order/${orderId}/dispatch-status`);
+      const token = window.localStorage.getItem(CUSTOMER_AUTH_TOKEN_KEY);
+      const res = await fetch(`/api/order/${orderId}/dispatch-status`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) return;
       const json = await res.json() as DispatchData;
       setData(json);

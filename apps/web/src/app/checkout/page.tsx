@@ -423,8 +423,11 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
 
     async function fetchDispatchStatus() {
       try {
+        const token = window.localStorage.getItem('diy-vendure-auth-token');
+        const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
         const response = await fetch(`/api/order/${encodeURIComponent(orderNo)}/dispatch-status`, {
           cache: 'no-store',
+          headers,
         });
         if (!response.ok) return;
         const data = await response.json() as DispatchStatusData;
