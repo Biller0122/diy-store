@@ -25,7 +25,7 @@ function getApiUrl() {
   }
 
   if (PUBLIC_API_URL) {
-    return PUBLIC_API_URL.replace(/\/$/, '');
+    return normalizeDeviceUrl(PUBLIC_API_URL);
   }
 
   if (!IS_DEV) {
@@ -38,6 +38,27 @@ function getApiUrl() {
   }
 
   return `http://${hostIp}:${DEV_SERVER_PORT}`;
+}
+
+export function normalizeDeviceUrl(value: string) {
+  const trimmed = value.replace(/\/$/, '');
+  if (!IS_DEV || Platform.OS === 'web') return trimmed;
+
+  try {
+    const url = new URL(trimmed);
+    const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    if (isLocalhost) {
+      const hostIp = getHostIp();
+      url.hostname = Platform.OS === 'android' && (hostIp === 'localhost' || hostIp === '127.0.0.1')
+        ? '10.0.2.2'
+        : hostIp;
+      return url.toString().replace(/\/$/, '');
+    }
+  } catch {
+    return trimmed;
+  }
+
+  return trimmed;
 }
 
 export const API_URL = getApiUrl();

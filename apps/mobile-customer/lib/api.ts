@@ -1,6 +1,8 @@
-import { API_URL as BASE_API_URL } from '@/app/config';
+import { API_URL as BASE_API_URL, normalizeDeviceUrl } from '@/app/config';
 
-const API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL || `${BASE_API_URL.replace(/\/$/, '')}/shop-api`;
+const API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL
+  ? normalizeDeviceUrl(process.env.EXPO_PUBLIC_SHOP_API_URL)
+  : `${BASE_API_URL.replace(/\/$/, '')}/shop-api`;
 let sessionToken: string | null = null;
 
 export function setShopSessionToken(token: string | null) {

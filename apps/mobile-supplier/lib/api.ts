@@ -1,12 +1,16 @@
-import { API_URL, WEB_URL } from '@/lib/config';
+import { API_URL, WEB_URL, normalizeDeviceUrl } from '@/lib/config';
 import { Platform } from 'react-native';
 
 const SHOP_API = Platform.OS === 'web'
   ? `${API_URL}/shop-api`
-  : process.env.EXPO_PUBLIC_SHOP_API_URL || `${API_URL}/shop-api`;
+  : process.env.EXPO_PUBLIC_SHOP_API_URL
+    ? normalizeDeviceUrl(process.env.EXPO_PUBLIC_SHOP_API_URL)
+    : `${API_URL}/shop-api`;
 const ADMIN_API = Platform.OS === 'web'
   ? `${API_URL}/admin-api`
-  : process.env.EXPO_PUBLIC_ADMIN_API_URL || `${API_URL}/admin-api`;
+  : process.env.EXPO_PUBLIC_ADMIN_API_URL
+    ? normalizeDeviceUrl(process.env.EXPO_PUBLIC_ADMIN_API_URL)
+    : `${API_URL}/admin-api`;
 const REQUEST_TIMEOUT_MS = 30000;
 const AI_ANALYZE_TIMEOUT_MS = 35000;
 
