@@ -131,9 +131,9 @@ const HOW_IT_WORKS = [
 // ─── Components ───────────────────────────────────────────────
 
 function SectionHeader({
-  icon: Icon, title, subtitle, href,
+  icon: Icon, title, subtitle, href, actionLabel = 'Бүгдийг харах',
 }: {
-  icon: React.ElementType; title: string; subtitle?: string; href?: string;
+  icon: React.ElementType; title: string; subtitle?: string; href?: string; actionLabel?: string;
 }) {
   return (
     <div className="flex items-end justify-between mb-6">
@@ -146,7 +146,7 @@ function SectionHeader({
       </div>
       {href && (
         <Link href={href} className="flex items-center gap-1 text-sm text-brand hover:text-brand-light transition-colors font-medium">
-          Бүгдийг харах <ArrowRight size={14} />
+          {actionLabel} <ArrowRight size={14} />
         </Link>
       )}
     </div>
@@ -200,7 +200,7 @@ function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplie
   const featured = suppliers.slice(0, 4);
   return (
     <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-      <SectionHeader icon={Store} title="Онцлох нийлүүлэгчид" subtitle="Найдвартай нийлүүлэгчдээс шууд захиалаарай" href="/suppliers" />
+      <SectionHeader icon={Store} title="Дэлгүүрүүд" subtitle="Найдвартай нийлүүлэгчдээс шууд захиалаарай" href="/suppliers" actionLabel="Бүгд" />
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {featured.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-2 lg:col-span-4">
@@ -368,10 +368,13 @@ export default async function HomePage() {
       <MarketplaceHero supplierCount={suppliersResult.total} productCount={productCount} />
       <HomepageBanner banners={banners} />
 
+      {/* Supplier spotlight */}
+      <SupplierSection suppliers={suppliers} />
+
       {/* New products */}
       <section id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Sparkles} title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" href="/#new-products" />
+          <SectionHeader icon={Sparkles} title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" href="/products?mode=new" />
           <div className="flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 sm:-mx-6 sm:px-6 snap-x snap-mandatory">
             {newProducts.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted">
@@ -389,7 +392,7 @@ export default async function HomePage() {
       {/* Sale products grid */}
       {saleProducts.length > 0 && (
         <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/search?sort=price_asc" />
+          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/products?mode=sale" />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {saleProducts.map((product, i) => (
               <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
@@ -398,14 +401,11 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* Supplier spotlight */}
-      <SupplierSection suppliers={suppliers} />
-
       <TrustStrip />
 
       {/* Categories */}
       <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6">
-        <SectionHeader icon={Sparkles} title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" href="/category" />
+        <SectionHeader icon={Sparkles} title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" href="/category" actionLabel="Бүгд" />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
           {displayCategories.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-3 lg:col-span-4 xl:col-span-6">
