@@ -11,6 +11,7 @@ import { MegaMenu } from './ui/MegaMenu';
 import { cn } from '@/lib/utils';
 import { getCustomerHomeHref } from '@/lib/portal-links';
 import { BrandLogo } from './BrandLogo';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -33,7 +34,7 @@ export function Header() {
         'sticky top-0 z-40 transition-all duration-300',
         scrolled
           ? 'glass border-b border-[var(--glass-border)] shadow-lg shadow-black/20'
-          : 'bg-transparent',
+          : 'bg-surface/80 backdrop-blur-xl md:bg-transparent',
       )}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -76,6 +77,10 @@ export function Header() {
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2">
+            <div className="hidden lg:block">
+              <ThemeToggle />
+            </div>
+
             {/* Search icon (mobile) */}
             <button
               data-testid="search-trigger-mobile"
@@ -142,6 +147,9 @@ export function Header() {
           className="md:hidden border-t border-[var(--glass-border)] bg-surface/95 backdrop-blur-xl"
         >
           <div className="px-4 py-4 space-y-1">
+            <div className="px-2 pb-3">
+              <ThemeToggle />
+            </div>
             {[
               { href: '/category', label: '📦 Ангилал' },
               { href: '/trade', label: '🏢 Trade данс' },

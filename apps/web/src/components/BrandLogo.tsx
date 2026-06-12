@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 type BrandLogoProps = {
@@ -14,43 +13,23 @@ export function BrandLogo({
   variant = 'header',
   portalLabel,
 }: BrandLogoProps) {
-  if (variant === 'mark') {
-    return (
-      <Image
-        src="/shoptool-logo.png"
-        alt="shoptool.mn"
-        width={210}
-        height={131}
-        className={cn('h-auto w-24 object-contain', imageClassName)}
-        priority
-      />
-    );
-  }
-
-  if (variant === 'sidebar') {
-    return (
-      <div className={cn('flex min-w-0 flex-col items-start', className)}>
-        <Image
-          src="/shoptool-logo.png"
-          alt="shoptool.mn"
-          width={210}
-          height={131}
-          className={cn('h-auto w-36 object-contain', imageClassName)}
-          priority
-        />
-        {portalLabel && <p className="mt-0.5 text-[10px] text-foreground-muted">{portalLabel}</p>}
-      </div>
-    );
-  }
-
   return (
-    <Image
-      src="/shoptool-logo.png"
-      alt="shoptool.mn"
-      width={210}
-      height={131}
-      className={cn('h-9 w-36 object-contain sm:h-10 sm:w-44', imageClassName)}
-      priority
-    />
+    <div className={cn('flex min-w-0 flex-col items-start leading-none', className)} aria-label="shoptool.mn">
+      <div className={cn(
+        'inline-flex items-baseline rounded-sm font-display text-xl font-black tracking-tight text-foreground',
+        variant === 'mark' && 'text-2xl',
+        variant === 'sidebar' && 'text-2xl',
+        imageClassName,
+      )}>
+        <span>SHOP</span>
+        <span className="text-brand">TOOL</span>
+        <span className="ml-0.5 text-xs font-black text-brand">.MN</span>
+      </div>
+      {(portalLabel || variant === 'header') && (
+        <p className="mt-1 text-[10px] font-semibold text-foreground-muted">
+          {portalLabel || 'Барилгын материалын платформ'}
+        </p>
+      )}
+    </div>
   );
 }

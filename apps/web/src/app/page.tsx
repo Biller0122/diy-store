@@ -1,12 +1,11 @@
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Clock, Flame, Sparkles, Star, Store, Truck, MapPin, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckCircle2, Clock, Flame, MapPin, Package, Search, Sparkles, Star, Store, Truck } from 'lucide-react';
 import { vendureShopFetch, type VendureCollection } from '@/lib/vendure';
 import { TrustStrip } from '@/components/ui/TrustStrip';
-import { CategoryCard } from '@/components/ui/CategoryCard';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { HomepageBanner, type HomepageBannerData } from '@/components/ui/HomepageBanner';
 import { ARTICLES } from './how-to/articles';
-import { dbProductToCard, dbSupplierToCard, getDbSupplierProductCount, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierProductCount, getDbSupplierProducts, getDbSuppliers, supplierProductMatchesCategory, type DbSupplierProduct } from '@/lib/supplier-products';
 import { BrandLogo } from '@/components/BrandLogo';
 
 // ─── Data fetching ────────────────────────────────────────────
@@ -128,6 +127,8 @@ const HOW_IT_WORKS = [
   { step: 4, icon: '📍', title: 'Хүргэлт хянах', desc: 'Жолоочийн байршлыг шууд хянана уу' },
 ];
 
+const CATEGORY_FALLBACK_ICONS = ['🏗️', '🔩', '🧱', '🚿', '🪵', '🎨', '🧰', '💡'];
+
 // ─── Components ───────────────────────────────────────────────
 
 function SectionHeader({
@@ -136,7 +137,7 @@ function SectionHeader({
   icon: React.ElementType; title: string; subtitle?: string; href?: string; actionLabel?: string;
 }) {
   return (
-    <div className="flex items-end justify-between mb-6">
+    <div className="mb-5 flex items-end justify-between gap-4">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Icon size={18} className="text-brand" />
@@ -155,45 +156,114 @@ function SectionHeader({
 
 function MarketplaceHero({ supplierCount, productCount }: { supplierCount: number; productCount: number }) {
   return (
-    <section className="relative overflow-hidden py-20 px-4">
-      <div className="absolute inset-0 gradient-mesh opacity-60" />
-      <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 30% 50%, rgba(255,69,0,0.15) 0%, transparent 60%)' }} />
-      <div className="relative max-w-7xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 text-xs font-semibold text-brand border border-brand/20 mb-6">
-          <Sparkles size={12} /> Барилгын материалын ухаалаг шийдэл
-        </div>
-        <h1 className="font-display font-black text-5xl sm:text-6xl lg:text-7xl text-foreground leading-tight mb-6">
-          Барилгын материалыг{' '}
-          <span className="text-brand">нэг платформоос.</span>
-        </h1>
-        <p className="text-xl text-foreground-muted max-w-2xl mx-auto mb-10 leading-relaxed">
-          Нийлүүлэгч, бүтээгдэхүүн, хүргэлтийг нэг дор холбосон shoptool.mn платформ. Бодит нөөц, шуурхай хүргэлт, найдвартай захиалга.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/suppliers" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-brand text-white font-bold text-base hover:bg-brand-hover transition-all shadow-xl shadow-brand/30 hover:scale-105">
-            <Store size={18} /> Нийлүүлэгчид үзэх
-          </Link>
-          <Link href="/category" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl glass glass-hover text-foreground font-bold text-base hover:scale-105 transition-all">
-            Ангилал харах <ArrowRight size={16} />
-          </Link>
+    <section className="relative overflow-hidden px-4 pb-16 pt-10 sm:px-6 lg:pb-24 lg:pt-16">
+      <div className="absolute inset-0 gradient-mesh" />
+      <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-dark to-transparent" />
+      <div className="relative mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.92fr_1.08fr]">
+        <div className="max-w-2xl">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-4 py-2 text-xs font-bold text-brand">
+            <Sparkles size={13} /> Барилгын материалын ухаалаг шийдэл
+          </div>
+          <h1 className="font-display text-5xl font-black leading-[0.98] text-foreground sm:text-6xl lg:text-7xl">
+            Барилгын материалыг{' '}
+            <span className="text-brand">нэг платформоос.</span>
+          </h1>
+          <p className="mt-6 max-w-xl text-base leading-7 text-foreground-muted sm:text-lg">
+            Нийлүүлэгч, бүтээгдэхүүн, хүргэлтийг нэг дор холбосон shoptool.mn платформ. Бодит үнэ, шуурхай хүргэлт, найдвартай захиалга.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link href="/search" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand px-6 py-4 text-sm font-black text-white shadow-xl shadow-brand/25 transition-transform hover:-translate-y-0.5">
+              <Search size={17} /> Материал хайх <ArrowRight size={16} />
+            </Link>
+            <Link href="/suppliers" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--glass-border)] bg-card px-6 py-4 text-sm font-black text-foreground shadow-sm transition-transform hover:-translate-y-0.5 hover:border-brand/40">
+              <Store size={17} /> Нийлүүлэгчид үзэх
+            </Link>
+          </div>
+
+          <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { icon: Package, value: productCount.toLocaleString('mn-MN'), label: 'Бүтээгдэхүүн' },
+              { icon: Store, value: supplierCount.toLocaleString('mn-MN'), label: 'Нийлүүлэгч' },
+              { icon: Clock, value: '30 мин', label: 'Дундаж хариу' },
+              { icon: Truck, value: '24ц', label: 'Хүргэлт' },
+            ].map(({ icon: Icon, value, label }) => (
+              <div key={label} className="rounded-2xl border border-[var(--glass-border)] bg-card/85 p-4 shadow-[var(--card-shadow)] backdrop-blur">
+                <Icon size={22} className="mb-3 text-brand" />
+                <p className="font-mono text-2xl font-black text-brand">{value}</p>
+                <p className="mt-1 text-xs font-semibold text-foreground-muted">{label}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto mt-14">
-          {[
-            { value: supplierCount.toLocaleString('mn-MN'), label: 'Нийлүүлэгч' },
-            { value: productCount.toLocaleString('mn-MN'), label: 'Бүтээгдэхүүн' },
-            { value: '30 мин', label: 'Дундаж хүргэлт' },
-          ].map(({ value, label }) => (
-            <div key={label} className="glass rounded-2xl p-4 text-center">
-              <p className="text-2xl font-black font-mono text-brand">{value}</p>
-              <p className="text-xs text-foreground-muted mt-1">{label}</p>
+        <div className="relative min-h-[420px] lg:min-h-[560px]">
+          <div className="absolute inset-x-4 bottom-4 top-20 rounded-[44px] bg-brand shadow-[0_30px_120px_rgba(255,69,0,0.32)] lg:inset-x-10" />
+          <div className="absolute inset-0 rounded-[46px] bg-[radial-gradient(circle_at_70%_20%,rgba(255,255,255,0.38),transparent_28%),linear-gradient(145deg,rgba(255,255,255,0.18),rgba(0,0,0,0.12))]" />
+          <div className="absolute bottom-0 right-0 w-[88%] overflow-hidden rounded-[28px] border border-white/20 bg-neutral-900 shadow-2xl">
+            <div className="aspect-[1.28/1] bg-[linear-gradient(115deg,rgba(255,255,255,0.18)_0_1px,transparent_1px_72px),linear-gradient(25deg,#2c3035,#0b0f14_52%,#f97316_53%,#111827_54%)]">
+              <div className="grid h-full grid-cols-3 gap-px p-6">
+                {Array.from({ length: 9 }).map((_, index) => (
+                  <div key={index} className="rounded-sm border border-white/10 bg-white/10 shadow-inner" />
+                ))}
+              </div>
             </div>
+          </div>
+          <div className="absolute left-0 top-8 rounded-3xl border border-[var(--glass-border)] bg-card/90 p-4 shadow-[var(--card-shadow)] backdrop-blur">
+            <div className="flex items-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/15 text-3xl">🧱</div>
+              <div>
+                <p className="text-sm font-black text-foreground">Тоосго, цемент</p>
+                <p className="text-xs text-foreground-muted">80+ бүтээгдэхүүн</p>
+              </div>
+            </div>
+          </div>
+          <div className="absolute bottom-10 left-4 max-w-sm rounded-3xl border border-white/15 bg-black/70 p-5 text-white shadow-2xl backdrop-blur">
+            {['Баталгаатай бүтээгдэхүүн', 'Өрсөлдөхүйц үнэ', 'Шуурхай хүргэлт'].map((label) => (
+              <div key={label} className="flex items-center gap-2 py-1 text-sm font-semibold">
+                <CheckCircle2 size={16} className="text-brand" /> {label}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CategoryRail({ collections, supplierProducts }: { collections: VendureCollection[]; supplierProducts: DbSupplierProduct[] }) {
+  return (
+    <section className="relative z-10 mx-auto -mt-10 max-w-7xl px-4 sm:px-6">
+      <div className="rounded-[28px] border border-[var(--glass-border)] bg-card p-5 shadow-[var(--card-shadow)]">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-black text-foreground">Ангиллууд</h2>
+          <Link href="/category" className="inline-flex items-center gap-1 text-xs font-bold text-foreground-muted hover:text-brand">
+            Бүгдийг харах <ArrowRight size={13} />
+          </Link>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {collections.slice(0, 8).map((category, index) => (
+            <Link
+              key={category.id}
+              href={`/category/${category.slug}`}
+              className="min-w-[132px] rounded-2xl border border-[var(--glass-border)] bg-surface p-3 text-center transition hover:-translate-y-0.5 hover:border-brand/35"
+            >
+              <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/10 text-4xl">
+                {category.customFields?.icon ?? CATEGORY_FALLBACK_ICONS[index % CATEGORY_FALLBACK_ICONS.length]}
+              </div>
+              <p className="line-clamp-1 text-sm font-bold text-foreground">{category.name}</p>
+              <p className="mt-1 text-[11px] text-foreground-muted">
+                {getDbSupplierProductCountForCategory(supplierProducts, category).toLocaleString('mn-MN')}+ бүтээгдэхүүн
+              </p>
+            </Link>
           ))}
         </div>
       </div>
     </section>
   );
+}
+
+function getDbSupplierProductCountForCategory(products: DbSupplierProduct[], category: VendureCollection) {
+  return products.filter((product) => product.enabled && supplierProductMatchesCategory(product, category, true)).length;
 }
 
 function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplierToCard>[] }) {
@@ -366,10 +436,8 @@ export default async function HomePage() {
   return (
     <>
       <MarketplaceHero supplierCount={suppliersResult.total} productCount={productCount} />
+      <CategoryRail collections={displayCategories} supplierProducts={supplierProducts} />
       <HomepageBanner banners={banners} />
-
-      {/* Supplier spotlight */}
-      <SupplierSection suppliers={suppliers} />
 
       {/* New products */}
       <section id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
@@ -390,32 +458,25 @@ export default async function HomePage() {
       </section>
 
       {/* Sale products grid */}
-      {saleProducts.length > 0 && (
-        <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/products?mode=sale" />
+      <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+        <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/products?mode=sale" />
+        {saleProducts.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[var(--glass-border)] bg-card p-8 text-sm text-foreground-muted">
+            Одоогоор хямдралтай бараа бүртгэгдээгүй байна.
+          </div>
+        ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {saleProducts.map((product, i) => (
               <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
+
+      {/* Supplier spotlight */}
+      <SupplierSection suppliers={suppliers} />
 
       <TrustStrip />
-
-      {/* Categories */}
-      <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6">
-        <SectionHeader icon={Sparkles} title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" href="/category" actionLabel="Бүгд" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {displayCategories.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-3 lg:col-span-4 xl:col-span-6">
-              Backend дээр ангилал бүртгэгдээгүй байна.
-            </div>
-          ) : displayCategories.slice(0, 12).map((cat, i) => (
-            <CategoryCard key={cat.id} name={cat.name} slug={cat.slug} icon={cat.customFields?.icon ?? '📦'} index={i} />
-          ))}
-        </div>
-      </section>
 
       {/* How it works */}
       <HowItWorksSection />

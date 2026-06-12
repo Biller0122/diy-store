@@ -44,6 +44,14 @@
 
 /* ─── CSS Variables for glass & dynamic values ─────────────── */
 :root {
+  --color-dark:         #0A0A0F;
+  --color-surface:      #111118;
+  --color-card:         #16161F;
+  --color-card-hover:   #1C1C28;
+  --color-muted:        #71717A;
+  --color-border:       #1F1F2E;
+  --color-foreground:   #FAFAFA;
+  --color-foreground-muted: #A1A1AA;
   --glass-bg:           rgba(255, 255, 255, 0.03);
   --glass-border:       rgba(255, 255, 255, 0.08);
   --glass-border-hover: rgba(255, 255, 255, 0.16);
@@ -51,6 +59,24 @@
   --brand-glow:         0 0 40px rgba(255, 69, 0, 0.25);
   --brand-glow-strong:  0 0 60px rgba(255, 69, 0, 0.4);
   --card-shadow:        0 4px 32px rgba(0, 0, 0, 0.4);
+}
+
+.light {
+  color-scheme: light;
+  --color-dark:         #F6F7F9;
+  --color-surface:      #FFFFFF;
+  --color-card:         #FFFFFF;
+  --color-card-hover:   #FFF7F2;
+  --color-muted:        #6B7280;
+  --color-border:       #E5E7EB;
+  --color-foreground:   #101828;
+  --color-foreground-muted: #667085;
+  --glass-bg:           rgba(255, 255, 255, 0.72);
+  --glass-border:       rgba(16, 24, 40, 0.10);
+  --glass-border-hover: rgba(255, 69, 0, 0.32);
+  --brand-glow:         0 12px 38px rgba(255, 69, 0, 0.20);
+  --brand-glow-strong:  0 18px 54px rgba(255, 69, 0, 0.28);
+  --card-shadow:        0 16px 44px rgba(16, 24, 40, 0.10);
 }
 
 /* ─── Base ──────────────────────────────────────────────────── */
@@ -62,8 +88,8 @@ html {
 }
 
 body {
-  background-color: #0A0A0F;
-  color: #FAFAFA;
+  background-color: var(--color-dark);
+  color: var(--color-foreground);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -85,10 +111,10 @@ body {
 }
 
 .glass-strong {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--glass-border);
 }
 
 /* ─── Brand Glow ────────────────────────────────────────────── */
@@ -101,7 +127,14 @@ body {
     radial-gradient(ellipse at 20% 50%, rgba(255, 69, 0, 0.12) 0%, transparent 60%),
     radial-gradient(ellipse at 80% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
     radial-gradient(ellipse at 60% 80%, rgba(59, 130, 246, 0.06) 0%, transparent 50%),
-    #0A0A0F;
+    var(--color-dark);
+}
+
+.light .gradient-mesh {
+  background:
+    radial-gradient(ellipse at 72% 18%, rgba(255, 69, 0, 0.20) 0%, transparent 38%),
+    radial-gradient(ellipse at 18% 15%, rgba(255, 236, 213, 0.95) 0%, transparent 42%),
+    linear-gradient(180deg, #FFFFFF 0%, #F6F7F9 100%);
 }
 
 /* ─── Gradient Text ─────────────────────────────────────────── */
@@ -211,7 +244,7 @@ body {
 
 /* ─── Scrollbar ─────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #0A0A0F; }
+::-webkit-scrollbar-track { background: var(--color-dark); }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
@@ -225,7 +258,7 @@ body {
 /* ─── Selection ─────────────────────────────────────────────── */
 ::selection {
   background: rgba(255, 69, 0, 0.3);
-  color: #FAFAFA;
+  color: var(--color-foreground);
 }
 
 /* ─── Skeleton Loader ───────────────────────────────────────── */
