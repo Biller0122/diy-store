@@ -63,34 +63,8 @@ const INITIAL_FORM: FormState = {
 };
 
 const AI_ANALYZE_TIMEOUT_MS = 35000;
-const PATTERN_GENERATE_TIMEOUT_MS = 120000;
-
-// AI categories (raw, before slug mapping) that get the clean pattern treatment.
-const WALLPAPER_AI_CATEGORIES = new Set(['обой', 'ламинат', 'кафель', 'паркет']);
-
-type GeneratedPattern = { flat: string; roll?: string | null };
 type EditedProductImage = { image: string; error?: string };
 type ImageEditMode = 'simple' | 'ai';
-
-async function generatePattern(image: string, category: string): Promise<GeneratedPattern> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), PATTERN_GENERATE_TIMEOUT_MS);
-  try {
-    const response = await fetch('/generate-pattern', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image, category }),
-    });
-    const result = (await response.json()) as GeneratedPattern & { error?: string };
-    if (!response.ok || result.error) {
-      throw new Error(result.error || `Зураг үүсгэх алдаа: ${response.status}`);
-    }
-    return { flat: result.flat, roll: result.roll ?? null };
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
 
 async function editProductImage(image: string, mode: ImageEditMode): Promise<EditedProductImage> {
   const response = await fetch('/edit-product-image', {
@@ -216,9 +190,6 @@ export default function NewSupplierProductPage() {
   const [imageEditing, setImageEditing] = useState(false);
   const [imageEditMenuOpen, setImageEditMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [patterns, setPatterns] = useState<GeneratedPattern | null>(null);
-  const [patternStatus, setPatternStatus] = useState('');
-  const [patternBusy, setPatternBusy] = useState(false);
   const storageKey = useMemo(() => `diy-supplier-products:${supplier?.id ?? 'guest'}`, [supplier?.id]);
 
   useEffect(() => {
@@ -317,39 +288,11 @@ export default function NewSupplierProductPage() {
         category: categorySlug || prev.category,
       }));
       setAiStatus(`AI санал бөглөлөө${typeof result.confidence === 'number' ? ` · итгэлцүүр ${result.confidence}%` : ''}`);
-
-      // Wallpaper / floor products: generate a clean swatch + roll mockup on the GPU.
-      const aiCategory = (result.category ?? '').trim().toLowerCase();
-      if (WALLPAPER_AI_CATEGORIES.has(aiCategory)) {
-        void runGeneratePattern(image, aiCategory);
-      }
     } catch (err) {
       setAiStatus(err instanceof Error && err.name === 'AbortError' ? 'AI шинжилгээ хэт удаж байна. Дахин оролдоно уу.' : err instanceof Error ? err.message : 'AI шинжилгээ амжилтгүй боллоо');
     } finally {
       window.clearTimeout(timeout);
       setAiAnalyzing(false);
-    }
-  }
-
-  async function runGeneratePattern(image = form.image, category?: string) {
-    if (!image) return;
-    const cat = (category ?? '').trim().toLowerCase() || 'обой';
-    setPatternBusy(true);
-    setPatternStatus('Цэвэр загвар үүсгэж байна... (GPU)');
-    try {
-      const result = await generatePattern(image, cat);
-      setPatterns(result);
-      // Default the product image to the clean flat swatch.
-      setForm((prev) => ({ ...prev, image: result.flat }));
-      setPatternStatus(result.roll ? 'Загвар + рулон бэлэн. Доороос сонгоно уу.' : 'Цэвэр загвар бэлэн.');
-    } catch (err) {
-      setPatternStatus(
-        err instanceof Error && err.name === 'AbortError'
-          ? 'Загвар үүсгэх хугацаа хэтэрлээ. GPU сервер асаалттай юу?'
-          : err instanceof Error ? err.message : 'Загвар үүсгэж чадсангүй',
-      );
-    } finally {
-      setPatternBusy(false);
     }
   }
 
@@ -372,8 +315,6 @@ export default function NewSupplierProductPage() {
         image: result.image,
         imageName: prev.imageName ? `edited-${prev.imageName}` : 'AI янзалсан зураг',
       }));
-      setPatterns(null);
-      setPatternStatus('');
       setErrors((prev) => ({ ...prev, image: '' }));
       setAiStatus(mode === 'simple'
         ? 'Энгийн янзаллаа: гол объект цагаан дэвсгэр дээр, доод хэсэгт лого нэмэгдсэн.'
@@ -392,8 +333,6 @@ export default function NewSupplierProductPage() {
   function clearImage() {
     setField('image', '');
     setField('imageName', '');
-    setPatterns(null);
-    setPatternStatus('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -667,58 +606,9 @@ export default function NewSupplierProductPage() {
               )}
             </div>
 
-            {(patternBusy || patterns) && (
-              <div className="mt-2 rounded-xl border border-brand/20 bg-brand/5 p-3">
-                <div className="flex items-center gap-2 text-[11px] font-semibold text-brand">
-                  <Sparkles size={12} />
-                  <span>AI цэвэр загвар</span>
-                  {patternBusy && <span className="text-foreground-muted">· {patternStatus}</span>}
-                </div>
-                {patterns && (
-                  <>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => patterns.flat && setForm((p) => ({ ...p, image: patterns.flat }))}
-                        className={`overflow-hidden rounded-lg border-2 transition ${form.image === patterns.flat ? 'border-brand' : 'border-transparent hover:border-brand/40'}`}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={patterns.flat} alt="Цэвэр загвар" className="aspect-square w-full object-cover" />
-                        <span className="block bg-card py-1 text-[10px] text-foreground-muted">Хээ (swatch)</span>
-                      </button>
-                      {patterns.roll && (
-                        <button
-                          type="button"
-                          onClick={() => setForm((p) => ({ ...p, image: patterns.roll! }))}
-                          className={`overflow-hidden rounded-lg border-2 transition ${form.image === patterns.roll ? 'border-brand' : 'border-transparent hover:border-brand/40'}`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={patterns.roll} alt="Рулон" className="aspect-square w-full object-cover" />
-                          <span className="block bg-card py-1 text-[10px] text-foreground-muted">Рулон (roll)</span>
-                        </button>
-                      )}
-                    </div>
-                    <p className="mt-1.5 text-[11px] text-foreground-muted">{patternStatus} Сонгосон зураг барааны үндсэн зураг болно.</p>
-                  </>
-                )}
-              </div>
-            )}
-
-            {form.image && !patternBusy && (
-              <button
-                type="button"
-                onClick={() => runGeneratePattern()}
-                disabled={patternBusy}
-                className="mt-2 inline-flex items-center gap-1 self-start rounded-lg bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/15 disabled:opacity-60"
-              >
-                <Sparkles size={12} />
-                {patterns ? 'Загвар дахин үүсгэх' : 'Цэвэр загвар үүсгэх (обой/шал)'}
-              </button>
-            )}
-
             {!form.image && (
               <p className="text-[11px] text-foreground-muted">
-                Зураг сонгомогц AI нэр, ангилал, тайлбарыг санал болгоно. Обой/шал бол цэвэр загвар автоматаар үүснэ. Үнэ ба нөөцийг та өөрөө оруулна.
+                Зураг сонгомогц AI нэр, ангилал, тайлбарыг санал болгоно. Үнэ ба нөөцийг та өөрөө оруулна.
               </p>
             )}
             {errors.image && <p className="text-xs text-error">{errors.image}</p>}

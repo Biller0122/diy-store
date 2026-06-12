@@ -2,7 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailOtpService } from '../../services/email-otp.service';
-import { generateToken } from '../../utils/auth';
+import { generateMockableOtp, generateToken, isOtpMockMode, maskOtp } from '../../utils/auth';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
 import { EmbeddingService } from '../search/embedding.service';
@@ -83,10 +83,9 @@ export class SupplierService {
     });
 
     const saved = await this.supplierRepo.save(supplier);
-    console.log(`[Supplier Email OTP] ${email}: ${otpCode}`);
+    if (isOtpMockMode()) console.log(`[Supplier Email OTP] ${email}: ${maskOtp(otpCode)}`);
     await this.emailOtpService?.sendSupplierOtp(email, otpCode, 'register');
     console.log(`SUPPLIER REGISTERED: id=${saved.id} name=${saved.ownerName}`);
-    console.log('[Supplier] NEW REGISTRATION:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
     return saved;
   }
 
@@ -101,7 +100,7 @@ export class SupplierService {
     supplier.otpCode = this.generateOtp();
     supplier.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
     const saved = await this.supplierRepo.save(supplier);
-    console.log(`[Supplier Login Email OTP] ${email}: ${saved.otpCode}`);
+    if (isOtpMockMode()) console.log(`[Supplier Login Email OTP] ${email}: ${maskOtp(saved.otpCode)}`);
     await this.emailOtpService?.sendSupplierOtp(email, saved.otpCode, 'login');
     return saved;
   }
@@ -110,8 +109,8 @@ export class SupplierService {
     const email = this.normalizeEmail(input.email);
     const supplier = await this.getSupplierByEmail(email);
     if (!supplier) throw new Error('Бүртгэл олдсонгүй');
-    if (!supplier.otpCode || supplier.otpCode !== input.otp.trim()) throw new Error('Код буруу байна');
     if (!supplier.otpExpiresAt || supplier.otpExpiresAt.getTime() < Date.now()) throw new Error('Кодын хугацаа дууссан байна');
+    if (!supplier.otpCode || supplier.otpCode !== input.otp.trim()) throw new Error('Код буруу байна');
 
     if (supplier.status === SupplierStatus.PENDING_VERIFICATION) {
       supplier.status = SupplierStatus.PENDING_APPROVAL;
@@ -244,8 +243,7 @@ export class SupplierService {
   }
 
   private generateOtp() {
-    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') return '1234';
-    return String(Math.floor(1000 + Math.random() * 9000));
+    return generateMockableOtp();
   }
 
   private async createUniqueSlug(name: string) {

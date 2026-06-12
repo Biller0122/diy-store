@@ -7,8 +7,8 @@ import sharp from 'sharp';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const GPU_SERVICE_URL = process.env.GPU_SERVICE_URL || 'http://localhost:8500';
-const EDIT_TIMEOUT_MS = Number(process.env.GPU_EDIT_TIMEOUT_MS ?? 55000);
+const CLEANUP_SERVICE_URL = process.env.CLEANUP_SERVICE_URL || 'http://localhost:8500';
+const EDIT_TIMEOUT_MS = Number(process.env.CLEANUP_EDIT_TIMEOUT_MS ?? 55000);
 const SIMPLE_EDIT_TIMEOUT_MS = Number(process.env.SIMPLE_EDIT_TIMEOUT_MS ?? 280000);
 const LOCAL_EDIT_SIZE = 900;
 
@@ -32,7 +32,7 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Зураг янзлах хугацаа хэтэрлээ. AI зураг сервер ажиллаж байгаа эсэхийг шалгана уу.');
+      throw new Error('Зураг янзлах хугацаа хэтэрлээ. Cleanup service ажиллаж байгаа эсэхийг шалгана уу.');
     }
     throw error;
   } finally {
@@ -299,7 +299,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const response = await fetchWithTimeout(`${GPU_SERVICE_URL}/edit-product-photo`, {
+    const response = await fetchWithTimeout(`${CLEANUP_SERVICE_URL}/edit-product-photo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -37,7 +37,7 @@ type OrderStatusEvent = {
 };
 
 const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-const SOCKET_URL = runtimeEnv?.NEXT_PUBLIC_SOCKET_URL || 'http://52.77.245.218:3002';
+const SOCKET_URL = runtimeEnv?.NEXT_PUBLIC_SOCKET_URL || runtimeEnv?.EXPO_PUBLIC_SOCKET_URL || 'https://shoptool.mn';
 
 const SUPPLIERS_QUERY = `
   query Suppliers {

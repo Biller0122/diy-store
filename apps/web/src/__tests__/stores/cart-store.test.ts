@@ -50,6 +50,15 @@ describe('CartStore', () => {
     expect(getSupplierGroups(state.items)).toHaveLength(1);
   });
 
+  test('addItem uses collision-resistant row ids', () => {
+    useCartStore.getState().addItem(mockProduct);
+    useCartStore.getState().addItem({ ...mockProduct2, variantId: 'v2' });
+    const ids = useCartStore.getState().items.map((item) => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids[0]).toMatch(/^v1-/);
+    expect(ids[0]).not.toBe('v1-1700000000000');
+  });
+
   test('addItem same product increases qty', () => {
     useCartStore.getState().addItem(mockProduct);
     useCartStore.getState().addItem(mockProduct);

@@ -1,7 +1,7 @@
 import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
 import { Ctx, RequestContext } from '@vendure/core';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { DeliveryOrderItem, DeliveryRequest, DeliveryStatus, PickupStop } from './delivery-request.entity';
 import { dispatchOrder, type DispatchPickupStop } from '../../services/order-dispatch.service';
 import { generateOrderNumber } from '../../services/order-number.service';
@@ -21,10 +21,13 @@ export class DeliveryResolver {
   ) {}
 
   @Query()
-  async deliveryRequest(@Args('orderId') orderId: string) {
-    return this.deliveryRepo.findOne({
+  async deliveryRequest(@Ctx() ctx: RequestContext, @Args('orderId') orderId: string) {
+    const delivery = await this.deliveryRepo.findOne({
       where: [{ orderId }, { orderNumber: orderId }],
     });
+    if (!delivery) return null;
+    this.requireDeliveryViewer(ctx, delivery);
+    return delivery;
   }
 
   @Query()
@@ -239,6 +242,7 @@ export class DeliveryResolver {
     if (status === DeliveryStatus.COMPLETED) {
       throw new Error('Хүргэлт дуусгахын тулд хэрэглэгчийн буулгах код шаардлагатай');
     }
+    this.assertStatusTransition(current.status, status);
     await this.deliveryRepo.update(deliveryId, { status });
     emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status });
     if (current.orderNumber) {
@@ -289,9 +293,50 @@ export class DeliveryResolver {
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
+  private requireDeliveryViewer(ctx: RequestContext, delivery: DeliveryRequest) {
+    if (ctx.apiType === 'admin' && ctx.activeUserId) return;
+    const customer = this.tryPlatformRole(ctx, 'CUSTOMER');
+    if (customer?.id === String(delivery.customerId)) return;
+
+    const driver = this.tryPlatformRole(ctx, 'DRIVER');
+    if (driver && delivery.driverId && driver.id === String(delivery.driverId)) return;
+
+    const supplier = this.tryPlatformRole(ctx, 'SUPPLIER');
+    const ownsDelivery = supplier && (
+      delivery.orderItems?.some((item) => String(item.supplierId) === supplier.id) ||
+      delivery.pickupStops?.some((stop) => String(stop.supplierId) === supplier.id)
+    );
+    if (ownsDelivery) return;
+
+    throw new Error('Энэ хүргэлтийг харах эрхгүй');
+  }
+
+  private tryPlatformRole(ctx: RequestContext, role: 'CUSTOMER' | 'SUPPLIER' | 'DRIVER') {
+    try {
+      return requirePlatformRole(ctx, role);
+    } catch {
+      return null;
+    }
+  }
+
   private requireDriverOwner(ctx: RequestContext, driverId: string) {
     const principal = requirePlatformRole(ctx, 'DRIVER');
     if (principal.id !== driverId) throw new Error('Өөр жолоочийн хүргэлтэд хандах эрхгүй');
+  }
+
+  private assertStatusTransition(from: DeliveryStatus, to: DeliveryStatus) {
+    const allowed: Record<DeliveryStatus, DeliveryStatus[]> = {
+      [DeliveryStatus.SEARCHING]: [DeliveryStatus.OFFERED, DeliveryStatus.ACCEPTED, DeliveryStatus.CANCELLED],
+      [DeliveryStatus.OFFERED]: [DeliveryStatus.ACCEPTED, DeliveryStatus.SEARCHING, DeliveryStatus.CANCELLED],
+      [DeliveryStatus.ACCEPTED]: [DeliveryStatus.IN_PROGRESS, DeliveryStatus.CANCELLED],
+      [DeliveryStatus.IN_PROGRESS]: [DeliveryStatus.CANCELLED],
+      [DeliveryStatus.COMPLETED]: [],
+      [DeliveryStatus.CANCELLED]: [],
+    };
+    if (from === to) return;
+    if (!allowed[from]?.includes(to)) {
+      throw new Error(`Хүргэлтийн төлөв ${from} → ${to} шилжих боломжгүй`);
+    }
   }
 
   private generateDeliveryCode() {
@@ -307,25 +352,33 @@ export class DeliveryResolver {
     );
     if (supplierItems.length === 0) return;
 
-    const repo = this.dataSource.getRepository(SupplierProduct);
-    for (const item of supplierItems) {
+    await this.dataSource.transaction(async (manager) => {
+      for (const item of supplierItems) {
+        await this.reserveSupplierItemStock(manager, item);
+      }
+    });
+  }
+
+  private async reserveSupplierItemStock(manager: EntityManager, item: DeliveryOrderItem) {
+    const repo = manager.getRepository(SupplierProduct);
       const where = [
         item.productId ? { id: item.productId, supplierId: item.supplierId } : null,
         item.variantId ? { id: item.variantId, supplierId: item.supplierId } : null,
         item.sku ? { slug: item.sku, supplierId: item.supplierId } : null,
       ].filter(Boolean) as Array<{ id?: string; slug?: string; supplierId: string }>;
-      if (where.length === 0) continue;
-      const product = await repo.findOne({
+    if (where.length === 0) return;
+    const canLock = !['better-sqlite3', 'sqlite'].includes(String(this.dataSource.options.type));
+    const product = await repo.findOne({
         where: where as any,
-      });
-      if (!product) continue;
-      const qty = Math.max(1, Math.round(item.qty));
-      if (product.stock < qty) {
-        throw new Error(`${product.name} барааны үлдэгдэл хүрэлцэхгүй байна`);
-      }
-      product.stock -= qty;
-      if (product.stock === 0) product.enabled = false;
-      await repo.save(product);
+      ...(canLock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
+    if (!product) return;
+    const qty = Math.max(1, Math.round(item.qty));
+    if (product.stock < qty) {
+      throw new Error(`${product.name} барааны үлдэгдэл хүрэлцэхгүй байна`);
     }
+    product.stock -= qty;
+    if (product.stock === 0) product.enabled = false;
+    await repo.save(product);
   }
 }

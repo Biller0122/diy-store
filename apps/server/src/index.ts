@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import { bootstrap, JobQueueService, runMigrations } from '@vendure/core';
+import { DataSource } from 'typeorm';
 import { config } from './vendure-config';
 import { handleDriverOfferDecision, startRealtimeServer } from './plugins/realtime.plugin';
+import { DeliveryRequest } from './plugins/delivery/delivery-request.entity';
 
 function registerRealtimeDecisionWebhook(app: Awaited<ReturnType<typeof bootstrap>>) {
   const httpAdapter = app.getHttpAdapter() as any;
@@ -31,7 +33,25 @@ bootstrap(config)
     await app.get(JobQueueService).start();
     registerRealtimeDecisionWebhook(app);
     if (process.env.REALTIME_EMBEDDED !== 'false') {
-      startRealtimeServer();
+      const dataSource = app.get(DataSource);
+      startRealtimeServer({
+        canJoinOrder: async (principal, orderId) => {
+          if (principal.role === 'ADMIN') return true;
+          const delivery = await dataSource.getRepository(DeliveryRequest).findOne({
+            where: [{ orderId }, { orderNumber: orderId }, { id: orderId as any }],
+          });
+          if (!delivery) return false;
+          if (principal.role === 'CUSTOMER') return principal.id === String(delivery.customerId);
+          if (principal.role === 'DRIVER') return Boolean(delivery.driverId && principal.id === String(delivery.driverId));
+          if (principal.role === 'SUPPLIER') {
+            return Boolean(
+              delivery.orderItems?.some((item) => String(item.supplierId) === principal.id) ||
+              delivery.pickupStops?.some((stop) => String(stop.supplierId) === principal.id),
+            );
+          }
+          return false;
+        },
+      });
     }
     console.log('✅ Vendure server started');
     console.log(`   Shop API:  http://localhost:${process.env.PORT || 3001}/shop-api`);

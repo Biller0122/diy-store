@@ -58,9 +58,9 @@ npx eas build --platform ios
 
 ## API Endpoints
 
-- Shop API: `http://52.77.245.218/shop-api`
-- Admin API: `http://52.77.245.218/admin-api`
-- Realtime Socket: `http://52.77.245.218:3002`
+- Shop API: `https://shoptool.mn/shop-api`
+- Admin API: `https://shoptool.mn/admin-api`
+- Realtime Socket: `https://shoptool.mn`
 
 ## Realtime Events
 

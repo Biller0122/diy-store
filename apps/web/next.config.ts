@@ -1,4 +1,7 @@
 import type { NextConfig } from 'next';
+import { validateWebEnv } from './src/lib/env-validation';
+
+validateWebEnv();
 
 const securityHeaders = [
   { key: 'X-Frame-Options',           value: 'DENY' },
@@ -30,7 +33,6 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: 'http',  hostname: 'localhost', port: '13001', pathname: '/assets/**' },
       { protocol: 'http',  hostname: '127.0.0.1', port: '13001', pathname: '/assets/**' },
-      { protocol: 'http',  hostname: '52.77.245.218', port: '8080', pathname: '/assets/**' },
       { protocol: 'https', hostname: '*.algolia.net' },
       { protocol: 'https', hostname: '*.algolianet.com' },
       { protocol: 'https', hostname: '*.cloudfront.net', pathname: '/**' },

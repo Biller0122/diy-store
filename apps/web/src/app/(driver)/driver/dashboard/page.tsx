@@ -248,7 +248,18 @@ export default function DriverDashboardPage() {
 
     async function connect() {
       const { io } = await import('socket.io-client');
+      const currentDriver = useDriverStore.getState().driver;
+      let token = useDriverStore.getState().authToken || getDriverAuthToken();
+      if (!token && currentDriver) {
+        try {
+          token = await refreshDriverToken(currentDriver.id, currentDriver.phone);
+          setAuthToken(token);
+        } catch (err) {
+          console.warn('[socket] driver token refresh failed:', err instanceof Error ? err.message : err);
+        }
+      }
       const socket = io(getSocketUrl(), {
+        auth: token ? { token } : undefined,
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: 10,
@@ -379,7 +390,7 @@ export default function DriverDashboardPage() {
     if (pendingRequest?.id) dismissedRequestIdsRef.current.add(pendingRequest.id);
     setShowRequest(false);
     setPendingRequest(undefined);
-  }, [pendingRequest?.id]);
+  }, [pendingRequest]);
 
   const acceptRequest = useCallback(async (delivery: ActiveDelivery) => {
     if (!driver) return;

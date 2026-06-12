@@ -110,7 +110,16 @@ export async function POST(req: NextRequest) {
         totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
       },
     });
-  } catch {
-    return NextResponse.json({ fee: 550_000, estimatedMinutes: 45, breakdown: null }, { status: 200 });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : 'Delivery fee calculation failed',
+        fallback: true,
+        fee: 550_000,
+        estimatedMinutes: 45,
+        breakdown: null,
+      },
+      { status: 500 },
+    );
   }
 }

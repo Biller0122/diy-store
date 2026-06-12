@@ -94,6 +94,11 @@ function applyCustomerAuth(result: CustomerAuthResult, set: (state: Partial<AppS
   return true;
 }
 
+function cartRowId(supplierId: string, variantId: string) {
+  const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${supplierId}-${variantId}-${uuid}`;
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -226,7 +231,7 @@ export const useAppStore = create<AppState>()(
           return {
             supplierCart: [
               ...state.supplierCart,
-              { ...item, id: `${item.supplierId}-${item.variantId}-${Date.now()}` },
+              { ...item, id: cartRowId(item.supplierId, item.variantId) },
             ],
           };
         }),

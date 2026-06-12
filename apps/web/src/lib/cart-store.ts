@@ -90,6 +90,11 @@ const PROMOS: Record<string, PromoResult> = {
 
 export const DEFAULT_DELIVERY_FEE = 550_000; // ₮5,500 fallback
 
+function cartRowId(prefix: string) {
+  const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${uuid}`;
+}
+
 // ─── Store ────────────────────────────────────────────────────
 
 export const useCartStore = create<CartState>()(
@@ -116,7 +121,7 @@ export const useCartStore = create<CartState>()(
             };
           }
           return {
-            items: [...s.items, { ...item, id: `${item.variantId}-${Date.now()}` }],
+            items: [...s.items, { ...item, id: cartRowId(item.variantId) }],
           };
         }),
 

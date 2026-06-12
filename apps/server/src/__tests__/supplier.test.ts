@@ -89,14 +89,21 @@ describe('SupplierService', () => {
 
   describe('supplier auth token', () => {
     test('verified OTP returns signed supplier role token', async () => {
+      const originalOtpMockMode = process.env.OTP_MOCK_MODE;
+      process.env.OTP_MOCK_MODE = 'true';
       const { supplierService } = createService();
-      await supplierService.registerSupplier({ ownerName: 'Батболд', email: 'supplier@example.com' });
+      try {
+        await supplierService.registerSupplier({ ownerName: 'Батболд', email: 'supplier@example.com' });
 
-      const result = await supplierService.verifyOTP({ email: 'supplier@example.com', otp: '1234' });
-      const decoded = verifyToken(result.token);
+        const result = await supplierService.verifyOTP({ email: 'supplier@example.com', otp: '1234' });
+        const decoded = verifyToken(result.token);
 
-      expect(decoded.role).toBe('SUPPLIER');
-      expect(decoded.id).toBe(String(result.supplier.id));
+        expect(decoded.role).toBe('SUPPLIER');
+        expect(decoded.id).toBe(String(result.supplier.id));
+      } finally {
+        if (originalOtpMockMode === undefined) delete process.env.OTP_MOCK_MODE;
+        else process.env.OTP_MOCK_MODE = originalOtpMockMode;
+      }
     });
   });
 });

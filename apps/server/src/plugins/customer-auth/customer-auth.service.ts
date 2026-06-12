@@ -13,6 +13,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailOtpService } from '../../services/email-otp.service';
+import { exposeOtp, generateMockableOtp, isOtpMockMode, maskOtp } from '../../utils/auth';
 import { CustomerOtp, CustomerOtpPurpose } from './customer-otp.entity';
 
 type GoogleTokenInfo = {
@@ -111,13 +112,13 @@ export class CustomerAuthService {
     await this.otpRepo.update({ emailAddress, purpose, consumed: false }, { consumed: true });
     await this.otpRepo.save(otp);
 
-    console.log(`[Customer ${purpose} OTP] ${emailAddress}: ${otpCode}`);
+    if (isOtpMockMode()) console.log(`[Customer ${purpose} OTP] ${emailAddress}: ${maskOtp(otpCode)}`);
     await this.emailOtpService.sendCustomerOtp(emailAddress, otpCode, purpose);
     return {
       success: true,
       message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
       emailAddress,
-      otp: this.exposeOtp(otpCode),
+      otp: exposeOtp(otpCode),
     };
   }
 
@@ -129,7 +130,7 @@ export class CustomerAuthService {
       where: { emailAddress, purpose: 'login', consumed: false },
       order: { createdAt: 'DESC' },
     });
-    this.assertOtp(otp, otpCode);
+    await this.assertOtp(otp, otpCode);
     otp!.consumed = true;
     await this.otpRepo.save(otp!);
 
@@ -166,7 +167,7 @@ export class CustomerAuthService {
       where: { emailAddress, purpose: 'password_reset', consumed: false },
       order: { createdAt: 'DESC' },
     });
-    this.assertOtp(otp, otpCode);
+    await this.assertOtp(otp, otpCode);
 
     const customer = await this.findCustomerByEmail(ctx, emailAddress);
     if (!customer?.user) throw new Error('Ийм и-мэйлтэй хэрэглэгч олдсонгүй');
@@ -296,12 +297,19 @@ export class CustomerAuthService {
     return info;
   }
 
-  private assertOtp(otp: CustomerOtp | null, value: string) {
+  private async assertOtp(otp: CustomerOtp | null, value: string) {
     if (!otp) throw new Error('Код олдсонгүй. Дахин код аваарай');
-    otp.attempts += 1;
-    if (otp.attempts > 5) throw new Error('Олон удаа буруу оролдлоо. Дахин код аваарай');
+    // Check expiry first so an expired (even if correct) code never consumes an
+    // attempt, then enforce the attempt cap, then compare the value. The
+    // increment is PERSISTED on a wrong code so the cap actually holds (callers
+    // only save on success, so previously attempts never stuck).
     if (otp.expiresAt.getTime() < Date.now()) throw new Error('Кодын хугацаа дууссан байна');
-    if (otp.otpCode !== value) throw new Error('Код буруу байна');
+    if (otp.attempts >= 5) throw new Error('Олон удаа буруу оролдлоо. Дахин код аваарай');
+    if (otp.otpCode !== value) {
+      otp.attempts += 1;
+      await this.otpRepo.save(otp);
+      throw new Error('Код буруу байна');
+    }
   }
 
   private serializeCustomer(customer: Customer) {
@@ -337,11 +345,6 @@ export class CustomerAuthService {
   }
 
   private generateOtp() {
-    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') return '1234';
-    return String(Math.floor(1000 + Math.random() * 9000));
-  }
-
-  private exposeOtp(otp: string) {
-    return process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true' ? otp : null;
+    return generateMockableOtp();
   }
 }

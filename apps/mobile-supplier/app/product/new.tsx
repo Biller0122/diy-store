@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { CREATE_SUPPLIER_PRODUCT_MUTATION, shopFetch } from '@/lib/api';
+import { CREATE_SUPPLIER_PRODUCT_MUTATION, analyzeProductImage, shopFetch } from '@/lib/api';
 import { useSupplierStore } from '@/lib/store';
 
 const C = {
@@ -51,6 +51,8 @@ export default function NewProductScreen() {
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiHint, setAiHint] = useState('');
   const [error, setError] = useState('');
 
   const slug = useMemo(() => makeSlug(name), [name]);
@@ -129,6 +131,31 @@ export default function NewProductScreen() {
     }
   };
 
+  const analyze = async () => {
+    if (!image) {
+      setError('Эхлээд барааны зураг сонгоно уу');
+      return;
+    }
+    setAnalyzing(true);
+    setError('');
+    setAiHint('AI зураг шинжилж байна...');
+    try {
+      const result = await analyzeProductImage(image, category);
+      if (result.name && !name.trim()) setName(result.name);
+      if (result.description && !description.trim()) setDescription(result.description);
+      if (result.category && !category.trim()) setCategory(result.category);
+      const confidence = typeof result.confidence === 'number' ? ` (${Math.round(result.confidence * 100)}%)` : '';
+      setAiHint(`AI санал бөглөгдлөө${confidence}`);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI шинжилгээ амжилтгүй боллоо');
+      setAiHint('');
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -149,6 +176,22 @@ export default function NewProductScreen() {
               <Text style={styles.imageText}>Төхөөрөмжөөс зураг сонгох</Text>
             </>
           )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.aiCard, (!image || analyzing) && styles.disabled]}
+          onPress={analyze}
+          activeOpacity={0.85}
+          disabled={!image || analyzing}
+        >
+          <View style={styles.aiIcon}>
+            <Ionicons name="sparkles-outline" size={20} color={C.primary} />
+          </View>
+          <View style={styles.aiCopy}>
+            <Text style={styles.aiTitle}>AI-аар бараа таних</Text>
+            <Text style={styles.aiText}>{aiHint || 'Зурагнаас нэр, ангилал, тайлбарыг санал болгоно'}</Text>
+          </View>
+          {analyzing ? <ActivityIndicator color={C.primary} /> : <Ionicons name="chevron-forward" size={18} color={C.textTertiary} />}
         </TouchableOpacity>
 
         <View style={styles.card}>
@@ -187,6 +230,11 @@ const styles = StyleSheet.create({
   imageDrop: { height: 170, borderRadius: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(255,69,0,0.35)', backgroundColor: 'rgba(255,69,0,0.06)', alignItems: 'center', justifyContent: 'center', marginBottom: 18, overflow: 'hidden' },
   previewImage: { width: '100%', height: '100%' },
   imageText: { color: C.textSub, marginTop: 8, fontWeight: '700' },
+  aiCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,69,0,0.08)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,69,0,0.22)', padding: 14, marginBottom: 18, gap: 12 },
+  aiIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,69,0,0.12)' },
+  aiCopy: { flex: 1 },
+  aiTitle: { color: C.text, fontSize: 14, fontWeight: '900', marginBottom: 3 },
+  aiText: { color: C.textSub, fontSize: 12, lineHeight: 16 },
   card: { backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 16, gap: 10 },
   label: { color: C.textSub, fontSize: 12, fontWeight: '700', marginTop: 6 },
   input: { height: 54, borderRadius: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, color: C.text, paddingHorizontal: 14, fontSize: 15 },

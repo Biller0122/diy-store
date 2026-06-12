@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
 import { RegisterSupplierInput, SupplierProductInput, SupplierService, VerifySupplierOtpInput } from './supplier.service';
-import { requirePlatformRole } from '../../utils/auth';
+import { exposeOtp, requirePlatformRole } from '../../utils/auth';
 import { DeliveryRequest } from '../delivery/delivery-request.entity';
 
 @Resolver()
@@ -65,7 +65,7 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
-        otp: this.exposeOtp(supplier.otpCode),
+        otp: exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
@@ -86,7 +86,7 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
-        otp: this.exposeOtp(supplier.otpCode),
+        otp: exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
@@ -317,7 +317,4 @@ export class SupplierResolver {
     };
   }
 
-  private exposeOtp(otp: string | null) {
-    return process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true' ? otp : null;
-  }
 }

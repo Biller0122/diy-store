@@ -69,11 +69,13 @@ class SocketService {
   private socket: Socket | null = null;
   private driverId: string | null = null;
   private driver: Driver | null = null;
+  private token: string | null = null;
   private onOrderRequest: ((order: ActiveOrder) => void) | null = null;
 
-  connect(driverId: string, onOrderRequest: (order: ActiveOrder) => void, driver?: Driver | null) {
+  connect(driverId: string, onOrderRequest: (order: ActiveOrder) => void, driver?: Driver | null, token?: string | null) {
     this.driverId = driverId;
     this.driver = driver ?? null;
+    this.token = token ?? null;
     this.onOrderRequest = onOrderRequest;
     if (this.socket?.connected) {
       this.joinDriverRoom();
@@ -81,6 +83,8 @@ class SocketService {
     }
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
+      auth: this.token ? { token: this.token } : undefined,
+      extraHeaders: this.token ? { Authorization: `Bearer ${this.token}` } : undefined,
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
@@ -111,6 +115,7 @@ class SocketService {
     this.socket = null;
     this.driverId = null;
     this.driver = null;
+    this.token = null;
   }
 
   emitAcceptOrder(driverId: string, orderId: string) {

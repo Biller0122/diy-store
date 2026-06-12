@@ -60,6 +60,18 @@ const UB_DISTRICTS = [
   'Багахангай',
 ];
 
+const DISTRICT_COORDS: Record<string, { lat: number; lng: number }> = {
+  'Баянзүрх': { lat: 47.9184, lng: 106.9917 },
+  'Баянгол': { lat: 47.9065, lng: 106.8513 },
+  'Сүхбаатар': { lat: 47.9138, lng: 106.9092 },
+  'Чингэлтэй': { lat: 47.9284, lng: 106.9256 },
+  'Хан-Уул': { lat: 47.8713, lng: 106.8832 },
+  'Сонгинохайрхан': { lat: 47.9264, lng: 106.8171 },
+  'Налайх': { lat: 47.7573, lng: 107.2631 },
+  'Багануур': { lat: 47.7107, lng: 108.2849 },
+  'Багахангай': { lat: 47.848, lng: 107.218 },
+};
+
 const PAYMENT_METHODS = [
   { id: 'cash', label: 'Бэлнээр', icon: 'cash-outline' as const },
   { id: 'qpay', label: 'QPay', icon: 'qr-code-outline' as const },
@@ -127,14 +139,17 @@ export default function CheckoutScreen() {
 
       const pickupStops = Array.from(supplierGroups.values()).map((items) => {
         const first = items[0];
+        if (first.supplierLat == null || first.supplierLng == null) {
+          throw new Error(`${first.supplierName} дэлгүүрийн байршил тохируулагдаагүй байна`);
+        }
         return {
           supplierId: first.supplierId,
           supplierName: first.supplierName,
           district: first.supplierDistrict ?? 'Улаанбаатар',
           address: first.supplierAddress || first.supplierDistrict || 'Улаанбаатар',
           phone: first.supplierPhone || '',
-          lat: first.supplierLat ?? 47.9185,
-          lng: first.supplierLng ?? 106.917,
+          lat: first.supplierLat,
+          lng: first.supplierLng,
           status: 'PENDING',
         };
       });
@@ -152,6 +167,8 @@ export default function CheckoutScreen() {
 
       const supplierTotal = supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0);
       const orderId = order?.id ?? `MOB-${Date.now()}`;
+      const dropoffCoords = DISTRICT_COORDS[district];
+      if (!dropoffCoords) throw new Error('Хүргэх дүүргийн байршил олдсонгүй');
 
       await shopFetch(CREATE_DELIVERY_REQUEST_MUTATION, {
         orderId,
@@ -161,8 +178,8 @@ export default function CheckoutScreen() {
         pickupStops,
         orderItems,
         dropoffAddress,
-        dropoffLat: 47.9185,
-        dropoffLng: 106.917,
+        dropoffLat: dropoffCoords.lat,
+        dropoffLng: dropoffCoords.lng,
         orderTotal: Math.round((order?.total ?? 0) / 100) + supplierTotal,
         paymentMethod,
       });

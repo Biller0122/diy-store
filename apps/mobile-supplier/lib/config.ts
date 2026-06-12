@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 export const IS_DEV = __DEV__;
 const DEV_SERVER_PORT = 13001;
 const PUBLIC_API_URL = process.env.EXPO_PUBLIC_API_URL;
+const PUBLIC_WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 const PUBLIC_DEV_SERVER_HOST = process.env.EXPO_PUBLIC_DEV_SERVER_HOST;
 
 function getHostIp() {
@@ -19,6 +20,10 @@ function getHostIp() {
 }
 
 function getApiUrl() {
+  if (IS_DEV && Platform.OS === 'web' && !PUBLIC_API_URL) {
+    return `http://localhost:${DEV_SERVER_PORT}`;
+  }
+
   if (PUBLIC_API_URL) {
     return PUBLIC_API_URL.replace(/\/$/, '');
   }
@@ -36,3 +41,7 @@ function getApiUrl() {
 }
 
 export const API_URL = getApiUrl();
+export const WEB_URL = (IS_DEV && Platform.OS === 'web'
+  ? 'http://localhost:18083'
+  : PUBLIC_WEB_URL || API_URL
+).replace(/\/$/, '');

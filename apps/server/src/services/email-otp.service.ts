@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import nodemailer from 'nodemailer';
+import { maskOtp } from '../utils/auth';
 
 type OtpEmailPurpose = 'login' | 'register' | 'password_reset';
 
@@ -34,7 +35,7 @@ export class EmailOtpService {
     `;
 
     if (!process.env.SMTP_HOST) {
-      console.log(`[Email OTP skipped: SMTP_HOST not set] ${to}: ${otp}`);
+      console.log(`[Email OTP skipped: SMTP_HOST not set] ${to}: ${maskOtp(otp)}`);
       return;
     }
 
@@ -92,7 +93,7 @@ export class EmailOtpService {
     `;
 
     if (!process.env.SMTP_HOST) {
-      console.log(`[Email OTP skipped: SMTP_HOST not set] ${to}: ${otp}`);
+      console.log(`[Email OTP skipped: SMTP_HOST not set] ${to}: ${maskOtp(otp)}`);
       return;
     }
 

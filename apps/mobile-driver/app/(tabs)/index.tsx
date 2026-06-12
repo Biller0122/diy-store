@@ -41,6 +41,7 @@ function formatMoney(amount: number) {
 export default function DashboardScreen() {
   const router = useRouter();
   const driver = useAuthStore((state) => state.driver);
+  const token = useAuthStore((state) => state.token);
   const updateOnline = useAuthStore((state) => state.updateOnline);
   const refreshProfile = useAuthStore((state) => state.refreshProfile);
   const activeOrder = useDeliveryStore((state) => state.activeOrder);
@@ -78,10 +79,10 @@ export default function DashboardScreen() {
     setupDriverNotifications(driver.id).catch(() => {});
     socketService.connect(driver.id, (order) => {
       if (useDeliveryStore.getState().isOnline && !useDeliveryStore.getState().activeOrder) setIncomingOrder(order);
-    }, driver);
+    }, driver, token);
     startLocationTracking(driver.id, activeOrder?.orderId).catch(() => {});
     return undefined;
-  }, [driver, isOnline, activeOrder?.orderId, setIncomingOrder]);
+  }, [driver, token, isOnline, activeOrder?.orderId, setIncomingOrder]);
 
   useEffect(() => {
     if (!driver || !isOnline || activeOrder) return;

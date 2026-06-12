@@ -102,14 +102,21 @@ describe('DriverService', () => {
 
   describe('driver auth token', () => {
     test('verified OTP returns signed driver role token', async () => {
+      const originalOtpMockMode = process.env.OTP_MOCK_MODE;
+      process.env.OTP_MOCK_MODE = 'true';
       const { driverService } = createService();
-      await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
+      try {
+        await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
 
-      const result = await driverService.verifyOTP('88001122', '1234');
-      const decoded = verifyToken(result.token);
+        const result = await driverService.verifyOTP('88001122', '1234');
+        const decoded = verifyToken(result.token);
 
-      expect(decoded.role).toBe('DRIVER');
-      expect(decoded.id).toBe(String(result.driver.id));
+        expect(decoded.role).toBe('DRIVER');
+        expect(decoded.id).toBe(String(result.driver.id));
+      } finally {
+        if (originalOtpMockMode === undefined) delete process.env.OTP_MOCK_MODE;
+        else process.env.OTP_MOCK_MODE = originalOtpMockMode;
+      }
     });
   });
 });

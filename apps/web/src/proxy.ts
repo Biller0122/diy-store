@@ -16,7 +16,6 @@ const sharedPrefixes = [
   '/admin-api',
   '/analyze-product',
   '/edit-product-image',
-  '/generate-pattern',
   '/mailbox',
   '/socket.io',
 ];

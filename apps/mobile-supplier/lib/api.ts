@@ -1,8 +1,14 @@
-import { API_URL } from '@/app/config';
+import { API_URL, WEB_URL } from '@/lib/config';
+import { Platform } from 'react-native';
 
-const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || `${API_URL}/shop-api`;
-const ADMIN_API = process.env.EXPO_PUBLIC_ADMIN_API_URL || `${API_URL}/admin-api`;
-const REQUEST_TIMEOUT_MS = 12000;
+const SHOP_API = Platform.OS === 'web'
+  ? `${API_URL}/shop-api`
+  : process.env.EXPO_PUBLIC_SHOP_API_URL || `${API_URL}/shop-api`;
+const ADMIN_API = Platform.OS === 'web'
+  ? `${API_URL}/admin-api`
+  : process.env.EXPO_PUBLIC_ADMIN_API_URL || `${API_URL}/admin-api`;
+const REQUEST_TIMEOUT_MS = 30000;
+const AI_ANALYZE_TIMEOUT_MS = 35000;
 
 async function postGraphql<T>(
   url: string,
@@ -55,6 +61,54 @@ export async function adminFetch<T>(
   return postGraphql<T>(ADMIN_API, query, variables, token);
 }
 
+export type ProductAnalysis = {
+  name?: string;
+  description?: string;
+  category?: string;
+  unit?: string;
+  confidence?: number;
+  error?: string;
+};
+
+export async function analyzeProductImage(image: string, category?: string): Promise<ProductAnalysis> {
+  async function postAnalyze(baseUrl: string, signal: AbortSignal) {
+    const mediaType = image.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+    const response = await fetch(`${baseUrl}/analyze-product`, {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image,
+        mediaType,
+        ...(category ? { category } : {}),
+      }),
+    });
+    const json = await response.json();
+    if (!response.ok || json?.error) {
+      throw new Error(json?.error || `AI шинжилгээний алдаа (${response.status})`);
+    }
+    return json as ProductAnalysis;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_ANALYZE_TIMEOUT_MS);
+  try {
+    try {
+      return await postAnalyze(WEB_URL, controller.signal);
+    } catch (err) {
+      if (WEB_URL === API_URL) throw err;
+      return await postAnalyze(API_URL, controller.signal);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('AI шинжилгээ хэт удаж байна. Дахин оролдоно уу');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const LOGIN_MUTATION = `
   mutation Login($username: String!, $password: String!) {
     login(username: $username, password: $password) {
@@ -95,6 +149,7 @@ export const LOGIN_SUPPLIER_MUTATION = `
       success
       message
       email
+      otp
     }
   }
 `;
@@ -105,6 +160,7 @@ export const REGISTER_SUPPLIER_MUTATION = `
       success
       message
       email
+      otp
     }
   }
 `;

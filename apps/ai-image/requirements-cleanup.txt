@@ -1,4 +1,4 @@
-# CPU-only product cleanup service dependencies.
+# Cleanup-only deps for a CPU box (e.g. EC2).
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4

@@ -17,6 +17,7 @@ import { json } from 'body-parser';
 import { existsSync } from 'fs';
 import path from 'path';
 import { qpayPaymentHandler, monpayPaymentHandler } from './plugins/payment';
+import { assertPaymentMockModeAllowed } from './plugins/payment/payment-state';
 import { ReviewPlugin } from './plugins/review/review.plugin';
 import { SupplierPlugin } from './plugins/supplier/supplier.plugin';
 import { DriverPlugin } from './plugins/driver/driver.plugin';
@@ -30,6 +31,7 @@ import { ProductAiPlugin } from './plugins/product-ai/product-ai.plugin';
 import { CustomerAuthPlugin } from './plugins/customer-auth/customer-auth.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
+assertPaymentMockModeAllowed();
 
 const useSqliteDevDb = process.env.DB_TYPE === 'sqlite' || process.env.DB_TYPE === 'better-sqlite3';
 const vendureDbName = process.env.DB_NAME || process.env.VENDURE_DB_NAME || 'vendure';
@@ -42,11 +44,17 @@ const corsOrigins = [
   'http://localhost:18082',
   'http://localhost:18083',
   'http://localhost:19006',
+  'http://localhost:19000',
+  'http://localhost:19010',
+  'http://localhost:19020',
   'http://127.0.0.1:18080',
   'http://127.0.0.1:18081',
   'http://127.0.0.1:18082',
   'http://127.0.0.1:18083',
   'http://127.0.0.1:19006',
+  'http://127.0.0.1:19000',
+  'http://127.0.0.1:19010',
+  'http://127.0.0.1:19020',
   'http://localhost:3002',
   ...(process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
