@@ -2,8 +2,10 @@ FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
+COPY packages/api-client/package.json packages/api-client/package.json
+COPY packages/types/package.json packages/types/package.json
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --workspace @diy-store/web --legacy-peer-deps
+    npm ci --workspace @diy-store/web --workspace @diy-store/api-client --workspace @diy-store/types --legacy-peer-deps
 
 FROM deps AS builder
 WORKDIR /app
