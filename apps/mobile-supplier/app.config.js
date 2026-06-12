@@ -9,10 +9,14 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
-    splash: { backgroundColor: '#08080E' },
+    splash: {
+      image: './assets/icon.png',
+      backgroundColor: '#08080E',
+    },
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'mn.diy.supplier',
+      buildNumber: '1',
       infoPlist: {
         NSAppTransportSecurity: {
           NSAllowsArbitraryLoads: !isProduction,
@@ -23,7 +27,11 @@ module.exports = {
     },
     android: {
       package: 'mn.diy.supplier',
-      adaptiveIcon: { backgroundColor: '#08080E' },
+      versionCode: 1,
+      adaptiveIcon: {
+        foregroundImage: './assets/icon.png',
+        backgroundColor: '#08080E',
+      },
       permissions: ['CAMERA', 'READ_MEDIA_IMAGES'],
     },
     web: { favicon: './assets/favicon.png', bundler: 'metro' },

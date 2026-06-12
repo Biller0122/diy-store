@@ -33,7 +33,7 @@ export function setVendureAuthToken(token: string | null) {
   }
 }
 
-function getVendureAdminAuthToken() {
+export function getVendureAdminAuthToken() {
   if (typeof window === 'undefined') return null;
   return window.localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -148,6 +148,7 @@ export default function SearchScreen() {
   const [totalItems, setTotalItems] = useState(0);
   const [searching, setSearching] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [searchError, setSearchError] = useState('');
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -155,13 +156,19 @@ export default function SearchScreen() {
       .then((value) => {
         if (value) setRecentSearches(JSON.parse(value));
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.error('[SearchScreen] recent searches load failed', error);
+        Alert.alert('Сүүлийн хайлт ачаалсангүй', 'Дараа дахин оролдоно уу.');
+      });
   }, []);
 
   const persistRecent = async (value: string) => {
     const next = [value, ...recentSearches.filter((item) => item.toLowerCase() !== value.toLowerCase())].slice(0, 8);
     setRecentSearches(next);
-    AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)).catch(() => {});
+    AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)).catch((error) => {
+      console.error('[SearchScreen] recent searches save failed', error);
+      Alert.alert('Хайлтын түүх хадгалсангүй', 'Төхөөрөмжийн санах ойд бичихэд алдаа гарлаа.');
+    });
   };
 
   const doSearch = useCallback(async (q: string) => {
@@ -171,6 +178,7 @@ export default function SearchScreen() {
       return;
     }
     setSearching(true);
+    setSearchError('');
     try {
       const [catalogData, supplierProductData, collectionData] = await Promise.all([
         shopFetch<{ search: { items: any[]; totalItems: number } }>(SEARCH_QUERY, {
@@ -179,7 +187,10 @@ export default function SearchScreen() {
         shopFetch<{ supplierProducts: { items: any[]; total: number } }>(SUPPLIER_PRODUCTS_QUERY),
         shopFetch<{ collections: { items: any[] } }>(COLLECTIONS_QUERY, {
           options: { take: 100, sort: { position: 'ASC' } },
-        }).catch(() => ({ collections: { items: [] } })),
+        }).catch((error) => {
+          console.error('[SearchScreen] collections lookup failed', error);
+          return { collections: { items: [] } };
+        }),
       ]);
       const categoryNames = buildCategoryNames(collectionData.collections?.items ?? []);
       const supplierProducts = (supplierProductData.supplierProducts?.items ?? [])
@@ -204,7 +215,11 @@ export default function SearchScreen() {
       }));
       setResults([...supplierProducts, ...catalogProducts]);
       setTotalItems(supplierProducts.length + (catalogData.search?.totalItems ?? 0));
-    } catch {
+    } catch (error) {
+      console.error('[SearchScreen] search failed', error);
+      const message = error instanceof Error ? error.message : 'Хайлт хийхэд алдаа гарлаа';
+      setSearchError(message);
+      Alert.alert('Хайлт амжилтгүй', message);
       setResults([]);
       setTotalItems(0);
     } finally {
@@ -248,7 +263,10 @@ export default function SearchScreen() {
 
   const clearRecent = () => {
     setRecentSearches([]);
-    AsyncStorage.removeItem(RECENT_KEY).catch(() => {});
+    AsyncStorage.removeItem(RECENT_KEY).catch((error) => {
+      console.error('[SearchScreen] recent searches clear failed', error);
+      Alert.alert('Хайлтын түүх цэвэрлэсэнгүй', 'Дараа дахин оролдоно уу.');
+    });
   };
 
   const showEmpty = !query.trim();
@@ -325,7 +343,7 @@ export default function SearchScreen() {
           ) : results.length === 0 ? (
             <View style={styles.loadingBox}>
               <Ionicons name="search-outline" size={42} color={C.textTertiary} />
-              <Text style={styles.noResultText}>"{query}" үр дүн олдсонгүй</Text>
+              <Text style={styles.noResultText}>{searchError || `"${query}" үр дүн олдсонгүй`}</Text>
             </View>
           ) : (
             <>

@@ -27,6 +27,18 @@ const UPDATE_DELIVERY_STATUS_GQL = `
   }
 `;
 
+const UPDATE_DELIVERY_PICKUP_STOP_GQL = `
+  mutation UpdateDeliveryPickupStop($deliveryId: ID!, $supplierId: String!, $status: String!) {
+    updateDeliveryPickupStop(deliveryId: $deliveryId, supplierId: $supplierId, status: $status) {
+      id
+      pickupStops {
+        supplierId
+        status
+      }
+    }
+  }
+`;
+
 const COMPLETE_DELIVERY_WITH_CODE_GQL = `
   mutation CompleteDeliveryWithCode($deliveryId: ID!, $driverId: String!, $code: String!) {
     completeDeliveryWithCode(deliveryId: $deliveryId, driverId: $driverId, code: $code) {
@@ -102,6 +114,21 @@ async function updateDeliveryStatus(deliveryId: string, status: string, token: s
   if (json.errors?.length) throw new Error(json.errors[0].message);
 }
 
+async function updateDeliveryPickupStop(deliveryId: string, supplierId: string, status: 'ARRIVED' | 'PICKED_UP', token: string | null) {
+  const response = await fetch(SHOP_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({ query: UPDATE_DELIVERY_PICKUP_STOP_GQL, variables: { deliveryId, supplierId, status } }),
+  });
+  if (!response.ok) throw new Error(`Driver API ${response.status}`);
+  const json = await response.json() as { errors?: Array<{ message: string }> };
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+}
+
 async function completeDeliveryWithCode(deliveryId: string, driverId: string, code: string, token: string | null) {
   const response = await fetch(SHOP_API, {
     method: 'POST',
@@ -143,6 +170,15 @@ type ActiveDeliveryResponse = {
   estimatedDuration: number;
   proposedFee: number;
   status: string;
+};
+
+type DeliveryStep = {
+  instruction: string;
+  label: string;
+  supplierId?: string;
+  pickupStatus?: 'ARRIVED' | 'PICKED_UP';
+  deliveryStatus?: string;
+  complete?: boolean;
 };
 
 async function fetchActiveDelivery(driverId: string, token: string | null) {
@@ -345,14 +381,24 @@ export default function ActiveDeliveryPage() {
     })),
     { lat: delivery.dropoffLat, lng: delivery.dropoffLng, label: 'Хэрэглэгч', type: 'dropoff' as const },
   ];
-  const instructions = [
-    `📍 ${delivery.pickupStops[0]?.supplierName} руу явна уу`,
-    'Дэлгүүрт ирлээ, бараагаа шалгана уу',
-    delivery.pickupStops.length > 1 ? `📍 ${delivery.pickupStops[1]?.supplierName} руу явна уу` : 'Бараагаа авлаа',
-    'Хүргэж байна',
-    'Хэрэглэгч дээр ирлээ',
+  const deliverySteps: DeliveryStep[] = [
+    ...delivery.pickupStops.flatMap((stop) => [
+      {
+        instruction: `📍 ${stop.supplierName} руу явна уу`,
+        label: 'Дэлгүүрт ирлээ',
+        supplierId: stop.supplierId,
+        pickupStatus: 'ARRIVED' as const,
+      },
+      {
+        instruction: `${stop.supplierName} дээр бараагаа шалгана уу`,
+        label: 'Бараа авлаа',
+        supplierId: stop.supplierId,
+        pickupStatus: 'PICKED_UP' as const,
+      },
+    ]),
+    { instruction: 'Хүргэж байна', label: 'Хэрэглэгч рүү явж байна', deliveryStatus: 'IN_PROGRESS' },
+    { instruction: 'Хэрэглэгч дээр ирлээ', label: 'Хүргэлт дууслаа', complete: true },
   ];
-  const buttonLabels = ['Дэлгүүрт ирлээ', 'Бараа авлаа', 'Бараа авлаа', 'Хүргэж байна', 'Хүргэлт дууслаа'];
 
   async function getToken(): Promise<string | null> {
     let token = authToken || getDriverAuthToken();
@@ -372,14 +418,27 @@ export default function ActiveDeliveryPage() {
     setSaving(true);
     setError('');
     const token = await getToken();
-    if (step >= buttonLabels.length - 1) {
+    const currentStep = deliverySteps[step] ?? deliverySteps[deliverySteps.length - 1];
+    if (currentStep?.complete) {
       setShowCodeModal(true);
       setSaving(false);
       return;
     }
     try {
-      if (step === 0) {
+      const pickupStatus = currentStep?.pickupStatus;
+      if (pickupStatus && currentStep.supplierId) {
         await updateDeliveryStatus(delivery.id, 'IN_PROGRESS', token);
+        await updateDeliveryPickupStop(delivery.id, currentStep.supplierId, pickupStatus, token);
+        setActiveDelivery({
+          ...delivery,
+          status: 'IN_PROGRESS',
+          pickupStops: delivery.pickupStops.map((stop) =>
+            stop.supplierId === currentStep.supplierId ? { ...stop, status: pickupStatus } : stop,
+          ),
+        });
+      } else if (currentStep?.deliveryStatus) {
+        await updateDeliveryStatus(delivery.id, currentStep.deliveryStatus, token);
+        setActiveDelivery({ ...delivery, status: currentStep.deliveryStatus });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Хүргэлтийн төлөв шинэчлэхэд алдаа гарлаа');
@@ -427,7 +486,7 @@ export default function ActiveDeliveryPage() {
                 <span className="font-mono text-xs text-foreground-muted">{delivery.orderNumber}</span>
               )}
             </div>
-            <h2 className="mt-1 text-lg font-black text-foreground">{instructions[step] ?? 'Хүргэлт хийж байна'}</h2>
+            <h2 className="mt-1 text-lg font-black text-foreground">{deliverySteps[step]?.instruction ?? 'Хүргэлт хийж байна'}</h2>
             <p className="mt-1 text-sm text-foreground-muted">Зай: {delivery.distance} км · Тооцоолсон хугацаа: ~{delivery.estimatedDuration} минут</p>
           </div>
 
@@ -488,8 +547,8 @@ export default function ActiveDeliveryPage() {
               disabled={saving}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-brand py-4 text-sm font-black text-white shadow-lg shadow-brand/20 disabled:opacity-60"
             >
-              {step >= buttonLabels.length - 1 ? <CheckCircle2 size={17} /> : <Navigation size={17} />}
-              {saving ? 'Хадгалж байна...' : buttonLabels[step] ?? 'Дараагийн алхам'}
+              {deliverySteps[step]?.complete ? <CheckCircle2 size={17} /> : <Navigation size={17} />}
+              {saving ? 'Хадгалж байна...' : deliverySteps[step]?.label ?? 'Дараагийн алхам'}
             </button>
             <Link href="/driver/dashboard" className="rounded-2xl border border-white/10 px-4 py-4 text-sm font-bold text-foreground-muted">
               Буцах

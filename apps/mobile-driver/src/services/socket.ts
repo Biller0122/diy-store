@@ -1,9 +1,7 @@
 import { io, Socket } from 'socket.io-client';
-import { API_URL } from '@/app/config';
+import { SOCKET_URL } from '@/app/config';
 import type { Driver } from '../api/client';
 import { ActiveOrder } from '../store/delivery';
-
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL ?? API_URL;
 
 type OrderPayload = {
   orderId?: string;
@@ -71,6 +69,11 @@ class SocketService {
   private driver: Driver | null = null;
   private token: string | null = null;
   private onOrderRequest: ((order: ActiveOrder) => void) | null = null;
+  private onConnectionChange: ((status: { connected: boolean; message: string }) => void) | null = null;
+
+  setConnectionListener(listener: ((status: { connected: boolean; message: string }) => void) | null) {
+    this.onConnectionChange = listener;
+  }
 
   connect(driverId: string, onOrderRequest: (order: ActiveOrder) => void, driver?: Driver | null, token?: string | null) {
     this.driverId = driverId;
@@ -79,8 +82,11 @@ class SocketService {
     this.onOrderRequest = onOrderRequest;
     if (this.socket?.connected) {
       this.joinDriverRoom();
+      this.onConnectionChange?.({ connected: true, message: 'Socket холбогдсон' });
       return;
     }
+    this.socket?.removeAllListeners();
+    this.socket?.disconnect();
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       auth: this.token ? { token: this.token } : undefined,
@@ -89,7 +95,23 @@ class SocketService {
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
     });
-    this.socket.on('connect', () => this.joinDriverRoom());
+    this.socket.on('connect', () => {
+      this.joinDriverRoom();
+      this.onConnectionChange?.({ connected: true, message: 'Socket холбогдсон' });
+    });
+    this.socket.on('disconnect', (reason) => {
+      this.onConnectionChange?.({ connected: false, message: `Socket тасарлаа: ${reason}` });
+    });
+    this.socket.on('connect_error', (error) => {
+      this.onConnectionChange?.({ connected: false, message: error.message || 'Socket холбогдсонгүй' });
+    });
+    this.socket.io.on('reconnect_attempt', () => {
+      this.onConnectionChange?.({ connected: false, message: 'Socket дахин холбогдож байна...' });
+    });
+    this.socket.io.on('reconnect', () => {
+      this.joinDriverRoom();
+      this.onConnectionChange?.({ connected: true, message: 'Socket дахин холбогдлоо' });
+    });
     this.socket.on('order:new_request', (payload: OrderPayload) => this.onOrderRequest?.(toOrder(payload)));
     this.socket.on('delivery:request', (payload: OrderPayload) => this.onOrderRequest?.(toOrder(payload)));
   }
@@ -116,6 +138,7 @@ class SocketService {
     this.driverId = null;
     this.driver = null;
     this.token = null;
+    this.onConnectionChange?.({ connected: false, message: 'Socket салгагдсан' });
   }
 
   emitAcceptOrder(driverId: string, orderId: string) {

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSupplierStore } from '@/lib/store';
+import { UPDATE_SUPPLIER_MUTATION, shopFetch } from '@/lib/api';
 
 const C = {
   bg: '#08080E',
@@ -21,20 +22,55 @@ const C = {
 export default function SettingsScreen() {
   const router = useRouter();
   const supplier = useSupplierStore((s) => s.supplier);
+  const token = useSupplierStore((s) => s.token);
+  const setSupplier = useSupplierStore((s) => s.setSupplier);
   const logout = useSupplierStore((s) => s.logout);
   const [businessName, setBusinessName] = useState(supplier?.businessName ?? '');
   const [phone, setPhone] = useState(supplier?.phone ?? '');
   const [email, setEmail] = useState(supplier?.email ?? '');
-  const [description, setDescription] = useState('');
-  const [address, setAddress] = useState('');
-  const [bankName, setBankName] = useState('Хаан банк');
-  const [bankAccount, setBankAccount] = useState('');
+  const [description, setDescription] = useState(supplier?.description ?? '');
+  const [address, setAddress] = useState(supplier?.address ?? '');
+  const [bankName, setBankName] = useState(supplier?.bankName ?? '');
+  const [bankAccount, setBankAccount] = useState(supplier?.bankAccount ?? '');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2200);
-    Alert.alert('Хадгалагдлаа', 'Тохиргооны мэдээлэл local draft хэлбэрээр хадгалагдлаа.');
+  const save = async () => {
+    if (!supplier?.id) {
+      Alert.alert('Алдаа', 'Нийлүүлэгчийн мэдээлэл олдсонгүй');
+      return;
+    }
+    if (businessName.trim().length < 2) {
+      Alert.alert('Алдаа', 'Дэлгүүрийн нэр оруулна уу');
+      return;
+    }
+    setSaving(true);
+    try {
+      const data = await shopFetch<{ updateSupplier: NonNullable<typeof supplier> }>(
+        UPDATE_SUPPLIER_MUTATION,
+        {
+          id: supplier.id,
+          input: {
+            businessName: businessName.trim(),
+            phone: phone.trim(),
+            description: description.trim(),
+            address: address.trim(),
+            bankName: bankName.trim(),
+            bankAccount: bankAccount.trim(),
+          },
+        },
+        token,
+      );
+      setSupplier(data.updateSupplier);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2200);
+      Alert.alert('Хадгалагдлаа', 'Тохиргооны мэдээлэл backend дээр хадгалагдлаа.');
+    } catch (error) {
+      console.warn('[SettingsScreen] save failed', error instanceof Error ? error.message : error);
+      Alert.alert('Хадгалж чадсангүй', error instanceof Error ? error.message : 'Дахин оролдоно уу');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const signOut = async () => {
@@ -65,9 +101,9 @@ export default function SettingsScreen() {
           <Text style={styles.note}>Сар бүрийн 20-нд тооцоолсон төлбөр шилжүүлнэ.</Text>
         </Section>
 
-        <TouchableOpacity style={[styles.saveBtn, saved && styles.saveBtnDone]} onPress={save} activeOpacity={0.85}>
+        <TouchableOpacity style={[styles.saveBtn, saved && styles.saveBtnDone, saving && styles.disabled]} onPress={save} activeOpacity={0.85} disabled={saving}>
           <Ionicons name={saved ? 'checkmark-circle-outline' : 'save-outline'} size={18} color="#fff" />
-          <Text style={styles.saveText}>{saved ? 'Хадгалагдлаа' : 'Хадгалах'}</Text>
+          <Text style={styles.saveText}>{saving ? 'Хадгалж байна...' : saved ? 'Хадгалагдлаа' : 'Хадгалах'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={signOut} activeOpacity={0.85}>
@@ -137,6 +173,7 @@ const styles = StyleSheet.create({
   note: { color: C.textTertiary, fontSize: 11, lineHeight: 16 },
   saveBtn: { height: 54, borderRadius: 16, backgroundColor: C.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   saveBtnDone: { backgroundColor: C.success },
+  disabled: { opacity: 0.6 },
   saveText: { color: '#fff', fontSize: 15, fontWeight: '900' },
   logoutBtn: { height: 50, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', backgroundColor: 'rgba(239,68,68,0.08)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   logoutText: { color: C.red, fontWeight: '900' },

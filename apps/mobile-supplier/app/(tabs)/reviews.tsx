@@ -1,38 +1,106 @@
-import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { PRODUCT_REVIEWS_QUERY, SUPPLIER_PRODUCTS_QUERY, shopFetch } from '@/lib/api';
+import { useSupplierStore } from '@/lib/store';
+import { SupplierProduct } from '@/lib/types';
 
 const C = {
   bg: '#08080E',
   card: '#0F0F1A',
   surface: '#161625',
   primary: '#FF4500',
-  success: '#00D4AA',
   amber: '#FFB547',
   border: 'rgba(255,255,255,0.06)',
   text: '#F5F5FF',
   textSub: '#8888AA',
   textTertiary: '#55556A',
+  red: '#EF4444',
 };
 
-const REVIEWS = [
-  { id: 'r1', customerName: 'Дорж Б.', rating: 5, comment: 'Маш сайн бараа, хурдан хүргэлт. Дахин авна.', product: 'Dulux EasyCare 4L', date: '2026-06-10', helpful: 12 },
-  { id: 'r2', customerName: 'Ганаа Н.', rating: 4, comment: 'Үнэ боломжийн, савлагаа сайн байна.', product: 'Цахилгаан кабель', date: '2026-06-08', helpful: 5 },
-  { id: 'r3', customerName: 'Сарнай О.', rating: 3, comment: 'Бараа сайн ч хүргэлт удаан байсан.', product: 'Будгийн сойз', date: '2026-06-04', helpful: 3 },
-  { id: 'r4', customerName: 'Болд Э.', rating: 5, comment: 'Зөвлөгөө сайн өгсөн, бараа тайлбартайгаа таарсан.', product: 'Перфоратор', date: '2026-06-01', helpful: 9 },
-];
+type Review = {
+  id: string;
+  productId: string;
+  customerName: string;
+  rating: number;
+  title: string;
+  body: string;
+  product: string;
+  date: string;
+  helpful: number;
+};
 
 type Filter = 'all' | 5 | 4 | 3 | 2 | 1;
 
 export default function ReviewsScreen() {
+  const supplier = useSupplierStore((s) => s.supplier);
+  const token = useSupplierStore((s) => s.token);
   const [filter, setFilter] = useState<Filter>('all');
-  const filtered = REVIEWS.filter((review) => filter === 'all' || review.rating === filter);
-  const average = REVIEWS.reduce((sum, review) => sum + review.rating, 0) / REVIEWS.length;
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadReviews = useCallback(async () => {
+    if (!supplier?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const productData = await shopFetch<{ supplierProducts: { items: SupplierProduct[] } }>(
+        SUPPLIER_PRODUCTS_QUERY,
+        { supplierId: supplier.id },
+        token,
+      );
+      const chunks = await Promise.all(productData.supplierProducts.items.map(async (product) => {
+        const data = await shopFetch<{
+          getProductReviews: {
+            items: Array<{
+              id: string;
+              productId: string;
+              customerId: string;
+              rating: number;
+              title: string;
+              body: string;
+              helpfulCount: number;
+              createdAt: string;
+              status: string;
+            }>;
+          };
+        }>(PRODUCT_REVIEWS_QUERY, { productId: product.id }, token);
+        return data.getProductReviews.items
+          .filter((review) => review.status === 'APPROVED')
+          .map((review) => ({
+            id: review.id,
+            productId: review.productId,
+            customerName: `Хэрэглэгч ${String(review.customerId).slice(-4)}`,
+            rating: review.rating,
+            title: review.title,
+            body: review.body,
+            product: product.name,
+            date: new Date(review.createdAt).toLocaleDateString('mn-MN'),
+            helpful: review.helpfulCount,
+          }));
+      }));
+      setReviews(chunks.flat());
+    } catch (err) {
+      console.warn('[ReviewsScreen] reviews load failed', err instanceof Error ? err.message : err);
+      setReviews([]);
+      setError(err instanceof Error ? err.message : 'Сэтгэгдэл ачаалж чадсангүй');
+    } finally {
+      setLoading(false);
+    }
+  }, [supplier?.id, token]);
+
+  useEffect(() => {
+    void loadReviews();
+  }, [loadReviews]);
+
+  const filtered = reviews.filter((review) => filter === 'all' || review.rating === filter);
+  const average = reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
   const counts = useMemo(() => [5, 4, 3, 2, 1].map((rating) => ({
     rating,
-    count: REVIEWS.filter((review) => review.rating === rating).length,
-  })), []);
+    count: reviews.filter((review) => review.rating === rating).length,
+  })), [reviews]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -44,7 +112,7 @@ export default function ReviewsScreen() {
           <View style={styles.scoreBox}>
             <Text style={styles.score}>{average.toFixed(1)}</Text>
             <Stars rating={Math.round(average)} />
-            <Text style={styles.scoreSub}>{REVIEWS.length} сэтгэгдэл</Text>
+            <Text style={styles.scoreSub}>{reviews.length} сэтгэгдэл</Text>
           </View>
           <View style={styles.ratingBars}>
             {counts.map((item) => (
@@ -52,7 +120,7 @@ export default function ReviewsScreen() {
                 <Text style={styles.ratingLabel}>{item.rating}</Text>
                 <Ionicons name="star" size={10} color={C.amber} />
                 <View style={styles.ratingTrack}>
-                  <View style={[styles.ratingFill, { width: `${(item.count / REVIEWS.length) * 100}%` }]} />
+                  <View style={[styles.ratingFill, { width: `${reviews.length ? (item.count / reviews.length) * 100 : 0}%` }]} />
                 </View>
                 <Text style={styles.ratingCount}>{item.count}</Text>
               </View>
@@ -75,6 +143,10 @@ export default function ReviewsScreen() {
           ))}
         </View>
 
+        {loading ? <ActivityIndicator color={C.primary} /> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {!loading && !error && filtered.length === 0 ? <Text style={styles.empty}>Сэтгэгдэл одоогоор алга.</Text> : null}
+
         {filtered.map((review) => (
           <View key={review.id} style={styles.reviewCard}>
             <View style={styles.reviewHeader}>
@@ -87,10 +159,9 @@ export default function ReviewsScreen() {
               </View>
               <Stars rating={review.rating} />
             </View>
-            <Text style={styles.comment}>{review.comment}</Text>
+            <Text style={styles.comment}>{review.title ? `${review.title}\n${review.body}` : review.body}</Text>
             <View style={styles.reviewActions}>
               <Text style={styles.helpful}>Тустай: {review.helpful}</Text>
-              <Text style={styles.reply}>Хариулах</Text>
             </View>
           </View>
         ))}
@@ -139,5 +210,6 @@ const styles = StyleSheet.create({
   comment: { color: C.textSub, fontSize: 13, lineHeight: 19 },
   reviewActions: { flexDirection: 'row', gap: 18, marginTop: 12 },
   helpful: { color: C.textTertiary, fontSize: 12 },
-  reply: { color: C.primary, fontSize: 12, fontWeight: '900' },
+  empty: { color: C.textSub, textAlign: 'center', paddingVertical: 28 },
+  error: { color: C.red, textAlign: 'center', paddingVertical: 18 },
 });

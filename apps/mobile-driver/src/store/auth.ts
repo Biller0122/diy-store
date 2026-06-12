@@ -249,8 +249,8 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         setAuthToken(null);
-        deleteToken().catch(() => {});
-        deleteDriverId().catch(() => {});
+        deleteToken().catch((error) => console.warn('[auth] token cleanup failed', error));
+        deleteDriverId().catch((error) => console.warn('[auth] driver id cleanup failed', error));
         set({ driver: null, token: null, isAuthenticated: false, error: null, devOtp: null });
       },
 

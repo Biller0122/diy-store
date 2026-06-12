@@ -9,6 +9,7 @@ import { useWishlistStore } from '@/lib/wishlist-store';
 import { useUIStore } from '@/lib/ui-store';
 import { cn, fmt } from '@/lib/utils';
 import { trackAddToCart, trackViewItem } from '@/lib/analytics/ga4';
+import { isRenderableImageSrc } from '@/lib/image-url';
 
 export interface ProductCardData {
   id: string;
@@ -30,6 +31,7 @@ export interface ProductCardData {
   supplierDistrict?: string;
   supplierLat?: number;
   supplierLng?: number;
+  stock?: number;
 }
 
 interface ProductCardProps {
@@ -39,6 +41,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const [hovered, setHovered] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const { addItem } = useCartStore();
   const { addItem: addToWishlist, removeItem: removeFromWishlist, hasItem } = useWishlistStore();
   const { addToast, openCart } = useUIStore();
@@ -63,10 +66,15 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
     return () => obs.disconnect();
   }, [product.id, product.variantId, product.name, product.price]);
 
+  useEffect(() => {
+    setImageFailed(false);
+  }, [product.image]);
+
   const discountPct =
     product.originalPrice && product.originalPrice > product.price
       ? Math.round((1 - product.price / product.originalPrice) * 100)
       : null;
+  const showImage = isRenderableImageSrc(product.image) && !imageFailed;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -90,6 +98,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       supplierDistrict: product.supplierDistrict,
       supplierLat: product.supplierLat,
       supplierLng: product.supplierLng,
+      stock: product.stock,
     });
     trackAddToCart({ id: product.id, variantId: product.variantId, name: product.name, price: product.price, qty: 1 });
     addToast({ type: 'success', title: 'Сагсанд нэмлээ', message: product.name });
@@ -138,10 +147,11 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       <Link href={`/product/${product.slug}`} className="flex flex-col flex-1">
         {/* Image */}
         <div className="relative overflow-hidden aspect-square bg-surface">
-          {product.image ? (
+          {showImage ? (
             <img
               src={product.image}
               alt={product.name}
+              onError={() => setImageFailed(true)}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
           ) : (

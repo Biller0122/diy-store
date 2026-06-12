@@ -61,6 +61,7 @@ export class DriverService {
       totalEarnings: 0,
       otpCode: this.generateOtp(),
       otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      otpAttempts: 0,
     });
     const saved = await this.driverRepo.save(driver);
     if (isOtpMockMode()) console.log(`[Driver OTP] ${phone}: ${maskOtp(saved.otpCode)}`);
@@ -75,6 +76,7 @@ export class DriverService {
     if (driver.status === DriverStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
     driver.otpCode = this.generateOtp();
     driver.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    driver.otpAttempts = 0;
     const saved = await this.driverRepo.save(driver);
     if (isOtpMockMode()) console.log(`[Driver Login OTP] ${phone}: ${maskOtp(saved.otpCode)}`);
     return saved;
@@ -96,12 +98,18 @@ export class DriverService {
     const driver = await this.driverRepo.findOne({ where: { phone } });
     if (!driver) throw new Error('Жолооч олдсонгүй');
     if (!driver.otpExpiresAt || driver.otpExpiresAt.getTime() < Date.now()) throw new Error('Кодын хугацаа дууссан байна');
-    if (!driver.otpCode || driver.otpCode !== otp.trim()) throw new Error('Код буруу байна');
+    if ((driver.otpAttempts ?? 0) >= 5) throw new Error('Олон удаа буруу оролдлоо. Дахин код аваарай');
+    if (!driver.otpCode || driver.otpCode !== otp.trim()) {
+      driver.otpAttempts = (driver.otpAttempts ?? 0) + 1;
+      await this.driverRepo.save(driver);
+      throw new Error('Код буруу байна');
+    }
     if (driver.status === DriverStatus.PENDING_VERIFICATION) {
       driver.status = DriverStatus.PENDING_APPROVAL;
     }
     driver.otpCode = null;
     driver.otpExpiresAt = null;
+    driver.otpAttempts = 0;
     const saved = await this.driverRepo.save(driver);
     return { driver: saved, token: generateToken({ id: String(saved.id), role: 'DRIVER' }, '7d') };
   }

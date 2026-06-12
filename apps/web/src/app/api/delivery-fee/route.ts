@@ -70,7 +70,10 @@ export async function POST(req: NextRequest) {
     const resolvedStops = pickupStops.map((s) => {
       if (s.lat != null && s.lng != null) return { lat: s.lat, lng: s.lng };
       const coords = s.district ? DISTRICT_COORDS[s.district] : null;
-      return coords ?? DRIVER_START;
+      if (!coords) {
+        throw new Error(`Missing pickup location for supplier ${s.supplierId ?? 'unknown'}`);
+      }
+      return coords;
     });
 
     // Resolve dropoff coords

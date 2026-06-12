@@ -249,7 +249,18 @@ export function dbSupplierToCard(supplier: DbSupplier): SupplierCard {
   };
 }
 
-export function dbProductToCard(product: DbSupplierProduct, supplier?: Pick<SupplierCard, 'businessName' | 'slug' | 'district' | 'lat' | 'lng'>) {
+export function dbProductToCard(
+  product: DbSupplierProduct,
+  supplier?: {
+    businessName?: string | null;
+    slug?: string | null;
+    district?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+    rating?: number | null;
+    reviewCount?: number | null;
+  },
+) {
   return {
     id: product.id,
     variantId: product.id,
@@ -258,15 +269,16 @@ export function dbProductToCard(product: DbSupplierProduct, supplier?: Pick<Supp
     image: product.image ?? '',
     price: product.price,
     originalPrice: product.originalPrice ?? undefined,
-    rating: 0,
-    reviewCount: 0,
+    rating: supplier?.rating ?? 0,
+    reviewCount: supplier?.reviewCount ?? 0,
     badge: 'ШИНЭ' as const,
     inStock: product.enabled && product.stock > 0,
     supplierId: product.supplierId,
-    supplierName: supplier?.businessName,
-    supplierSlug: supplier?.slug,
-    supplierDistrict: supplier?.district,
-    supplierLat: supplier?.lat,
-    supplierLng: supplier?.lng,
+    supplierName: supplier?.businessName ?? undefined,
+    supplierSlug: supplier?.slug ?? undefined,
+    supplierDistrict: supplier?.district ?? undefined,
+    supplierLat: supplier?.lat ?? undefined,
+    supplierLng: supplier?.lng ?? undefined,
+    stock: product.stock,
   };
 }

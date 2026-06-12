@@ -82,9 +82,10 @@ export default function ProductDetailScreen() {
             const supplierData = await shopFetch<{ supplier: NonNullable<Product['supplier']> | null }>(
               SUPPLIER_QUERY,
               { id: supplierProduct.supplierId },
-            );
-            supplier = supplierData.supplier;
-          } catch {
+          );
+          supplier = supplierData.supplier;
+          } catch (error) {
+            console.error('[ProductDetailScreen] supplier lookup failed', error);
             supplier = null;
           }
         }
@@ -107,7 +108,10 @@ export default function ProductDetailScreen() {
           supplier,
         });
       })
-      .catch(() => {})
+      .catch((error) => {
+        console.error('[ProductDetailScreen] product load failed', error);
+        Alert.alert('Бүтээгдэхүүн ачаалсангүй', error instanceof Error ? error.message : 'Сүлжээний алдаа гарлаа');
+      })
       .finally(() => setLoading(false));
   }, [slug]);
 

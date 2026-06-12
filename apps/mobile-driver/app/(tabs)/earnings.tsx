@@ -96,6 +96,8 @@ export default function EarningsScreen() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [earningsError, setEarningsError] = useState('');
+  const [historyError, setHistoryError] = useState('');
   const [selected, setSelected] = useState<HistoryItem | null>(null);
 
   useEffect(() => {
@@ -105,8 +107,13 @@ export default function EarningsScreen() {
       .then((result) => {
         const earnings = (result as { getDriverEarnings: EarningsData }).getDriverEarnings;
         setData(earnings ?? null);
+        setEarningsError('');
       })
-      .catch(() => {})
+      .catch((error) => {
+        console.warn('[EarningsScreen] earnings load failed', error instanceof Error ? error.message : error);
+        setData(null);
+        setEarningsError('Орлогын мэдээлэл ачаалж чадсангүй');
+      })
       .finally(() => setLoading(false));
   }, [driver, period]);
 
@@ -116,8 +123,13 @@ export default function EarningsScreen() {
     getDriverDeliveryHistory(driver.id, 50)
       .then((result) => {
         setHistory(result.deliveryHistoryForDriver.map(toHistoryItem));
+        setHistoryError('');
       })
-      .catch(() => setHistory([]))
+      .catch((error) => {
+        console.warn('[EarningsScreen] history load failed', error instanceof Error ? error.message : error);
+        setHistory([]);
+        setHistoryError('Хүргэлтийн түүх ачаалж чадсангүй');
+      })
       .finally(() => setHistoryLoading(false));
   }, [driver]);
 
@@ -148,6 +160,7 @@ export default function EarningsScreen() {
           <SummaryCard label="Дундаж үнэлгээ" value={loading ? '…' : `⭐ ${averageRating.toFixed(1)}`} />
           <SummaryCard label="Дундаж хүргэлт" value={loading ? '…' : formatMoney(averagePerDelivery)} />
         </View>
+        {earningsError ? <Text style={styles.errorText}>{earningsError}</Text> : null}
 
         <Card style={styles.chartCard}>
           <Text style={styles.sectionTitle}>Орлогын график</Text>
@@ -167,6 +180,8 @@ export default function EarningsScreen() {
         <Text style={styles.sectionTitle}>Хүргэлтийн түүх</Text>
         {historyLoading ? (
           <Text style={styles.emptyText}>Уншиж байна…</Text>
+        ) : historyError ? (
+          <Text style={styles.errorText}>{historyError}</Text>
         ) : history.length === 0 ? (
           <Text style={styles.emptyText}>Хүргэлтийн түүх одоогоор байхгүй</Text>
         ) : (
@@ -246,6 +261,7 @@ const styles = StyleSheet.create({
   cancelledAmount: { color: colors.error, fontFamily: 'System', fontSize: 12 },
   historyRating: { color: colors.warning, fontSize: 12, marginTop: 4 },
   emptyText: { color: colors.textSub, textAlign: 'center', paddingVertical: 18 },
+  errorText: { color: colors.error, textAlign: 'center', paddingVertical: 14, fontSize: 13, fontWeight: '800' },
   payoutCard: { padding: 16, marginTop: 12 },
   bank: { color: colors.text, fontSize: 14, marginBottom: 10 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', padding: 24 },

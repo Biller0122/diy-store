@@ -36,46 +36,46 @@ export function Header() {
           : 'bg-transparent',
       )}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center gap-4 h-16">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="grid h-16 grid-cols-[auto_1fr_auto] items-center gap-4 lg:gap-6">
           {/* Logo */}
           <Link href={customerHomeHref} data-testid="logo" className="flex shrink-0 items-center">
             <BrandLogo />
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1 ml-2">
-            <MegaMenu />
-            {[
-              { href: '/trade', label: 'Trade данс' },
-            ].map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className="px-3 py-2 rounded-xl text-sm font-medium text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
+          <div className="hidden min-w-0 items-center justify-center gap-5 md:flex">
+            {/* Desktop nav */}
+            <nav className="flex shrink-0 items-center gap-2">
+              <MegaMenu />
+              {[
+                { href: '/trade', label: 'Trade данс' },
+              ].map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="rounded-xl px-3 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-white/5 hover:text-foreground"
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
 
-          {/* Search bar (desktop) */}
-          <button
-            data-testid="search-trigger"
-            onClick={openSearch}
-            className="hidden md:flex flex-1 max-w-xs items-center gap-2 glass glass-hover rounded-full px-4 py-2 text-sm text-foreground-muted hover:text-foreground transition-all"
-          >
-            <Search size={15} />
-            <span className="flex-1 text-left">Хайлт хийх...</span>
-            <kbd className="text-[10px] border border-[var(--glass-border)] rounded px-1.5 py-0.5 font-mono">
-              ⌘K
-            </kbd>
-          </button>
-
-          <div className="flex-1 md:flex-none" />
+            {/* Search bar (desktop) */}
+            <button
+              data-testid="search-trigger"
+              onClick={openSearch}
+              className="glass glass-hover flex w-full max-w-[360px] items-center gap-2 rounded-full px-4 py-2 text-sm text-foreground-muted transition-all hover:text-foreground lg:max-w-[420px]"
+            >
+              <Search size={15} />
+              <span className="flex-1 text-left">Хайлт хийх...</span>
+              <kbd className="rounded border border-[var(--glass-border)] px-1.5 py-0.5 font-mono text-[10px]">
+                ⌘K
+              </kbd>
+            </button>
+          </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center justify-end gap-2">
             {/* Search icon (mobile) */}
             <button
               data-testid="search-trigger-mobile"

@@ -13,6 +13,7 @@ interface DeliveryFeeResult {
   fee: number;
   estimatedMinutes: number;
   breakdown: FeeBreakdown | null;
+  fallback: boolean;
   isLoading: boolean;
 }
 
@@ -22,6 +23,7 @@ export function useDeliveryFee(params: DeliveryFeeParams | null): DeliveryFeeRes
   const [fee, setFee] = useState(FALLBACK_FEE);
   const [estimatedMinutes, setEstimatedMinutes] = useState(45);
   const [breakdown, setBreakdown] = useState<FeeBreakdown | null>(null);
+  const [fallback, setFallback] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -43,14 +45,22 @@ export function useDeliveryFee(params: DeliveryFeeParams | null): DeliveryFeeRes
           body: JSON.stringify(params),
           signal: abortRef.current.signal,
         });
-        if (!res.ok) throw new Error('fee-api-error');
-        const data = await res.json() as { fee: number; estimatedMinutes: number; breakdown: FeeBreakdown | null };
+        const data = await res.json() as {
+          fee?: number;
+          estimatedMinutes?: number;
+          breakdown?: FeeBreakdown | null;
+          fallback?: boolean;
+        };
+        if (typeof data.fee !== 'number') throw new Error('fee-api-error');
+        if (!res.ok && !data.fallback) throw new Error('fee-api-error');
         setFee(data.fee);
+        setFallback(Boolean(data.fallback));
         setEstimatedMinutes(data.estimatedMinutes ?? 45);
-        setBreakdown(data.breakdown);
+        setBreakdown(data.breakdown ?? null);
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           setFee(FALLBACK_FEE);
+          setFallback(true);
           setBreakdown(null);
         }
       } finally {
@@ -65,5 +75,5 @@ export function useDeliveryFee(params: DeliveryFeeParams | null): DeliveryFeeRes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(params)]);
 
-  return { fee, estimatedMinutes, breakdown, isLoading };
+  return { fee, estimatedMinutes, breakdown, fallback, isLoading };
 }

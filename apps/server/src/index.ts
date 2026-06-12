@@ -35,15 +35,16 @@ bootstrap(config)
     if (process.env.REALTIME_EMBEDDED !== 'false') {
       const dataSource = app.get(DataSource);
       startRealtimeServer({
-        canJoinOrder: async (principal, orderId) => {
-          if (principal.role === 'ADMIN') return true;
+        canJoinOrder: async (principal, orderId, trackingToken) => {
+          if (principal?.role === 'ADMIN') return true;
           const delivery = await dataSource.getRepository(DeliveryRequest).findOne({
             where: [{ orderId }, { orderNumber: orderId }, { id: orderId as any }],
           });
           if (!delivery) return false;
-          if (principal.role === 'CUSTOMER') return principal.id === String(delivery.customerId);
-          if (principal.role === 'DRIVER') return Boolean(delivery.driverId && principal.id === String(delivery.driverId));
-          if (principal.role === 'SUPPLIER') {
+          if (trackingToken && delivery.trackingToken && trackingToken === delivery.trackingToken) return true;
+          if (principal?.role === 'CUSTOMER') return principal.id === String(delivery.customerId);
+          if (principal?.role === 'DRIVER') return Boolean(delivery.driverId && principal.id === String(delivery.driverId));
+          if (principal?.role === 'SUPPLIER') {
             return Boolean(
               delivery.orderItems?.some((item) => String(item.supplierId) === principal.id) ||
               delivery.pickupStops?.some((stop) => String(stop.supplierId) === principal.id),

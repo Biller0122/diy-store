@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,6 +55,10 @@ export default function DashboardScreen() {
   const refreshActiveOrder = useDeliveryStore((state) => state.refreshActiveOrder);
   const [recentDeliveries, setRecentDeliveries] = useState<Array<{ id: string; orderNumber: string; date: string; fee: number; route: string }>>([]);
   const [todayStats, setTodayStats] = useState({ deliveries: 0, earned: 0, rating: driver?.rating ?? 5 });
+  const [locationError, setLocationError] = useState('');
+  const [socketError, setSocketError] = useState('');
+  const [notificationError, setNotificationError] = useState('');
+  const [historyError, setHistoryError] = useState('');
   const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(1)).current;
 
@@ -76,22 +80,59 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (!driver || !isOnline) return;
-    setupDriverNotifications(driver.id).catch(() => {});
+    setupDriverNotifications(driver.id)
+      .then(() => setNotificationError(''))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Push notification идэвхжсэнгүй';
+        console.warn('[notifications] setup failed', message);
+        setNotificationError(message);
+      });
+    socketService.setConnectionListener((status) => {
+      setSocketError(status.connected ? '' : status.message);
+    });
     socketService.connect(driver.id, (order) => {
       if (useDeliveryStore.getState().isOnline && !useDeliveryStore.getState().activeOrder) setIncomingOrder(order);
     }, driver, token);
-    startLocationTracking(driver.id, activeOrder?.orderId).catch(() => {});
-    return undefined;
+    startLocationTracking(driver.id, activeOrder?.orderId)
+      .then((started) => {
+        if (started) {
+          setLocationError('');
+          return;
+        }
+        const message = 'Захиалга авахын тулд байршлын зөвшөөрөл хэрэгтэй';
+        setLocationError(message);
+        Alert.alert('Байршлын зөвшөөрөл хэрэгтэй', message);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Байршил асаахад алдаа гарлаа';
+        console.warn('[location] tracking failed', message);
+        setLocationError(message);
+        Alert.alert('Байршил асаахад алдаа гарлаа', message);
+      });
+    return () => {
+      socketService.setConnectionListener(null);
+    };
   }, [driver, token, isOnline, activeOrder?.orderId, setIncomingOrder]);
 
   useEffect(() => {
+    if (isOnline) return;
+    socketService.setConnectionListener(null);
+    setSocketError('');
+    setNotificationError('');
+  }, [isOnline]);
+
+  useEffect(() => {
     if (!driver || !isOnline || activeOrder) return;
-    refreshActiveOrder(driver.id).catch(() => {});
+    refreshActiveOrder(driver.id).catch((error) => {
+      console.warn('[dashboard] active order refresh failed', error instanceof Error ? error.message : error);
+    });
   }, [driver, isOnline, activeOrder, refreshActiveOrder]);
 
   useEffect(() => {
     if (!driver) return;
-    refreshProfile().catch(() => {});
+    refreshProfile().catch((error) => {
+      console.warn('[dashboard] profile refresh failed', error instanceof Error ? error.message : error);
+    });
     getDriverEarnings(driver.id, 'today')
       .then((result) => {
         const earnings = (result as {
@@ -105,9 +146,14 @@ export default function DashboardScreen() {
           });
         }
       })
-      .catch(() => setTodayStats({ deliveries: 0, earned: 0, rating: driver.rating }));
+      .catch((error) => {
+        console.warn('[dashboard] earnings load failed', error instanceof Error ? error.message : error);
+        setHistoryError('Орлого ачаалж чадсангүй');
+        setTodayStats({ deliveries: 0, earned: 0, rating: driver.rating });
+      });
     getDriverDeliveryHistory(driver.id, 5)
       .then((result) => {
+        setHistoryError('');
         setRecentDeliveries(result.deliveryHistoryForDriver.slice(0, 5).map((item) => ({
           id: item.id,
           orderNumber: item.orderNumber,
@@ -116,7 +162,11 @@ export default function DashboardScreen() {
           route: `${item.pickupStops[0]?.district || item.pickupStops[0]?.address?.split(',')[0]?.trim() || 'Нийлүүлэгч'} → ${item.dropoffAddress.split(',')[0]?.trim() || 'Хэрэглэгч'}`,
         })));
       })
-      .catch(() => setRecentDeliveries([]));
+      .catch((error) => {
+        console.warn('[dashboard] recent deliveries load failed', error instanceof Error ? error.message : error);
+        setHistoryError('Сүүлийн хүргэлтүүдийг ачаалж чадсангүй');
+        setRecentDeliveries([]);
+      });
   }, [driver?.id, refreshProfile]);
 
   if (!driver) return null;
@@ -128,9 +178,31 @@ export default function DashboardScreen() {
     if (next) {
       setOnline();
     } else {
+      setLocationError('');
+      setSocketError('');
+      setNotificationError('');
       setOffline();
       stopLocationTracking();
       socketService.disconnect();
+    }
+  };
+
+  const retryLocation = async () => {
+    if (!driver) return;
+    try {
+      const started = await startLocationTracking(driver.id, activeOrder?.orderId);
+      if (started) {
+        setLocationError('');
+        return;
+      }
+      const message = 'Захиалга авахын тулд байршлын зөвшөөрөл хэрэгтэй';
+      setLocationError(message);
+      Alert.alert('Байршлын зөвшөөрөл хэрэгтэй', message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Байршил асаахад алдаа гарлаа';
+      console.warn('[location] retry failed', message);
+      setLocationError(message);
+      Alert.alert('Байршил асаахад алдаа гарлаа', message);
     }
   };
 
@@ -163,6 +235,12 @@ export default function DashboardScreen() {
           </View>
           <Text style={[styles.toggleTitle, isOnline && styles.toggleTitleOnline]}>{isOnline ? 'Онлайн байна' : 'Офлайн байна'}</Text>
           {isOnline ? <WaitingDots /> : <Text style={styles.toggleSub}>Захиалга авахын тулд онлайн болно уу</Text>}
+          {locationError ? <Text style={styles.locationError}>{locationError}</Text> : null}
+          {socketError && isOnline ? <Text style={styles.locationError}>{socketError}</Text> : null}
+          {notificationError && isOnline ? <Text style={styles.locationWarning}>{notificationError}. Push ирэхгүй байж магадгүй.</Text> : null}
+          {locationError && isOnline ? (
+            <Button title="Байршил дахин асуух" variant="ghost" size="md" onPress={retryLocation} style={styles.retryLocationButton} />
+          ) : null}
           <Button title={isOnline ? 'Офлайн болох' : 'Онлайн болох'} variant="ghost" size="md" onPress={toggle} style={styles.onlineButton} />
         </View>
 
@@ -188,8 +266,9 @@ export default function DashboardScreen() {
             <Text style={styles.linkText}>Орлого →</Text>
           </TouchableOpacity>
         </View>
+        {historyError ? <Text style={styles.locationWarning}>{historyError}</Text> : null}
         {recentDeliveries.length === 0 ? (
-          <Text style={styles.emptyText}>Хүргэлт байхгүй байна</Text>
+          <Text style={styles.emptyText}>{historyError ? 'Ачаалж чадсангүй' : 'Хүргэлт байхгүй байна'}</Text>
         ) : (
           recentDeliveries.map((item) => (
             <Card key={item.id} style={styles.deliveryItem}>
@@ -223,6 +302,9 @@ const styles = StyleSheet.create({
   toggleTitle: { color: colors.textSub, fontSize: 19, fontWeight: '900', marginTop: 4 },
   toggleTitleOnline: { color: colors.success },
   toggleSub: { color: colors.textTertiary, fontSize: 13, marginTop: 6, minHeight: 20 },
+  locationError: { color: colors.error, fontSize: 12, lineHeight: 18, marginTop: 8, textAlign: 'center' },
+  locationWarning: { color: colors.warning, fontSize: 12, lineHeight: 18, marginTop: 8, textAlign: 'center' },
+  retryLocationButton: { marginTop: 10, minWidth: 180 },
   onlineButton: { marginTop: 14, minWidth: 180 },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   statCard: { flex: 1, padding: 13, alignItems: 'center' },

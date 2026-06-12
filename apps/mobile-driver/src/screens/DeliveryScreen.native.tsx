@@ -6,6 +6,7 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { HAS_GOOGLE_MAPS_API_KEY } from '@/app/config';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -37,7 +38,7 @@ export default function DeliveryScreen() {
   const [isCompleting, setIsCompleting] = useState(false);
 
   const points = useMemo(() => {
-    if (!activeOrder) return [];
+    if (!activeOrder || !driverLocation) return [];
     return [
       { latitude: driverLocation.lat, longitude: driverLocation.lng },
       ...activeOrder.pickupStops.map((stop) => ({ latitude: stop.lat, longitude: stop.lng })),
@@ -111,32 +112,46 @@ export default function DeliveryScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        customMapStyle={DARK_MAP_STYLE}
-        region={{
-          latitude: driverLocation.lat,
-          longitude: driverLocation.lng,
-          latitudeDelta: 0.06,
-          longitudeDelta: 0.06,
-        }}
-      >
-        <Marker coordinate={{ latitude: driverLocation.lat, longitude: driverLocation.lng }} title="Жолооч">
-          <View style={styles.driverMarker}><Ionicons name="car-sport" size={18} color={colors.white} /></View>
-        </Marker>
-        {activeOrder.pickupStops.map((stop, index) => (
-          <Marker key={stop.supplierId} coordinate={{ latitude: stop.lat, longitude: stop.lng }} title={stop.supplierName}>
-            <View style={[styles.stopMarker, stop.status === 'PICKED_UP' && styles.stopMarkerDone]}>
-              <Text style={styles.markerText}>{stop.status === 'PICKED_UP' ? '✓' : index + 1}</Text>
-            </View>
+      {driverLocation && HAS_GOOGLE_MAPS_API_KEY ? (
+        <MapView
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          customMapStyle={DARK_MAP_STYLE}
+          region={{
+            latitude: driverLocation.lat,
+            longitude: driverLocation.lng,
+            latitudeDelta: 0.06,
+            longitudeDelta: 0.06,
+          }}
+        >
+          <Marker coordinate={{ latitude: driverLocation.lat, longitude: driverLocation.lng }} title="Жолооч">
+            <View style={styles.driverMarker}><Ionicons name="car-sport" size={18} color={colors.white} /></View>
           </Marker>
-        ))}
-        <Marker coordinate={{ latitude: activeOrder.dropoffLat, longitude: activeOrder.dropoffLng }} title={activeOrder.customerName}>
-          <View style={styles.customerMarker}><Ionicons name="home" size={16} color={colors.white} /></View>
-        </Marker>
-        <Polyline coordinates={points} strokeColor={colors.primary} strokeWidth={4} lineDashPattern={[8, 8]} />
-      </MapView>
+          {activeOrder.pickupStops.map((stop, index) => (
+            <Marker key={stop.supplierId} coordinate={{ latitude: stop.lat, longitude: stop.lng }} title={stop.supplierName}>
+              <View style={[styles.stopMarker, stop.status === 'PICKED_UP' && styles.stopMarkerDone]}>
+                <Text style={styles.markerText}>{stop.status === 'PICKED_UP' ? '✓' : index + 1}</Text>
+              </View>
+            </Marker>
+          ))}
+          <Marker coordinate={{ latitude: activeOrder.dropoffLat, longitude: activeOrder.dropoffLng }} title={activeOrder.customerName}>
+            <View style={styles.customerMarker}><Ionicons name="home" size={16} color={colors.white} /></View>
+          </Marker>
+          <Polyline coordinates={points} strokeColor={colors.primary} strokeWidth={4} lineDashPattern={[8, 8]} />
+        </MapView>
+      ) : (
+        <View style={[styles.map, styles.locationWarning]}>
+          <Ionicons name={HAS_GOOGLE_MAPS_API_KEY ? 'location-outline' : 'map-outline'} size={40} color={colors.warning} />
+          <Text style={styles.locationWarningTitle}>
+            {HAS_GOOGLE_MAPS_API_KEY ? 'Байршил аваагүй байна' : 'Газрын зураг идэвхгүй байна'}
+          </Text>
+          <Text style={styles.locationWarningText}>
+            {HAS_GOOGLE_MAPS_API_KEY
+              ? 'Жолоочийн бодит байршил ирсний дараа хүргэлтийн газрын зураг харагдана.'
+              : 'Google Maps API key тохируулаагүй тул газрын зураггүй горимоор хүргэлтийн алхмуудыг харуулж байна.'}
+          </Text>
+        </View>
+      )}
 
       <SafeAreaView edges={['top']} style={styles.overlayHeader}>
         <Text style={styles.orderNumber}>{activeOrder.orderNumber}</Text>
@@ -241,6 +256,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1, backgroundColor: colors.bg },
   map: { height: '45%' },
+  locationWarning: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: colors.surface },
+  locationWarningTitle: { color: colors.text, fontSize: 18, fontWeight: '900', marginTop: 12, textAlign: 'center' },
+  locationWarningText: { color: colors.textSub, fontSize: 13, lineHeight: 20, marginTop: 6, textAlign: 'center' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   emptyTitle: { color: colors.text, fontSize: 22, fontWeight: '900', marginTop: 16 },
   emptySub: { color: colors.textSub, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 8 },

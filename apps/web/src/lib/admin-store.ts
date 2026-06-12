@@ -38,8 +38,13 @@ const ADMIN_LOGIN = `
 
 const ADMIN_LOGOUT = `mutation Logout { logout { success } }`;
 
-async function createAdminSession() {
-  await fetch('/api/admin/session', { method: 'POST' });
+async function createAdminSession(username: string, password: string) {
+  const response = await fetch('/api/admin/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!response.ok) throw new Error('Admin session үүсгэхэд алдаа гарлаа');
 }
 
 function clearAdminSession() {
@@ -68,8 +73,8 @@ export const useAdminStore = create<AdminState>()(
               lastName: '',
               role: 'Admin',
             };
+            await createAdminSession(username, password);
             set({ admin, isLoading: false });
-            await createAdminSession();
             return true;
           }
           set({ isLoading: false, error: result.message ?? 'Нэвтрэхэд алдаа гарлаа' });
@@ -78,8 +83,8 @@ export const useAdminStore = create<AdminState>()(
           // Dev fallback only when the Vendure Admin API is unavailable.
           if (process.env.NODE_ENV === 'development' && (username === 'superadmin' || username === 'admin')) {
             const mockAdmin: AdminUser = { id: 'admin-1', identifier: username, firstName: 'Систем', lastName: 'Админ', role: 'SuperAdmin' };
+            await createAdminSession(username, password);
             set({ admin: mockAdmin, isLoading: false });
-            await createAdminSession();
             return true;
           }
           set({ isLoading: false, error: 'Сүлжээний алдаа — дараа оролдоно уу' });

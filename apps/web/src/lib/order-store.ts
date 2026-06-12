@@ -22,6 +22,7 @@ export interface PlacedOrder {
   total: number;
   items: PlacedOrderItem[];
   deliveryAddress?: string;
+  trackingToken?: string;
   paymentMethod: string;
 }
 

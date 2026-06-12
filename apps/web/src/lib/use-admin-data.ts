@@ -1,10 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  getMockMetrics, getMockRevenueData, MOCK_ORDERS,
-  type AdminOrder,
-} from './admin-data';
+import type { AdminOrder } from './admin-data';
 
 const ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? '/admin-api';
 
@@ -85,6 +82,7 @@ interface UseAdminOrdersResult {
   totalItems: number;
   isLoading: boolean;
   isLive: boolean;
+  error: string;
 }
 
 export function useAdminOrders(
@@ -97,6 +95,7 @@ export function useAdminOrders(
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -115,22 +114,14 @@ export function useAdminOrders(
         setOrders(result.items.map(vendureToAdminOrder));
         setTotalItems(result.totalItems);
         setIsLive(true);
+        setError('');
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        // Fall back to mock data
-        const mock = filterState
-          ? MOCK_ORDERS.filter((o) => o.state === filterState)
-          : MOCK_ORDERS;
-        const searched = search
-          ? mock.filter((o) =>
-              o.code.toLowerCase().includes(search.toLowerCase()) ||
-              `${o.customer?.firstName} ${o.customer?.lastName}`.toLowerCase().includes(search.toLowerCase()),
-            )
-          : mock;
-        setOrders(searched.slice((page - 1) * perPage, page * perPage));
-        setTotalItems(searched.length);
+        setOrders([]);
+        setTotalItems(0);
         setIsLive(false);
+        setError(err instanceof Error ? err.message : 'Сервертэй холбогдсонгүй');
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -139,7 +130,7 @@ export function useAdminOrders(
     return () => { cancelled = true; };
   }, [page, perPage, filterState, search]);
 
-  return { orders, totalItems, isLoading, isLive };
+  return { orders, totalItems, isLoading, isLive, error };
 }
 
 // ─── Metrics ─────────────────────────────────────────────────
@@ -165,12 +156,14 @@ interface UseAdminMetricsResult {
   metrics: AdminMetrics;
   revenueData: { date: string; revenue: number; orders: number }[];
   isLive: boolean;
+  error: string;
 }
 
 export function useAdminMetrics(): UseAdminMetricsResult {
-  const [metrics, setMetrics] = useState<AdminMetrics>(getMockMetrics());
-  const [revenueData, setRevenueData] = useState(getMockRevenueData());
+  const [metrics, setMetrics] = useState<AdminMetrics>({ todayRevenue: 0, totalOrders: 0, newCustomers: 0, pendingOrders: 0 });
+  const [revenueData] = useState<{ date: string; revenue: number; orders: number }[]>([]);
   const [isLive, setIsLive] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     adminFetch<{
@@ -189,12 +182,14 @@ export function useAdminMetrics(): UseAdminMetricsResult {
           pendingOrders: pending,
         });
         setIsLive(true);
+        setError('');
       })
-      .catch(() => {
-        setMetrics(getMockMetrics());
+      .catch((err) => {
+        setMetrics({ todayRevenue: 0, totalOrders: 0, newCustomers: 0, pendingOrders: 0 });
         setIsLive(false);
+        setError(err instanceof Error ? err.message : 'Сервертэй холбогдсонгүй');
       });
   }, []);
 
-  return { metrics, revenueData, isLive };
+  return { metrics, revenueData, isLive, error };
 }

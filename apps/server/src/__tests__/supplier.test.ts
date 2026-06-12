@@ -88,6 +88,46 @@ describe('SupplierService', () => {
   });
 
   describe('supplier auth token', () => {
+    test('wrong OTP persists attempts and caps after five tries', async () => {
+      const originalOtpMockMode = process.env.OTP_MOCK_MODE;
+      process.env.OTP_MOCK_MODE = 'true';
+      const { supplierService } = createService();
+      try {
+        await supplierService.registerSupplier({ ownerName: 'Батболд', email: 'supplier@example.com' });
+
+        await expect(supplierService.verifyOTP({ email: 'supplier@example.com', otp: '0000' })).rejects.toThrow('Код буруу');
+        let supplier = await supplierService.getSupplierByEmail('supplier@example.com');
+        expect(supplier?.otpAttempts).toBe(1);
+
+        for (let i = 0; i < 4; i++) {
+          await expect(supplierService.verifyOTP({ email: 'supplier@example.com', otp: '0000' })).rejects.toThrow('Код буруу');
+        }
+
+        supplier = await supplierService.getSupplierByEmail('supplier@example.com');
+        expect(supplier?.otpAttempts).toBe(5);
+        await expect(supplierService.verifyOTP({ email: 'supplier@example.com', otp: '1234' })).rejects.toThrow('Олон удаа буруу');
+      } finally {
+        if (originalOtpMockMode === undefined) delete process.env.OTP_MOCK_MODE;
+        else process.env.OTP_MOCK_MODE = originalOtpMockMode;
+      }
+    });
+
+    test('expired OTP is rejected before attempts are counted', async () => {
+      const originalOtpMockMode = process.env.OTP_MOCK_MODE;
+      process.env.OTP_MOCK_MODE = 'true';
+      const { supplierService } = createService();
+      try {
+        const supplier = await supplierService.registerSupplier({ ownerName: 'Батболд', email: 'supplier@example.com' });
+        supplier.otpExpiresAt = new Date(Date.now() - 1000);
+
+        await expect(supplierService.verifyOTP({ email: 'supplier@example.com', otp: '0000' })).rejects.toThrow('Кодын хугацаа');
+        expect(supplier.otpAttempts).toBe(0);
+      } finally {
+        if (originalOtpMockMode === undefined) delete process.env.OTP_MOCK_MODE;
+        else process.env.OTP_MOCK_MODE = originalOtpMockMode;
+      }
+    });
+
     test('verified OTP returns signed supplier role token', async () => {
       const originalOtpMockMode = process.env.OTP_MOCK_MODE;
       process.env.OTP_MOCK_MODE = 'true';

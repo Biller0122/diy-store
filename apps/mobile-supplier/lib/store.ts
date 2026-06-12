@@ -12,9 +12,13 @@ interface Supplier {
   id: string;
   ownerName: string;
   businessName: string;
+  description?: string | null;
   email: string;
   phone?: string | null;
+  address?: string | null;
   status: string;
+  bankName?: string | null;
+  bankAccount?: string | null;
   productCount?: number;
   rating?: number;
 }
@@ -30,6 +34,7 @@ interface SupplierState {
   registerAndSendCode: (ownerName: string, email: string) => Promise<boolean>;
   verifyEmailOtp: (email: string, otp: string) => Promise<boolean>;
   logout: () => void;
+  setSupplier: (supplier: Supplier) => void;
   clearError: () => void;
   hydrate: () => Promise<void>;
 }
@@ -178,6 +183,14 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
   logout: async () => {
     await AsyncStorage.removeItem(STORAGE_KEY);
     set({ supplier: null, token: null, pendingEmail: null, pendingOtp: null, error: null });
+  },
+
+  setSupplier: (supplier) => {
+    const token = get().token ?? '';
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ supplier, token })).catch((error) => {
+      console.warn('[supplier-store] supplier cache update failed', error);
+    });
+    set({ supplier });
   },
 
   clearError: () => set({ error: null }),

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { acceptDeliveryApi, completeDeliveryWithCodeApi, getActiveDeliveryApi, rejectDeliveryApi, updateDeliveryStatusApi, type ActiveDeliveryResult } from '../api/client';
+import { acceptDeliveryApi, completeDeliveryWithCodeApi, getActiveDeliveryApi, rejectDeliveryApi, updateDeliveryPickupStopApi, updateDeliveryStatusApi, type ActiveDeliveryResult } from '../api/client';
 import { socketService } from '../services/socket';
 
 export type StopStatus = 'PENDING' | 'ARRIVED' | 'PICKED_UP';
@@ -43,7 +43,7 @@ type DeliveryState = {
   activeOrder: ActiveOrder | null;
   incomingOrder: ActiveOrder | null;
   currentStop: number;
-  driverLocation: DriverLocation;
+  driverLocation: DriverLocation | null;
   isOnline: boolean;
   setOnline: () => void;
   setOffline: () => void;
@@ -109,7 +109,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   activeOrder: null,
   incomingOrder: null,
   currentStop: 0,
-  driverLocation: { lat: 47.9189, lng: 106.9176, heading: 0 },
+  driverLocation: null,
   isOnline: false,
 
   setOnline: () => set({ isOnline: true }),
@@ -162,6 +162,13 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     if (activeOrder.status === 'DRIVER_ASSIGNED' && nextStatus === 'DRIVER_AT_STORE') {
       socketService.emitStatusUpdate(activeOrder.orderId, 'IN_PROGRESS');
       await updateDeliveryStatusApi(activeOrder.id, 'IN_PROGRESS');
+      if (nextStops[stopIndex]) {
+        await updateDeliveryPickupStopApi(activeOrder.id, nextStops[stopIndex].supplierId, 'ARRIVED');
+      }
+    }
+
+    if (activeOrder.status === 'DRIVER_AT_STORE' && nextStops[stopIndex]?.status === 'PICKED_UP') {
+      await updateDeliveryPickupStopApi(activeOrder.id, nextStops[stopIndex].supplierId, 'PICKED_UP');
     }
 
     if (nextStatus === 'DELIVERED') {

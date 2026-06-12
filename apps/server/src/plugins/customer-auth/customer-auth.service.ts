@@ -75,24 +75,29 @@ export class CustomerAuthService {
   }
 
   async loginWithPassword(ctx: RequestContext, identifierInput: string, password: string) {
-    const identifier = identifierInput.trim();
-    if (!identifier || !password) throw new Error('Нэвтрэх мэдээлэл дутуу байна');
+    try {
+      const identifier = identifierInput.trim();
+      if (!identifier || !password) return this.authFailure('Нэвтрэх мэдээлэл дутуу байна');
 
-    const username = await this.resolveLoginIdentifier(ctx, identifier);
-    const session = await this.authService.authenticate(ctx, 'shop', 'native', {
-      username,
-      password,
-    });
-    if (isGraphQlErrorResult(session)) {
-      throw new Error(session.message);
+      const username = await this.resolveLoginIdentifier(ctx, identifier);
+      const session = await this.authService.authenticate(ctx, 'shop', 'native', {
+        username,
+        password,
+      });
+      if (isGraphQlErrorResult(session)) {
+        return this.authFailure(this.loginErrorMessage(session.message));
+      }
+      const customer = await this.customerService.findOneByUserId(ctx, session.user.id, false);
+      return {
+        success: true,
+        message: 'Амжилттай нэвтэрлээ',
+        token: session.token,
+        customer: customer ? this.serializeCustomer(customer) : null,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Нэвтрэхэд алдаа гарлаа';
+      return this.authFailure(this.loginErrorMessage(message));
     }
-    const customer = await this.customerService.findOneByUserId(ctx, session.user.id, false);
-    return {
-      success: true,
-      message: 'Амжилттай нэвтэрлээ',
-      token: session.token,
-      customer: customer ? this.serializeCustomer(customer) : null,
-    };
   }
 
   async requestEmailOtp(emailInput: string, purpose: CustomerOtpPurpose = 'login') {
@@ -320,6 +325,24 @@ export class CustomerAuthService {
       emailAddress: customer.emailAddress,
       phoneNumber: customer.phoneNumber,
     };
+  }
+
+  private authFailure(message: string) {
+    return {
+      success: false,
+      message,
+      token: null,
+      customer: null,
+    };
+  }
+
+  private loginErrorMessage(message: string) {
+    const messages: Record<string, string> = {
+      INVALID_CREDENTIALS_ERROR: 'И-мэйл/утас эсвэл нууц үг буруу байна',
+      NOT_VERIFIED_ERROR: 'И-мэйл баталгаажаагүй байна',
+      NATIVE_AUTH_STRATEGY_ERROR: 'Нэвтрэх боломжгүй байна. Дахин оролдоно уу',
+    };
+    return messages[message] ?? message;
   }
 
   private getResetToken(user: User) {

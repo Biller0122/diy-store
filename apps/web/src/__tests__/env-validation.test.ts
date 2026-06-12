@@ -28,6 +28,13 @@ describe('validateWebEnv', () => {
         env: {
           NEXT_PUBLIC_API_URL: 'https://shoptool.mn',
           NEXT_PUBLIC_SOCKET_URL: 'https://shoptool.mn',
+          CLEANUP_SERVICE_URL: 'https://cleanup.shoptool.mn',
+          GPU_SERVICE_URL: 'https://gpu.shoptool.mn',
+          STRAPI_API_TOKEN: 'token',
+          NEXT_PUBLIC_ALGOLIA_APP_ID: 'app',
+          NEXT_PUBLIC_ALGOLIA_SEARCH_KEY: 'key',
+          NEXT_PUBLIC_ALGOLIA_INDEX_NAME: 'diy_products',
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: 'google',
         } as unknown as NodeJS.ProcessEnv,
       }),
     ).not.toThrow();

@@ -34,8 +34,8 @@ interface DeliveryRequestResult {
 const SHOP_API = process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:13001/shop-api';
 
 const DELIVERY_STATUS_GQL = `
-  query DeliveryStatus($orderId: String!) {
-    deliveryRequest(orderId: $orderId) {
+  query DeliveryStatus($orderId: String!, $token: String) {
+    deliveryRequest(orderId: $orderId, token: $token) {
       id
       orderId
       orderNumber
@@ -127,11 +127,19 @@ export async function GET(
 ) {
   const { id } = await params;
   const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1] ?? null;
+  const trackingToken = req.nextUrl.searchParams.get('t') ?? null;
+
+  if (!token && !trackingToken) {
+    return NextResponse.json(
+      { status: 'SEARCHING', orderNumber: id, error: 'Tracking token required' },
+      { status: 401 },
+    );
+  }
 
   try {
     const data = await vendureFetch<{ deliveryRequest: DeliveryRequestResult | null }>(
       DELIVERY_STATUS_GQL,
-      { orderId: id },
+      { orderId: id, token: trackingToken },
       token,
     );
     const delivery = data.deliveryRequest;
@@ -152,9 +160,11 @@ export async function GET(
       pickupStops: delivery.pickupStops ?? [],
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Dispatch status unavailable';
+    const status = message === 'Хандах эрхгүй' ? 403 : 502;
     return NextResponse.json(
-      { status: 'SEARCHING', orderNumber: id, error: err instanceof Error ? err.message : 'Dispatch status unavailable' },
-      { status: 502 },
+      { status: 'SEARCHING', orderNumber: id, error: message },
+      { status },
     );
   }
 }

@@ -95,39 +95,45 @@ function formatFee(fee: number) {
 
 export default function TrackScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, t } = useLocalSearchParams<{ id: string; t?: string }>();
   const [delivery, setDelivery] = useState<DeliveryRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
 
   const fetchDelivery = useCallback(async () => {
     if (!id) return;
     try {
       const data = await shopFetch<{ deliveryRequest: DeliveryRequest | null }>(
         DELIVERY_REQUEST_QUERY,
-        { orderId: id }
+        { orderId: id, token: t ?? null }
       );
-      if (data.deliveryRequest) {
+      if (mountedRef.current && data.deliveryRequest) {
         setDelivery(data.deliveryRequest);
       }
-    } catch {
-      // keep previous state
+    } catch (error) {
+      console.error('[TrackScreen] fetchDelivery failed', error);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
-    fetchDelivery();
+    mountedRef.current = true;
+    void fetchDelivery();
+    if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(fetchDelivery, 5000);
     return () => {
+      mountedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     };
   }, [fetchDelivery]);
 
   useEffect(() => {
     if (delivery && (delivery.status === 'COMPLETED' || delivery.status === 'CANCELLED' || delivery.status === 'TIMEOUT')) {
       if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     }
   }, [delivery?.status]);
 

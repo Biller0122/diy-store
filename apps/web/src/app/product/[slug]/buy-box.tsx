@@ -43,6 +43,7 @@ export interface ProductVariant {
   priceWithTax: number;
   currencyCode: string;
   stockLevel: string;
+  stockOnHand?: number;
   options: ProductOption[];
 }
 
@@ -69,6 +70,10 @@ function findVariant(
 }
 
 function StarRating({ rating, count }: { rating: number; count: number }) {
+  if (count <= 0) {
+    return <span className="text-sm text-foreground-muted">Сэтгэгдэл алга</span>;
+  }
+
   return (
     <div className="flex items-center gap-2">
       <div className="flex gap-0.5">
@@ -156,8 +161,11 @@ export default function BuyBox({
       ? findVariant(variants, selectedOptions)
       : variants[0];
 
+  const stockOnHand = activeVariant?.stockOnHand;
+  const remainingStock = typeof stockOnHand === 'number' ? Math.max(0, stockOnHand) : undefined;
   const inStock =
-    !activeVariant || activeVariant.stockLevel !== 'OUT_OF_STOCK';
+    (!activeVariant || activeVariant.stockLevel !== 'OUT_OF_STOCK') && (remainingStock === undefined || remainingStock > 0);
+  const maxQty = remainingStock !== undefined ? remainingStock : undefined;
   const wishlisted = hasItem(activeVariant?.id ?? variants[0]?.id ?? '');
 
   const price = activeVariant?.priceWithTax ?? variants[0]?.priceWithTax ?? 0;
@@ -165,8 +173,16 @@ export default function BuyBox({
   const deliveryEstimate =
     DISTRICTS.find((d) => d.name === district)?.estimate ?? '2–4 цагт';
 
+  useEffect(() => {
+    if (maxQty !== undefined && qty > Math.max(1, maxQty)) {
+      setQty(Math.max(1, maxQty));
+    }
+  }, [maxQty, qty]);
+
   function handleAddToCart() {
     if (!activeVariant) return;
+    const safeQty = maxQty !== undefined ? Math.min(qty, maxQty) : qty;
+    if (safeQty < 1 || !inStock) return;
     addItem({
       productId,
       variantId: activeVariant.id,
@@ -175,7 +191,7 @@ export default function BuyBox({
       image,
       price: activeVariant.priceWithTax,
       currencyCode: activeVariant.currencyCode || 'MNT',
-      qty,
+      qty: safeQty,
       mode,
       storeId,
       sku: activeVariant.sku,
@@ -185,6 +201,7 @@ export default function BuyBox({
       supplierDistrict,
       supplierLat,
       supplierLng,
+      stock: remainingStock,
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
@@ -220,7 +237,7 @@ export default function BuyBox({
             🛡️ 12 сарын баталгаа
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
-            ✅ Оригинал бараа
+            Үлдэгдэл {remainingStock ?? 'байгаа'}
           </span>
         </div>
 
@@ -336,12 +353,16 @@ export default function BuyBox({
             <span data-testid="qty-value" className="w-10 text-center text-sm font-semibold text-foreground">{qty}</span>
             <button
               data-testid="qty-increase"
-              onClick={() => setQty((q) => q + 1)}
-              className="flex h-10 w-10 items-center justify-center text-lg font-bold text-foreground-muted hover:bg-surface"
+              onClick={() => setQty((q) => (maxQty !== undefined ? Math.min(maxQty, q + 1) : q + 1))}
+              disabled={maxQty !== undefined && qty >= maxQty}
+              className="flex h-10 w-10 items-center justify-center text-lg font-bold text-foreground-muted hover:bg-surface disabled:text-foreground-muted/30"
             >
               +
             </button>
           </div>
+          {maxQty !== undefined && qty >= maxQty && (
+            <span className="text-xs font-medium text-amber-400">Үлдэгдэл {maxQty}</span>
+          )}
           {!inStock && (
             <span className="text-sm font-medium text-error">Байхгүй</span>
           )}

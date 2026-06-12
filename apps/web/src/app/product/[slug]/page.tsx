@@ -10,6 +10,7 @@ import { generateProductMetadata } from '@/lib/seo/metadata';
 import { generateBreadcrumbSchema, generateProductSchema } from '@/lib/seo/structured-data';
 import { JsonLd } from '@/components/common/JsonLd';
 import { getDbSupplierById, getDbSupplierProducts, type DbSupplierProduct } from '@/lib/supplier-products';
+import { isRenderableImageSrc, withImagePreset } from '@/lib/image-url';
 
 // ─── GraphQL ─────────────────────────────────────────────────
 
@@ -70,6 +71,15 @@ const GET_RELATED = `
   }
 `;
 
+const GET_PRODUCT_REVIEWS = `
+  query ProductReviewSummary($productId: ID!) {
+    getProductReviews(productId: $productId, page: 1, sort: "latest") {
+      totalItems
+      items { rating }
+    }
+  }
+`;
+
 // ─── Types ───────────────────────────────────────────────────
 
 interface Asset { id: string; preview: string; source: string }
@@ -107,6 +117,11 @@ interface RelatedItem {
   inStock: boolean;
 }
 
+interface ReviewSummary {
+  avgRating: number;
+  reviewCount: number;
+}
+
 // ─── Data fetching ────────────────────────────────────────────
 
 async function getProduct(slug: string): Promise<Product | null> {
@@ -128,6 +143,24 @@ async function getRelated(collectionSlug: string, excludeSlug: string): Promise<
     return data.search.items.filter((i) => i.slug !== excludeSlug).slice(0, 4);
   } catch {
     return [];
+  }
+}
+
+async function getReviewSummary(productId: string): Promise<ReviewSummary> {
+  try {
+    const data = await vendureShopFetch<{
+      getProductReviews: { totalItems: number; items: Array<{ rating: number }> };
+    }>(GET_PRODUCT_REVIEWS, { productId });
+    const reviews = data.getProductReviews.items;
+    const avgRating = reviews.length
+      ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+      : 0;
+    return {
+      avgRating: Number(avgRating.toFixed(1)),
+      reviewCount: data.getProductReviews.totalItems,
+    };
+  } catch {
+    return { avgRating: 0, reviewCount: 0 };
   }
 }
 
@@ -176,6 +209,7 @@ async function getSupplierProductAsProduct(slug: string): Promise<Product | null
       priceWithTax: product.price,
       currencyCode: 'MNT',
       stockLevel: product.stock > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK',
+      stockOnHand: product.stock,
       options: [],
     }],
     optionGroups: [],
@@ -249,6 +283,7 @@ export default async function ProductPage({
   const related = firstCollectionSlug
     ? await getRelated(firstCollectionSlug, product.slug)
     : [];
+  const reviewSummary = await getReviewSummary(product.id);
 
 
   // Build asset list — prefer dedicated assets, fall back to featuredAsset
@@ -305,11 +340,11 @@ export default async function ProductPage({
               productId={product.id}
               productName={product.name}
               slug={product.slug}
-              image={product.featuredAsset?.preview ?? null}
+              image={isRenderableImageSrc(product.featuredAsset?.preview) ? product.featuredAsset!.preview : null}
               variants={product.variants}
               optionGroups={product.optionGroups}
-              avgRating={4.7}
-              reviewCount={18}
+              avgRating={reviewSummary.avgRating}
+              reviewCount={reviewSummary.reviewCount}
               supplierId={product.supplier?.id}
               supplierName={product.supplier?.name}
               supplierSlug={product.supplier?.slug}
@@ -341,9 +376,9 @@ export default async function ProductPage({
                     className="group rounded-2xl bg-card p-3 border border-[var(--glass-border)] transition hover:shadow-md hover:border-amber-500/40"
                   >
                     <div className="relative mb-2 aspect-square overflow-hidden rounded-xl bg-surface">
-                      {item.productAsset ? (
+                      {isRenderableImageSrc(item.productAsset?.preview) ? (
                         <Image
-                          src={`${item.productAsset.preview}?preset=medium`}
+                          src={withImagePreset(item.productAsset!.preview, 'medium')}
                           alt={item.productName}
                           fill
                           sizes="(max-width: 640px) 50vw, 25vw"

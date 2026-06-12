@@ -49,7 +49,7 @@ export function BrandLogo({
       alt="shoptool.mn"
       width={210}
       height={131}
-      className={cn('h-auto w-36 object-contain sm:w-44', imageClassName)}
+      className={cn('h-9 w-36 object-contain sm:h-10 sm:w-44', imageClassName)}
       priority
     />
   );

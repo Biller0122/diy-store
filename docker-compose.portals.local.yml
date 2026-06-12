@@ -14,6 +14,7 @@ services:
       DB_SYNCHRONIZE: 'true'
       ASSET_STORAGE: local
       REALTIME_WEBHOOK_SECRET: local-realtime-secret
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://192.168.0.13:19000,http://192.168.0.13:19006,http://192.168.0.13:19010,http://192.168.0.13:18080,http://192.168.0.13:18081,http://192.168.0.13:18082,http://192.168.0.13:18083}
 
   realtime-server:
     ports:

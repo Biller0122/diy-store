@@ -33,22 +33,33 @@ export async function shopFetch<T>(
     body: JSON.stringify({ query, variables }),
   });
 
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-
   const nextToken = response.headers.get('vendure-auth-token');
   if (nextToken) {
     sessionToken = nextToken;
   }
 
-  const json = await response.json();
+  const text = await response.text();
+  let json: { data?: T; errors?: Array<{ message?: string }>; message?: string } | null = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    // Keep the raw body below so HTTP errors are still actionable.
+  }
 
-  if (json.errors && json.errors.length > 0) {
+  if (!response.ok) {
+    const message = json?.errors?.[0]?.message || json?.message || text || `HTTP error! status: ${response.status}`;
+    throw new Error(message);
+  }
+
+  if (json?.errors && json.errors.length > 0) {
     throw new Error(json.errors[0].message);
   }
 
-  return json.data as T;
+  if (!json?.data) {
+    throw new Error('API-с хоосон хариу ирлээ');
+  }
+
+  return json.data;
 }
 
 export const LOGIN_MUTATION = `
@@ -629,18 +640,21 @@ export const CREATE_DELIVERY_REQUEST_MUTATION = `
       paymentMethod: $paymentMethod
     ) {
       id
+      orderId
       orderNumber
+      trackingToken
       status
     }
   }
 `;
 
 export const DELIVERY_REQUEST_QUERY = `
-  query DeliveryRequest($orderId: String!) {
-    deliveryRequest(orderId: $orderId) {
+  query DeliveryRequest($orderId: String!, $token: String) {
+    deliveryRequest(orderId: $orderId, token: $token) {
       id
       orderId
       orderNumber
+      trackingToken
       status
       driverId
       driverLat

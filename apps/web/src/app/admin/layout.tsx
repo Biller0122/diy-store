@@ -141,7 +141,8 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const { admin } = useAdminStore();
   const router = useRouter();
-  const isAdmin = admin?.role?.toLowerCase().includes('admin') ?? false;
+  const role = admin?.role?.toLowerCase();
+  const isAdmin = role === 'admin' || role === 'superadmin';
 
   useEffect(() => {
     if (!admin || !isAdmin) {

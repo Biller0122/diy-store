@@ -77,15 +77,19 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          href: null,
           title: 'Хайх',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? 'search' : 'search-outline'} size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
-          href: null,
           title: 'Захиалга',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? 'receipt' : 'receipt-outline'} size={24} color={color} />
+          ),
         }}
       />
     </Tabs>

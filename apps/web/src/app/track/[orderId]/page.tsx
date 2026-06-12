@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AnimatePresence, m } from 'framer-motion';
 import {
@@ -15,10 +16,24 @@ interface Props {
 
 type DeliveryStatus = 'SEARCHING' | 'OFFERED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 const CUSTOMER_AUTH_TOKEN_KEY = 'diy-vendure-auth-token';
+const CONFIGURED_SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL;
+
+function getSocketUrl() {
+  if (typeof window === 'undefined') return CONFIGURED_SOCKET_URL || 'http://localhost:3002';
+  const { protocol, hostname, port, origin } = window.location;
+  if ((hostname === 'localhost' || hostname === '127.0.0.1') && ['18080', '18081', '18082', '18083'].includes(port)) {
+    return `${protocol}//${hostname}:13002`;
+  }
+  if (CONFIGURED_SOCKET_URL && !/^https?:\/\/localhost(?::3002)?\/?$/i.test(CONFIGURED_SOCKET_URL)) {
+    return CONFIGURED_SOCKET_URL;
+  }
+  return origin;
+}
 
 interface DispatchData {
   status: DeliveryStatus;
   orderNumber?: string;
+  error?: string;
   driver?: {
     id: string; name: string; phone: string;
     vehicleType: string; vehiclePlate: string; rating: number;
@@ -250,7 +265,9 @@ function StatusPanel({ orderId, data, sheetOpen, onToggleSheet }: {
       {/* ETA */}
       <div className="m-4 p-4 rounded-2xl bg-brand/10 border border-brand/20 text-center shrink-0">
         <p className="text-xs text-foreground-muted mb-1">Ойролцоо ирэх хугацаа</p>
-        {data.status === 'SEARCHING' || data.status === 'OFFERED' ? (
+        {data.error ? (
+          <p className="text-lg font-bold text-error">{data.error}</p>
+        ) : data.status === 'SEARCHING' || data.status === 'OFFERED' ? (
           <p className="text-lg font-bold text-foreground-muted animate-pulse">Жолооч хайж байна...</p>
         ) : data.status === 'COMPLETED' ? (
           <p className="text-2xl font-black text-success">Хүргэгдлээ ✓</p>
@@ -357,6 +374,8 @@ function StatusPanel({ orderId, data, sheetOpen, onToggleSheet }: {
 
 export default function TrackOrderPage({ params }: Props) {
   const { orderId } = use(params);
+  const searchParams = useSearchParams();
+  const trackingToken = searchParams.get('t') ?? '';
   const [data, setData] = useState<DispatchData>({ status: 'SEARCHING' });
   const [sheetOpen, setSheetOpen] = useState(true);
   const [showRating, setShowRating] = useState(false);
@@ -370,13 +389,16 @@ export default function TrackOrderPage({ params }: Props) {
   const fetchStatus = useCallback(async () => {
     try {
       const token = window.localStorage.getItem(CUSTOMER_AUTH_TOKEN_KEY);
-      const res = await fetch(`/api/order/${orderId}/dispatch-status`, {
+      const url = trackingToken
+        ? `/api/order/${orderId}/dispatch-status?t=${encodeURIComponent(trackingToken)}`
+        : `/api/order/${orderId}/dispatch-status`;
+      const res = await fetch(url, {
         cache: 'no-store',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) return;
       const json = await res.json() as DispatchData;
       setData(json);
+      if (!res.ok) return;
       handleStatusChange(json.status);
 
       if (json.driverLat && json.driverLng) {
@@ -390,7 +412,7 @@ export default function TrackOrderPage({ params }: Props) {
     } catch {
       // ignore
     }
-  }, [orderId, handleStatusChange]);
+  }, [orderId, trackingToken, handleStatusChange]);
 
   // 5-second polling
   useEffect(() => {
@@ -398,6 +420,38 @@ export default function TrackOrderPage({ params }: Props) {
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  useEffect(() => {
+    if (!trackingToken) return;
+    let socket: import('socket.io-client').Socket | null = null;
+    let cancelled = false;
+
+    import('socket.io-client').then(({ io }) => {
+      if (cancelled) return;
+      socket = io(getSocketUrl(), {
+        auth: { trackingToken },
+        transports: ['websocket', 'polling'],
+      });
+      socket.on('connect', () => {
+        socket?.emit('order:join', { orderId, trackingToken });
+      });
+      socket.on('order:status', (payload: { status?: DeliveryStatus }) => {
+        if (!payload.status) return;
+        setData((current) => ({ ...current, status: payload.status as DeliveryStatus, error: undefined }));
+        handleStatusChange(payload.status);
+      });
+      socket.on('driver:location', (payload: { lat?: number; lng?: number }) => {
+        if (typeof payload.lat === 'number' && typeof payload.lng === 'number') {
+          setDriverPos({ lat: payload.lat, lng: payload.lng });
+        }
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      socket?.disconnect();
+    };
+  }, [orderId, trackingToken, handleStatusChange]);
 
   // Animate driver toward customer if IN_PROGRESS
   useEffect(() => {

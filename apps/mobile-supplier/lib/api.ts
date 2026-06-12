@@ -32,10 +32,20 @@ async function postGraphql<T>(
       body: JSON.stringify({ query, variables }),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`API холболтын алдаа (${res.status})`);
-    const json = await res.json();
-    if (json.errors) throw new Error(json.errors[0].message);
-    return json.data as T;
+    const text = await res.text();
+    let json: { data?: T; errors?: Array<{ message?: string }>; message?: string } | null = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      // Fall through to the HTTP error below with the raw response body.
+    }
+    if (!res.ok) {
+      const message = json?.errors?.[0]?.message || json?.message || text || `API холболтын алдаа (${res.status})`;
+      throw new Error(message);
+    }
+    if (json?.errors) throw new Error(json.errors[0].message);
+    if (!json?.data) throw new Error('API-с хоосон хариу ирлээ');
+    return json.data;
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error('Серверээс хариу ирсэнгүй. Дахин оролдоно уу');
@@ -185,12 +195,68 @@ export const SUPPLIER_QUERY = `
     supplier(id: $id) {
       id
       businessName
+      description
       ownerName
       email
       phone
+      address
       status
+      bankName
+      bankAccount
       productCount
       rating
+    }
+  }
+`;
+
+export const UPDATE_SUPPLIER_MUTATION = `
+  mutation UpdateSupplier($id: ID!, $input: UpdateSupplierInput!) {
+    updateSupplier(id: $id, input: $input) {
+      id
+      businessName
+      description
+      ownerName
+      email
+      phone
+      address
+      status
+      bankName
+      bankAccount
+      productCount
+      rating
+    }
+  }
+`;
+
+export const PRODUCT_CATEGORIES_QUERY = `
+  query ProductCategories {
+    collections(options: { take: 100, sort: { position: ASC } }) {
+      items {
+        id
+        name
+        slug
+        parentId
+        parent { id name slug }
+      }
+    }
+  }
+`;
+
+export const PRODUCT_REVIEWS_QUERY = `
+  query ProductReviews($productId: ID!) {
+    getProductReviews(productId: $productId) {
+      items {
+        id
+        productId
+        customerId
+        rating
+        title
+        body
+        status
+        helpfulCount
+        createdAt
+      }
+      totalItems
     }
   }
 `;

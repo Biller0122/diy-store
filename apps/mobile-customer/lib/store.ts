@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 import {
   setShopSessionToken,
   shopFetch,
@@ -205,7 +206,10 @@ export const useAppStore = create<AppState>()(
       },
 
       logout: () => {
-        shopFetch(LOGOUT_MUTATION).catch(() => {});
+        shopFetch(LOGOUT_MUTATION).catch((error) => {
+          console.error('[AppStore] logout mutation failed', error);
+          Alert.alert('Серверээс гарахад алдаа гарлаа', 'Төхөөрөмж дээрх session цэвэрлэгдсэн.');
+        });
         setShopSessionToken(null);
         set({ customer: null, token: null, cartCount: 0 });
       },

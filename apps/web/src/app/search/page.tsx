@@ -8,6 +8,7 @@ import { Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { trackSearch, trackViewItemList } from '@/lib/analytics/ga4';
 import { vendureShopFetch } from '@/lib/vendure';
+import { dbProductToCard, type DbSupplierProduct, type DbSupplier } from '@/lib/supplier-products';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface AlgoliaHit {
   rating: number;
   reviewCount: number;
   inStock: boolean;
+  stock?: number;
   imageUrl: string;
   tags: string[];
 }
@@ -121,6 +123,23 @@ const PRODUCT_CATEGORIES_QUERY = `
   }
 `;
 
+const SUPPLIERS_QUERY = `
+  query SuppliersForSearch {
+    suppliers(status: "ACTIVE", take: 200, skip: 0) {
+      items {
+        id
+        businessName
+        slug
+        district
+        lat
+        lng
+        rating
+        reviewCount
+      }
+    }
+  }
+`;
+
 async function searchSupplierProducts(query: string, filters: {
   category?: string;
   inStock?: boolean;
@@ -129,18 +148,11 @@ async function searchSupplierProducts(query: string, filters: {
   sort?: SortOption;
 }, categoryNames: Record<string, string>): Promise<AlgoliaHit[]> {
   try {
-    const data = await vendureShopFetch<{ supplierProducts: { items: Array<{
-      id: string;
-      supplierId: string;
-      name: string;
-      slug: string;
-      image?: string | null;
-      price: number;
-      originalPrice?: number | null;
-      category?: string | null;
-      stock: number;
-      enabled: boolean;
-    }> } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 });
+    const [data, supplierData] = await Promise.all([
+      vendureShopFetch<{ supplierProducts: { items: DbSupplierProduct[] } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 }),
+      vendureShopFetch<{ suppliers: { items: Array<Pick<DbSupplier, 'id' | 'businessName' | 'slug' | 'district' | 'lat' | 'lng' | 'rating' | 'reviewCount'>> } }>(SUPPLIERS_QUERY, undefined, { revalidate: 0 }).catch(() => ({ suppliers: { items: [] } })),
+    ]);
+    const suppliersById = new Map(supplierData.suppliers.items.map((supplier) => [supplier.id, supplier]));
 
     let hits = data.supplierProducts.items
       .filter((item) => item.enabled)
@@ -154,21 +166,25 @@ async function searchSupplierProducts(query: string, filters: {
       .filter((item) => !filters.inStock || item.stock > 0)
       .filter((item) => !filters.priceMin || item.price >= filters.priceMin)
       .filter((item) => !filters.priceMax || item.price <= filters.priceMax)
-      .map((item) => ({
-        objectID: `supplier-${item.id}`,
-        name: item.name,
-        slug: item.slug,
-        price: item.price,
-        salePrice: item.originalPrice ?? null,
-        brand: 'Нийлүүлэгч',
-        category: categoryNames[item.category ?? ''] || item.category || 'Нийлүүлэгч',
-        categorySlug: item.category || 'supplier',
-        rating: 0,
-        reviewCount: 0,
-        inStock: item.stock > 0,
-        imageUrl: item.image ?? '',
-        tags: [item.category ?? '', item.slug],
-      }));
+      .map((item) => {
+        const card = dbProductToCard(item, suppliersById.get(item.supplierId));
+        return {
+          objectID: `supplier-${item.id}`,
+          name: card.name,
+          slug: card.slug,
+          price: card.price,
+          salePrice: card.originalPrice ?? null,
+          brand: card.supplierName ?? 'Нийлүүлэгч',
+          category: categoryNames[item.category ?? ''] || item.category || 'Нийлүүлэгч',
+          categorySlug: item.category || 'supplier',
+          rating: card.rating ?? 0,
+          reviewCount: card.reviewCount ?? 0,
+          inStock: card.inStock !== false,
+          stock: card.stock,
+          imageUrl: card.image,
+          tags: [item.category ?? '', item.slug],
+        };
+      });
 
     if (filters.sort === 'price_asc') hits = [...hits].sort((a, b) => a.price - b.price);
     if (filters.sort === 'price_desc') hits = [...hits].sort((a, b) => b.price - a.price);
@@ -243,6 +259,7 @@ function hitToCard(hit: AlgoliaHit): ProductCardData {
     rating: hit.rating,
     reviewCount: hit.reviewCount,
     inStock: hit.inStock,
+    stock: hit.stock,
     badge: hit.salePrice ? 'ХЯМДРАЛ' : undefined,
   };
 }

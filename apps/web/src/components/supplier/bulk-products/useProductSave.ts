@@ -1,6 +1,7 @@
 'use client';
 
 import { vendureShopFetch } from '@/lib/vendure';
+import { parsePrice } from '@/lib/price';
 import type { ProductRow } from './types';
 
 const CREATE_SUPPLIER_PRODUCT_MUTATION = `
@@ -23,14 +24,10 @@ function toSlug(value: string) {
     .replace(/^-|-$/g, '');
 }
 
-function toMinorUnits(value: string) {
-  return Math.round(Number(value.replace(/[^\d]/g, '')) * 100);
-}
-
 function getRequiredErrors(row: ProductRow): Array<'name' | 'price' | 'quantity'> {
   const invalidFields: Array<'name' | 'price' | 'quantity'> = [];
   if (!row.name.trim()) invalidFields.push('name');
-  if (toMinorUnits(row.price) <= 0) invalidFields.push('price');
+  if (parsePrice(row.price) <= 0) invalidFields.push('price');
   if (!row.quantity.trim() || Number(row.quantity) < 0) invalidFields.push('quantity');
   return invalidFields;
 }
@@ -54,7 +51,7 @@ export function useProductSave(
           name: row.name.trim(),
           slug: `${toSlug(row.name)}-${Date.now()}`,
           image: row.image,
-          price: toMinorUnits(row.price),
+          price: parsePrice(row.price),
           stock: Number(row.quantity) || 0,
           category: row.category.trim(),
           description: row.unit.trim(),

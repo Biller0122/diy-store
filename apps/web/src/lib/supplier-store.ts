@@ -26,6 +26,7 @@ interface SupplierState {
   supplier: SupplierUser | null;
   devOtp: string | null;
   isLoading: boolean;
+  hasHydrated: boolean;
   error: string | null;
   requestLoginOtp: (email: string) => Promise<boolean>;
   verifyLoginOtp: (email: string, otp: string) => Promise<{ success: boolean; redirectTo?: string }>;
@@ -172,6 +173,7 @@ export const useSupplierStore = create<SupplierState>()(
       supplier: null,
       devOtp: null,
       isLoading: false,
+      hasHydrated: false,
       error: null,
 
       requestLoginOtp: async (emailInput) => {
@@ -270,6 +272,7 @@ export const useSupplierStore = create<SupplierState>()(
       partialize: (s) => ({ supplier: s.supplier }),
       onRehydrateStorage: () => (state) => {
         if (state?.supplier) setSupplierCookies(state.supplier);
+        if (state) state.hasHydrated = true;
       },
     },
   ),

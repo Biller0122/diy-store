@@ -4,8 +4,10 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 're
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ChevronDown, ImagePlus, Package, Save, Sparkles, Wand2 } from 'lucide-react';
+import { makeProductSlug, normalizeProductPrice, onlyProductDigits } from '@diy-store/api-client';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { vendureShopFetch } from '@/lib/vendure';
+import { parsePrice } from '@/lib/price';
 import {
   buildCategoryGroups,
   getCategoryDisplayName,
@@ -102,24 +104,6 @@ const PRODUCT_CATEGORIES_QUERY = `
     }
   }
 `;
-
-function makeSlug(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9\u0400-\u04ff-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-function normalizePrice(value: string) {
-  return Number(value.replace(/[^\d]/g, ''));
-}
-
-function onlyDigits(value: string) {
-  return value.replace(/[^\d]/g, '');
-}
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/ё/g, 'е').trim();
@@ -220,7 +204,7 @@ export default function NewSupplierProductPage() {
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      if (key === 'name' && !prev.slug) next.slug = makeSlug(String(value));
+      if (key === 'name' && !prev.slug) next.slug = makeProductSlug(String(value));
       return next;
     });
     setErrors((prev) => ({ ...prev, [key]: '' }));
@@ -281,7 +265,7 @@ export default function NewSupplierProductPage() {
       setForm((prev) => ({
         ...prev,
         name: result.name?.trim() || prev.name,
-        slug: prev.slug || makeSlug(result.name ?? ''),
+        slug: prev.slug || makeProductSlug(result.name ?? ''),
         description: result.description?.trim()
           ? `${result.description.trim()}${result.unit ? `\nНэгж: ${result.unit}` : ''}`
           : prev.description,
@@ -340,8 +324,8 @@ export default function NewSupplierProductPage() {
     const next: Record<string, string> = {};
     if (form.name.trim().length < 2) next.name = 'Барааны нэр оруулна уу';
     if (!form.slug.trim()) next.slug = 'Slug автоматаар үүсэхгүй бол гараар оруулна уу';
-    if (normalizePrice(form.price) <= 0) next.price = 'Үнэ зөв оруулна уу';
-    if (form.originalPrice && normalizePrice(form.originalPrice) <= normalizePrice(form.price)) {
+    if (normalizeProductPrice(form.price) <= 0) next.price = 'Үнэ зөв оруулна уу';
+    if (form.originalPrice && normalizeProductPrice(form.originalPrice) <= normalizeProductPrice(form.price)) {
       next.originalPrice = 'Хямдралын өмнөх үнэ үндсэн үнээс их байх ёстой';
     }
     if (Number(form.stock) < 0 || Number.isNaN(Number(form.stock))) next.stock = 'Нөөцийн тоо зөв оруулна уу';
@@ -364,8 +348,8 @@ export default function NewSupplierProductPage() {
       name: form.name.trim(),
       slug: form.slug.trim(),
       image: form.image.trim(),
-      price: normalizePrice(form.price) * 100,
-      originalPrice: form.originalPrice ? normalizePrice(form.originalPrice) * 100 : undefined,
+      price: parsePrice(form.price),
+      originalPrice: form.originalPrice ? parsePrice(form.originalPrice) : undefined,
       rating: 0,
       reviewCount: 0,
       badge: 'ШИНЭ',
@@ -433,7 +417,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Барааны код (SKU/slug) *</span>
             <input
               value={form.slug}
-              onChange={(event) => setField('slug', makeSlug(event.target.value))}
+              onChange={(event) => setField('slug', makeProductSlug(event.target.value))}
               placeholder="dulux-easycare-white"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.slug ? 'border-error' : 'border-[var(--glass-border)]'}`}
             />
@@ -485,7 +469,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Үнэ *</span>
             <input
               value={form.price}
-              onChange={(event) => setField('price', onlyDigits(event.target.value))}
+              onChange={(event) => setField('price', onlyProductDigits(event.target.value))}
               inputMode="numeric"
               placeholder="59900"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.price ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -497,7 +481,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Хямдралын өмнөх үнэ</span>
             <input
               value={form.originalPrice}
-              onChange={(event) => setField('originalPrice', onlyDigits(event.target.value))}
+              onChange={(event) => setField('originalPrice', onlyProductDigits(event.target.value))}
               inputMode="numeric"
               placeholder="69900"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.originalPrice ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -509,7 +493,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Нөөц</span>
             <input
               value={form.stock}
-              onChange={(event) => setField('stock', onlyDigits(event.target.value))}
+              onChange={(event) => setField('stock', onlyProductDigits(event.target.value))}
               inputMode="numeric"
               placeholder="12"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.stock ? 'border-error' : 'border-[var(--glass-border)]'}`}

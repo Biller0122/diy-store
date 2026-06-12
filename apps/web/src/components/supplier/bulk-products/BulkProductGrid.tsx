@@ -3,15 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataGrid, SelectColumn, renderTextEditor, type Column, type RowsChangeData } from 'react-data-grid';
 import Papa from 'papaparse';
+import {
+  analyzeProductImage,
+  csvFieldValue,
+  fileToDataUrl,
+  isSupportedProductImage,
+  MAX_PRODUCT_IMAGE_BYTES,
+  type ProductImageAnalysis,
+} from '@diy-store/api-client';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { useProductSave } from './useProductSave';
 import type { ProductRow, ProductStatus } from './types';
 import styles from './BulkProductGrid.module.css';
 
-type AnalyzeResponse = { name?: string; category?: string; unit?: string; confidence?: number };
-
 const DRAFT_KEY = 'supplier_product_draft';
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 function makeRow(patch: Partial<ProductRow> = {}): ProductRow {
   return {
@@ -41,33 +46,8 @@ function statusClass(status: ProductStatus) {
   return `${styles.status} ${styles.new}`;
 }
 
-function isImage(file: File) {
-  return file.type === 'image/jpeg' || file.type === 'image/png';
-}
-
-function csvValue(record: Record<string, unknown>, keys: string[]) {
-  for (const [key, value] of Object.entries(record)) {
-    if (keys.includes(key.trim().toLowerCase())) return value == null ? '' : String(value);
-  }
-  return '';
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Зураг уншихад алдаа гарлаа'));
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function analyzeImage(file: File, category?: string): Promise<AnalyzeResponse> {
-  const formData = new FormData();
-  formData.append('image', file);
-  if (category) formData.append('category', category);
-  const response = await fetch('/analyze-product', { method: 'POST', body: formData });
-  if (!response.ok) throw new Error(`AI шинжилгээний алдаа: ${response.status}`);
-  return response.json() as Promise<AnalyzeResponse>;
+async function analyzeImage(file: File, category?: string): Promise<ProductImageAnalysis> {
+  return analyzeProductImage(file, { endpoint: '/analyze-product', category });
 }
 
 export function BulkProductGrid({ onSaved }: { onSaved?: () => void }) {
@@ -140,11 +120,11 @@ export function BulkProductGrid({ onSaved }: { onSaved?: () => void }) {
   }
 
   async function setImage(rowId: string, file: File, autoAnalyze: boolean) {
-    if (!isImage(file)) {
+    if (!isSupportedProductImage(file)) {
       setToast('Зөвхөн JPG эсвэл PNG зураг оруулна уу');
       return;
     }
-    if (file.size > MAX_IMAGE_BYTES) {
+    if (file.size > MAX_PRODUCT_IMAGE_BYTES) {
       setToast('Зургийн хэмжээ 5MB-аас их байна');
       return;
     }
@@ -170,7 +150,7 @@ export function BulkProductGrid({ onSaved }: { onSaved?: () => void }) {
   async function onDrop(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDropActive(false);
-    const files = Array.from(event.dataTransfer.files).filter(isImage);
+    const files = Array.from(event.dataTransfer.files).filter(isSupportedProductImage);
     const created = await Promise.all(files.map(async (file) => makeRow({
       image: await fileToDataUrl(file),
       imageFile: file,
@@ -188,17 +168,17 @@ export function BulkProductGrid({ onSaved }: { onSaved?: () => void }) {
       complete: (result) => {
         let skipped = 0;
         const imported = result.data.flatMap((record) => {
-          const name = csvValue(record, ['нэр', 'name']);
+          const name = csvFieldValue(record, ['нэр', 'name']);
           if (!name.trim()) {
             skipped += 1;
             return [];
           }
           return [makeRow({
             name,
-            price: csvValue(record, ['үнэ', 'price']),
-            quantity: csvValue(record, ['тоо', 'quantity']),
-            category: csvValue(record, ['ангилал', 'category']),
-            unit: csvValue(record, ['нэгж', 'unit']),
+            price: csvFieldValue(record, ['үнэ', 'price']),
+            quantity: csvFieldValue(record, ['тоо', 'quantity']),
+            category: csvFieldValue(record, ['ангилал', 'category']),
+            unit: csvFieldValue(record, ['нэгж', 'unit']),
           })];
         });
         setRows((current) => [...current, ...imported]);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,7 +39,10 @@ const TRUST_ITEMS = [
 const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL || 'https://shoptool.mn').replace(/\/$/, '');
 
 function openWebPath(path: string) {
-  Linking.openURL(`${WEB_URL}${path}`).catch(() => {});
+  Linking.openURL(`${WEB_URL}${path}`).catch((error) => {
+    console.error('[HomeScreen] open web link failed', error);
+    Alert.alert('Холбоос нээгдсэнгүй', 'Дараа дахин оролдоно уу.');
+  });
 }
 
 function getCollectionProductCount(collection: any) {

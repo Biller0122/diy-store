@@ -9,9 +9,11 @@ const REQUIRED_PRODUCTION_ENV = [
 ] as const;
 
 const RECOMMENDED_PRODUCTION_ENV = [
-  'CLEANUP_SERVICE_URL',
   'STRAPI_API_TOKEN',
-  'GOOGLE_CLIENT_ID',
+  'NEXT_PUBLIC_ALGOLIA_APP_ID',
+  'NEXT_PUBLIC_ALGOLIA_SEARCH_KEY',
+  'NEXT_PUBLIC_ALGOLIA_INDEX_NAME',
+  'NEXT_PUBLIC_GOOGLE_CLIENT_ID',
 ] as const;
 
 export function validateWebEnv(options: EnvValidationOptions = {}) {
@@ -28,7 +30,10 @@ export function validateWebEnv(options: EnvValidationOptions = {}) {
     console.warn(`[env] ${message}`);
   }
 
-  const missingRecommended = RECOMMENDED_PRODUCTION_ENV.filter((key) => !env[key]);
+  const missingRecommended = [
+    ...RECOMMENDED_PRODUCTION_ENV.filter((key) => !env[key]),
+    !env.CLEANUP_SERVICE_URL && !env.GPU_SERVICE_URL ? 'CLEANUP_SERVICE_URL or GPU_SERVICE_URL' : '',
+  ].filter(Boolean);
   if (missingRecommended.length > 0) {
     console.warn(`[env] Missing recommended production env: ${missingRecommended.join(', ')}`);
   }

@@ -9,11 +9,16 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
-    splash: { backgroundColor: '#08080E' },
+    splash: {
+      image: './assets/icon.png',
+      backgroundColor: '#08080E',
+    },
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'mn.diy.customer',
+      buildNumber: '1',
       infoPlist: {
+        NSLocationWhenInUseUsageDescription: 'Хүргэлтийн хаяг болон захиалгын явцыг газрын зураг дээр зөв харуулахын тулд таны байршлыг ашиглана.',
         NSAppTransportSecurity: {
           NSAllowsArbitraryLoads: !isProduction,
         },
@@ -21,7 +26,11 @@ module.exports = {
     },
     android: {
       package: 'mn.diy.customer',
-      adaptiveIcon: { backgroundColor: '#08080E' },
+      versionCode: 1,
+      adaptiveIcon: {
+        foregroundImage: './assets/icon.png',
+        backgroundColor: '#08080E',
+      },
     },
     web: { favicon: './assets/favicon.png', bundler: 'metro' },
     plugins: ['expo-router'],

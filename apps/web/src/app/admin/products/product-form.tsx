@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ArrowLeft, FileText, GripVertical, ImagePlus, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { MOCK_PRODUCTS, type AdminProduct } from '@/lib/admin-data';
+import { formatPrice } from '@/lib/price';
 
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 
@@ -26,7 +27,7 @@ export default function ProductForm({ product }: { product?: AdminProduct }) {
   const [description, setDescription] = useState(product?.description ?? '');
   const [category, setCategory] = useState(product?.collections[0]?.name ?? 'Багаж хэрэгсэл');
   const [brand, setBrand] = useState('');
-  const [price, setPrice] = useState(firstVariant ? String(Math.round(firstVariant.priceWithTax / 100)) : '');
+  const [price, setPrice] = useState(firstVariant ? formatPrice(firstVariant.priceWithTax) : '');
   const [salePrice, setSalePrice] = useState('');
   const [stock, setStock] = useState(firstVariant ? String(firstVariant.stockOnHand) : '');
   const [sku, setSku] = useState(firstVariant?.sku ?? '');

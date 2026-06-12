@@ -51,18 +51,32 @@ describe('CartStore', () => {
   });
 
   test('addItem uses collision-resistant row ids', () => {
+    const randomUUID = jest.spyOn(globalThis.crypto, 'randomUUID').mockReturnValueOnce('00000000-0000-4000-8000-000000000001').mockReturnValueOnce('00000000-0000-4000-8000-000000000002');
     useCartStore.getState().addItem(mockProduct);
     useCartStore.getState().addItem({ ...mockProduct2, variantId: 'v2' });
     const ids = useCartStore.getState().items.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids[0]).toMatch(/^v1-/);
-    expect(ids[0]).not.toBe('v1-1700000000000');
+    expect(ids).toEqual([
+      'v1-00000000-0000-4000-8000-000000000001',
+      'v2-00000000-0000-4000-8000-000000000002',
+    ]);
+    randomUUID.mockRestore();
   });
 
   test('addItem same product increases qty', () => {
     useCartStore.getState().addItem(mockProduct);
     useCartStore.getState().addItem(mockProduct);
     expect(useCartStore.getState().items[0].qty).toBe(2);
+  });
+
+  test('addItem and updateQty do not exceed stock', () => {
+    useCartStore.getState().addItem({ ...mockProduct, qty: 2, stock: 3 });
+    useCartStore.getState().addItem({ ...mockProduct, qty: 2, stock: 3 });
+    const item = useCartStore.getState().items[0];
+    expect(item.qty).toBe(2);
+
+    useCartStore.getState().updateQty(item.id, 10);
+    expect(useCartStore.getState().items[0].qty).toBe(3);
   });
 
   test('products from different suppliers create separate groups', () => {
@@ -106,8 +120,8 @@ describe('CartStore', () => {
     expect(calcSubtotal(state.items)).toBe(0);
   });
 
-  test('calcTotal includes delivery and discounts', () => {
+  test('calcTotal ignores client-only promo discounts', () => {
     const items = [{ ...mockProduct, id: 'row-1', price: 10000, qty: 2 }];
-    expect(calcTotal(items, { code: 'DIY10', discountPct: 10, label: '10%' }, 3000)).toBe(21000);
+    expect(calcTotal(items, { code: 'DIY10', discountPct: 10, label: '10%' }, 3000)).toBe(23000);
   });
 });

@@ -126,18 +126,18 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function SupplierGuard({ children }: { children: React.ReactNode }) {
-  const { supplier } = useSupplierStore();
+  const { supplier, hasHydrated } = useSupplierStore();
   const router = useRouter();
   const pathname = usePathname();
   const publicRoute = pathname === '/supplier/login' || pathname === '/supplier/register' || pathname === '/supplier/pending';
 
   useEffect(() => {
-    if (!supplier && !publicRoute) {
+    if (hasHydrated && !supplier && !publicRoute) {
       router.replace('/supplier/login');
     }
-  }, [supplier, publicRoute, router]);
+  }, [supplier, hasHydrated, publicRoute, router]);
 
-  if (!supplier && !publicRoute) {
+  if ((!hasHydrated || !supplier) && !publicRoute) {
     return (
       <div className="min-h-screen bg-dark flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />

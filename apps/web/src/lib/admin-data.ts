@@ -1,5 +1,5 @@
-// Mock data + Vendure Admin API helpers for admin panel
-// All real API calls fall back to mock data when server is unavailable
+// Seed/demo data used by static admin screens. Live API hooks must not fall
+// back to these values when the server is unavailable.
 
 export interface AdminOrder {
   id: string;

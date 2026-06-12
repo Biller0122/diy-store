@@ -1,23 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DataGrid, SelectColumn, renderTextEditor, type Column, type RowsChangeData } from 'react-data-grid';
 import Papa from 'papaparse';
+import {
+  analyzeProductImage,
+  csvFieldValue,
+  isSupportedProductImage,
+  MAX_PRODUCT_IMAGE_BYTES,
+  type ProductImageAnalysis,
+} from '@diy-store/api-client';
 import { useProductSave } from '../hooks/useProductSave';
 import type { ProductRow, ProductStatus } from '../types/product-grid';
 import styles from './ProductGrid.module.css';
-
-type AnalyzeResponse = {
-  name?: string;
-  category?: string;
-  unit?: string;
-  confidence?: number;
-};
 
 type DraftPayload = {
   rows: ProductRow[];
 };
 
 const DRAFT_KEY = 'supplier_product_draft';
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 function createEmptyRow(patch: Partial<ProductRow> = {}): ProductRow {
   return {
@@ -45,23 +44,6 @@ function statusClass(status: ProductStatus): string {
   if (status === 'saved') return `${styles.status} ${styles.statusSaved}`;
   if (status === 'failed') return `${styles.status} ${styles.statusFailed}`;
   return `${styles.status} ${styles.statusNew}`;
-}
-
-function normalizeCsvKey(key: string): string {
-  return key.trim().toLowerCase();
-}
-
-function getCsvValue(row: Record<string, unknown>, names: string[]): string {
-  for (const [key, value] of Object.entries(row)) {
-    if (names.includes(normalizeCsvKey(key))) {
-      return value == null ? '' : String(value);
-    }
-  }
-  return '';
-}
-
-function isImageFile(file: File): boolean {
-  return file.type === 'image/jpeg' || file.type === 'image/png';
 }
 
 async function uploadImage(file: File): Promise<string | undefined> {
@@ -99,32 +81,9 @@ async function uploadImage(file: File): Promise<string | undefined> {
   }
 }
 
-async function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const [prefix, data] = dataUrl.split(',');
-      const mediaType = prefix.match(/data:([^;]+)/)?.[1] ?? file.type ?? 'image/jpeg';
-      resolve({ data, mediaType });
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function analyzeImage(file: File, category?: string): Promise<AnalyzeResponse> {
-  const { data, mediaType } = await fileToBase64(file);
-
+async function analyzeImage(file: File, category?: string): Promise<ProductImageAnalysis> {
   const apiBase = String(import.meta.env.VITE_API_URL ?? '').replace(/\/(shop-api|admin-api)$/, '');
-  const response = await fetch(`${apiBase}/analyze-product`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ image: data, mediaType, ...(category ? { category } : {}) }),
-  });
-
-  if (!response.ok) throw new Error(`AI шинжилгээний алдаа: ${response.status}`);
-  return response.json() as Promise<AnalyzeResponse>;
+  return analyzeProductImage(file, { endpoint: `${apiBase}/analyze-product`, category, mode: 'json' });
 }
 
 const WALLPAPER_CATEGORIES = new Set(['обой', 'кафель', 'ламинат', 'паркет']);
@@ -245,11 +204,11 @@ export function ProductGrid() {
   }, []);
 
   async function processImageForRow(rowId: string, file: File, runAi: boolean): Promise<void> {
-    if (!isImageFile(file)) {
+    if (!isSupportedProductImage(file)) {
       setToast('Зөвхөн JPG эсвэл PNG зураг оруулна уу');
       return;
     }
-    if (file.size > MAX_IMAGE_BYTES) {
+    if (file.size > MAX_PRODUCT_IMAGE_BYTES) {
       setToast('Зургийн хэмжээ 5MB-аас их байна');
       return;
     }
@@ -315,7 +274,7 @@ export function ProductGrid() {
   async function handleGridDrop(event: React.DragEvent<HTMLDivElement>): Promise<void> {
     event.preventDefault();
     setDropActive(false);
-    const files = Array.from(event.dataTransfer.files).filter(isImageFile);
+    const files = Array.from(event.dataTransfer.files).filter(isSupportedProductImage);
     const newRows = files.map((file) => createEmptyRow({
       imageFile: file,
       imageUrl: URL.createObjectURL(file),
@@ -340,17 +299,17 @@ export function ProductGrid() {
       complete: (result) => {
         let skipped = 0;
         const imported = result.data.flatMap((record) => {
-          const name = getCsvValue(record, ['нэр', 'name']);
+          const name = csvFieldValue(record, ['нэр', 'name']);
           if (!name.trim()) {
             skipped += 1;
             return [];
           }
           return [createEmptyRow({
             name,
-            price: getCsvValue(record, ['үнэ', 'price']),
-            quantity: getCsvValue(record, ['тоо', 'quantity']),
-            category: getCsvValue(record, ['ангилал', 'category']),
-            unit: getCsvValue(record, ['нэгж', 'unit']),
+            price: csvFieldValue(record, ['үнэ', 'price']),
+            quantity: csvFieldValue(record, ['тоо', 'quantity']),
+            category: csvFieldValue(record, ['ангилал', 'category']),
+            unit: csvFieldValue(record, ['нэгж', 'unit']),
           })];
         });
         setRows((current) => [...current, ...imported]);
