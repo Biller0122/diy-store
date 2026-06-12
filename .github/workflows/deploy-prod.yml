@@ -43,7 +43,7 @@ env:
   WEB_ECR_REPOSITORY: ${{ vars.WEB_ECR_REPOSITORY || 'diy-store-web' }}
   SERVER_CONTAINER_NAME: ${{ vars.SERVER_CONTAINER_NAME || 'server' }}
   WEB_CONTAINER_NAME: ${{ vars.WEB_CONTAINER_NAME || 'web' }}
-  PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com' }}
+  PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://shoptool.mn' }}
   NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL || '' }}
   GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '' }}
 
@@ -286,7 +286,7 @@ jobs:
           check_exact_200() {
             local path="$1"
             local code
-            code="$(curl -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
+            code="$(curl -k -L -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
             echo "$path -> $code"
             [[ "$code" == "200" ]]
           }
@@ -294,7 +294,7 @@ jobs:
           check_not_5xx() {
             local path="$1"
             local code
-            code="$(curl -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
+            code="$(curl -k -L -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
             echo "$path -> $code"
             [[ "$code" != "000" && "$code" -lt 500 ]]
           }
