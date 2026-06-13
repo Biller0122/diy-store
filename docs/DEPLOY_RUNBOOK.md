@@ -1,112 +1,66 @@
-# Deploy Runbook — trackingToken засвар + privacy page-г production-д тараах
+# Deploy Runbook — DIY Store production (shoptool.mn)
 
-Энэ нь одоо production (shoptool.mn) дээр гарч буй **`column DeliveryRequest.trackingToken does not exist`** алдааг засах, мөн privacy page-г амьдруулах тодорхой алхмууд.
+## Бодит архитектур (ЧУХАЛ)
 
-> shoptool.mn аль хэдийн амьд тул энэ бол **update deploy** (анхны deploy биш). Сервер: Ubuntu EC2, Docker Compose, RDS Postgres.
+Production нь **EC2 + SSH + docker-compose БИШ**. `Makefile` болон `deploy/aws/README.md` нь хуучин/өөр хувилбарыг тайлбарладаг — бодит production дараах байдалтай:
 
----
+- **AWS ECS Fargate** дээр контейнер ажиллана (server + web tasks)
+- Урд талд нь **ALB** (Application Load Balancer) — `shoptool.mn`-ийн 3 IP нь ALB-ийнх
+- **RDS Postgres** өгөгдөл хадгална
+- Security groups: `diy-store-alb`, `diy-store-ecs-tasks`, `diy-store-web-tasks`
+- **SSH хийх сервер байхгүй** (Fargate-д SSH байхгүй)
 
-## ⚠️ Эхлэхээс өмнө шийдэх 2 блокер
+## Deploy яаж явдаг вэ — БҮРЭН АВТОМАТ
 
-### Блокер 1 — Код `dev`-д байгаа, deploy `main` татдаг
-- Бидний засвар (trackingToken migration `apps/server/src/migrations/1749000000000-add-tracking-token.ts` + privacy page) нь **`dev` branch**-д push хийгдсэн.
-- `Makefile:30` болон README §9 нь **`main`** branch татдаг.
-- GitHub дээр `main` нь **protected** — шууд push татгалздаг.
+`.github/workflows/deploy-prod.yml` нь deploy-г бүрэн автоматжуулсан:
 
-**Шийдэл (аль нэгийг сонгох):**
-- **A (зөвлөх):** GitHub дээр `dev → main` Pull Request үүсгэж, approve хийж merge. Дараа нь сервер `main` татахад засвар орно.
-- **B (хурдан):** Серверийн `Makefile`-ийн `pull` target-ыг `git pull origin dev` болгох, эсвэл серверт `git checkout dev && git pull origin dev` хийгээд deploy. (Deploy branch = ажиллаж буй branch болгоно.)
+- **`dev` эсвэл `main`-д push хийхэд** ажиллана (GitHub Actions)
+- **`dev`-д push** → server + web хоёуланг production ECS-д deploy хийдэг (AWS validation)
+- `main`-д push → өөрчлөгдсөн хэсгийг (server/web) илрүүлж deploy
+- `docs/**`, `**/*.md`, `progress.md` өөрчлөлт → deploy **триггерлэхгүй** (paths-ignore)
+- Урсгал: код build → Docker image → ECR push → ECS task definition шинэчлэх → `--force-new-deployment` → smoke test (`/health`, `/shop-api`, `/`, `/admin`, `/driver`, `/supplier`)
 
-### Блокер 2 — SSH хандалт
-- Deploy нь **AWS сервер дээр** ажиллана. Хэрэгтэй: серверийн **public IP** + `.pem` key (`D:\diy project\files\diy-store-key.pem`).
-- Security group §22 нь зөвхөн **тодорхой IP**-ээс SSH зөвшөөрдөг тул одоогийн IP нэмэгдсэн байх ёстой.
+**Гар аргаар deploy хийх шаардлагагүй.** Зүгээр л `dev`-д push хийнэ → Actions автоматаар production-д тарина.
 
-```bash
-ssh -i "/d/diy project/files/diy-store-key.pem" ubuntu@<EC2_PUBLIC_IP>
-```
-
----
-
-## Deploy алхмууд (сервер дээр)
-
-### 1. Холбогдож кодоо шинэчлэх
-```bash
-ssh -i "<key>.pem" ubuntu@<EC2_PUBLIC_IP>
-cd ~/diy-store
-
-# Блокер 1-ийн сонголтоор:
-# A: main merge хийсэн бол —
-git pull origin main
-# B: dev ашиглах бол —
-# git fetch origin && git checkout dev && git reset --hard origin/dev
-```
-
-### 2. trackingToken баганыг нэмэх (алдааг засна)
-Production DB-д багана дутуу байгааг 3 аргаар засаж болно. **Хамгийн аюулгүй нь raw SQL (C):**
-
-**C — RDS дээр шууд SQL (зөвлөх):**
-```bash
-# Серверээс RDS руу psql (DB_HOST, DB_USERNAME нь .env.production-д бий)
-docker compose -f docker-compose.aws.yml --env-file .env.production exec server \
-  node -e "const{DataSource}=require('typeorm');/* эсвэл доорх psql */"
-```
-Эсвэл RDS-д шууд (psql client):
-```sql
-ALTER TABLE "delivery_request"
-  ADD COLUMN IF NOT EXISTS "trackingToken" character varying NOT NULL DEFAULT '';
-```
-
-**B — Migration ажиллуулах** (build хийсний дараа `dist/migrations/*.js` үүснэ):
-```bash
-docker compose -f docker-compose.aws.yml --env-file .env.production build server
-# Vendure migration ажиллуулах (server image дотроос)
-docker compose -f docker-compose.aws.yml --env-file .env.production run --rm server \
-  npx vendure migrate
-```
-
-**A — DB_SYNCHRONIZE түр асаах** (README §7 загвар, ЭРСДЭЛТЭЙ — schema drift үүсгэж болзошгүй, зөвлөхгүй):
-```bash
-# .env.production: DB_SYNCHRONIZE=true болгоод server restart, дараа нь lock-schema.sh
-```
-
-> Зөвлөмж: **C (raw SQL)** хамгийн найдвартай. Дараа нь schema-г `DB_SYNCHRONIZE=false`-д түгжээтэй байлгана (`bash deploy/aws/lock-schema.sh`).
-
-### 3. Бүрэн rebuild + restart (privacy page web-д тарна)
-```bash
-bash deploy/aws/deploy.sh
-# эсвэл зөвхөн web/server:
-# docker compose -f docker-compose.aws.yml --env-file .env.production build web-customer server
-# docker compose -f docker-compose.aws.yml --env-file .env.production up -d web-customer server
-```
-
-### 4. Баталгаажуулах
-```bash
-docker compose -f docker-compose.aws.yml --env-file .env.production ps
-docker compose -f docker-compose.aws.yml --env-file .env.production logs -f server
-```
-Browser/curl:
-- https://shoptool.mn/privacy → privacy page гарч ирэх ёстой
-- Нийлүүлэгчийн "Орлого" хуудас → `trackingToken` алдаа **арилсан** байх ёстой
-- Захиалга/хүргэлт flow ажиллаж байгааг шалгах
+GitHub Actions явцыг харах: https://github.com/Biller0122/diy-store/actions
 
 ---
 
-## 📱 Store review-гийн нэвтрэлт (OTP асуудал)
+## Schema өөрчлөлт яаж хийдэг вэ (ЧУХАЛ — migration ажиллахгүй!)
 
-Customer/Supplier апп **OTP нэвтрэлттэй** тул store review хийгчид код авч чадахгүй → татгалзах эрсдэлтэй.
+`apps/server/src/index.ts`-ийн bootstrap нь **`runMigrations()`-г дууддаггүй**. Тиймээс `apps/server/src/migrations/*.ts` файлууд **production-д ажиллахгүй**.
 
-**Шийдэл:** `.env.production`-д `OTP_MOCK_MODE` тохиргоо бий (README §4, §8).
-- `OTP_MOCK_MODE=true` үед OTP mock хийгддэг (тогтсон/автомат код) — review хийгчид нэвтэрч чадна.
-- Гэхдээ public launch-д `OTP_MOCK_MODE=false` байх ёстой (README §8) — жинхэнэ хэрэглэгчид аюулгүй.
+Оронд нь boot бүрд **`ensureRuntimeSchema()`** (`apps/server/src/runtime-schema.ts`) ажиллаж, `RUNTIME_COLUMNS` жагсаалт дахь багануудыг `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`-ээр нэмдэг.
 
-**Зөвлөмж:** Mock mode-г бүхэлд нь асаахын оронд, тогтсон **demo бүртгэл** (тодорхой утас/и-мэйл) -д л тогтмол OTP код буцаадаг логик нэмэх нь зөв. Submit-ийн "App Review Information"-д энэ demo бүртгэл + кодыг бичиж өгнө. (Энэ нь нэмэлт код өөрчлөлт — submit-ийн өмнө хийнэ.)
+**Шинэ багана нэмэх зөв арга:**
+1. Entity-д `@Column` нэмэх (жишээ `delivery-request.entity.ts`)
+2. **Мөн** `runtime-schema.ts`-ийн `RUNTIME_COLUMNS`-д тухайн баганыг нэмэх (table нэр snake_case, ж: `DeliveryRequest` → `delivery_request`)
+3. `dev`-д push → auto-deploy → boot дээр багана автоматаар үүснэ
+
+> ⚠️ Зөвхөн entity-д нэмээд runtime-schema-д нэмэхгүй бол `DB_SYNCHRONIZE=false` (production) тул багана үүсэхгүй → "column does not exist" алдаа гарна. Яг ийм шалтгаанаар `trackingToken` алдаа гарсан (2026-06-13 зассан).
 
 ---
 
-## Шалгах checklist (deploy дараа)
-- [ ] https://shoptool.mn/privacy амьд
-- [ ] Нийлүүлэгч "Орлого"/"Захиалгууд" хуудсанд trackingToken алдаагүй
-- [ ] `delivery_request` хүснэгтэд `trackingToken` багана бий (`\d delivery_request`)
-- [ ] DB_SYNCHRONIZE=false түгжээтэй (lock-schema.sh)
-- [ ] Захиалга үүсгэх → tracking flow ажиллана
+## Жишээ: trackingToken алдааг зассан нь (2026-06-13)
+
+Алдаа: `column DeliveryRequest.trackingToken does not exist` (нийлүүлэгчийн Орлого/Захиалга хуудас).
+
+Засвар: `runtime-schema.ts`-ийн `RUNTIME_COLUMNS`-д нэмсэн:
+```ts
+{ table: 'delivery_request', name: 'trackingToken', definition: "character varying NOT NULL DEFAULT ''" }
 ```
+→ `dev`-д push → Actions auto-deploy → server boot → багана үүснэ → алдаа арилна.
+
+---
+
+## Deploy дараах баталгаажуулалт
+- [ ] GitHub Actions ногоон (амжилттай дууссан): https://github.com/Biller0122/diy-store/actions
+- [ ] https://shoptool.mn/privacy → privacy page амьд
+- [ ] Нийлүүлэгч "Орлого"/"Захиалгууд" → trackingToken алдаагүй
+- [ ] Захиалга/tracking flow ажиллана
+
+---
+
+## Анхаарах (related risk)
+- `apps/server/src/migrations/1780488000000-add-embedding.ts` migration бас **ажиллахгүй** (runMigrations дуудагдахгүй). Search/embedding-ийн `embedding` багана хэрэв production-д дутуу бол ижил аргаар (runtime-schema эсвэл өөр механизм) шийдэх шаардлагатай байж магадгүй. Search feature ашиглах үед шалгах.
+- GitHub Actions ажиллахын тулд `AWS_DEPLOY_ROLE_ARN` secret + ECS/ECR нөөц тохирсон байх ёстой.
