@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { config } from './vendure-config';
 import { handleDriverOfferDecision, startRealtimeServer } from './plugins/realtime.plugin';
 import { DeliveryRequest } from './plugins/delivery/delivery-request.entity';
+import { ensureRuntimeSchema } from './runtime-schema';
 
 function registerRealtimeDecisionWebhook(app: Awaited<ReturnType<typeof bootstrap>>) {
   const httpAdapter = app.getHttpAdapter() as any;
@@ -30,10 +31,11 @@ function registerRealtimeDecisionWebhook(app: Awaited<ReturnType<typeof bootstra
 
 bootstrap(config)
   .then(async (app) => {
+    const dataSource = app.get(DataSource);
+    await ensureRuntimeSchema(dataSource);
     await app.get(JobQueueService).start();
     registerRealtimeDecisionWebhook(app);
     if (process.env.REALTIME_EMBEDDED !== 'false') {
-      const dataSource = app.get(DataSource);
       startRealtimeServer({
         canJoinOrder: async (principal, orderId, trackingToken) => {
           if (principal?.role === 'ADMIN') return true;
