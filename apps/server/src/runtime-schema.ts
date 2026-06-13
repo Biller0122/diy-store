@@ -17,6 +17,11 @@ const RUNTIME_COLUMNS: RuntimeColumn[] = [
     name: 'otpAttempts',
     definition: 'integer NOT NULL DEFAULT 0',
   },
+  {
+    table: 'delivery_request',
+    name: 'trackingToken',
+    definition: "character varying NOT NULL DEFAULT ''",
+  },
 ];
 
 function quoteIdentifier(value: string) {
