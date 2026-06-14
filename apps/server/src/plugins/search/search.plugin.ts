@@ -92,8 +92,17 @@ const SEARCH_SCHEMA_EXTENSION = gql`
     total: Int!
   }
 
+  type EmbeddingReindexResult {
+    started: Boolean!
+    message: String!
+  }
+
   extend type Query {
     semanticSearch(query: String!, take: Int): SemanticSearchResult!
+  }
+
+  extend type Mutation {
+    reindexEmbeddings: EmbeddingReindexResult!
   }
 `;
 
@@ -101,6 +110,10 @@ const SEARCH_SCHEMA_EXTENSION = gql`
   imports: [PluginCommonModule],
   providers: [EmbeddingService, SearchEventListener, SearchResolver],
   shopApiExtensions: {
+    schema: SEARCH_SCHEMA_EXTENSION,
+    resolvers: [SearchResolver],
+  },
+  adminApiExtensions: {
     schema: SEARCH_SCHEMA_EXTENSION,
     resolvers: [SearchResolver],
   },
