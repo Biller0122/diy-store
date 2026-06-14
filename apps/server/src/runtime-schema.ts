@@ -1,5 +1,7 @@
 import { DataSource } from 'typeorm';
 
+// Runtime additive schema guard: columns added here are created on boot via
+// ADD COLUMN IF NOT EXISTS (production runs with synchronize/migrations off).
 type RuntimeColumn = {
   table: string;
   name: string;
