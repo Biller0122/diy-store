@@ -8,6 +8,7 @@ import { Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { trackSearch, trackViewItemList } from '@/lib/analytics/ga4';
 import { vendureShopFetch } from '@/lib/vendure';
+import { dbProductToCard, type DbSupplierProduct, type DbSupplier } from '@/lib/supplier-products';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface AlgoliaHit {
   rating: number;
   reviewCount: number;
   inStock: boolean;
+  stock?: number;
   imageUrl: string;
   tags: string[];
 }
@@ -47,6 +49,48 @@ const SORT_LABELS: Record<SortOption, string> = {
 const ALGOLIA_APP_ID    = process.env.NEXT_PUBLIC_ALGOLIA_APP_ID;
 const ALGOLIA_SEARCH_KEY = process.env.NEXT_PUBLIC_ALGOLIA_SEARCH_KEY;
 const ALGOLIA_INDEX     = process.env.NEXT_PUBLIC_ALGOLIA_INDEX_NAME ?? 'diy_products';
+
+const TOKEN_VARIANTS: Record<string, string[]> = {
+  cement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  tsement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  sement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемент': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемэнт': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  armatur: ['armatur', 'armature', 'rebar', 'арматур'],
+  armature: ['armatur', 'armature', 'rebar', 'арматур'],
+  rebar: ['armatur', 'armature', 'rebar', 'арматур'],
+  'арматур': ['armatur', 'armature', 'rebar', 'арматур'],
+  toosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  tosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  brick: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  'тоосго': ['toosgo', 'tosgo', 'brick', 'тоосго'],
+};
+
+function normalizeSearchText(text: string) {
+  return text.toLowerCase().replace(/ё/g, 'е');
+}
+
+function getSearchTokens(query: string) {
+  return normalizeSearchText(query)
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function getTokenVariants(token: string) {
+  return TOKEN_VARIANTS[token] ?? [token];
+}
+
+function matchesSearch(query: string, values: Array<string | null | undefined>) {
+  const normalized = normalizeSearchText(query.trim());
+  const tokens = getSearchTokens(query);
+  const variants = tokens.flatMap(getTokenVariants);
+  const haystack = normalizeSearchText(values.filter(Boolean).join(' '));
+
+  if (!normalized) return true;
+  if (haystack.includes(normalized)) return true;
+  return variants.some((variant) => haystack.includes(variant));
+}
 
 const SUPPLIER_PRODUCTS_QUERY = `
   query SupplierProducts {
@@ -79,6 +123,23 @@ const PRODUCT_CATEGORIES_QUERY = `
   }
 `;
 
+const SUPPLIERS_QUERY = `
+  query SuppliersForSearch {
+    suppliers(status: "ACTIVE", take: 200, skip: 0) {
+      items {
+        id
+        businessName
+        slug
+        district
+        lat
+        lng
+        rating
+        reviewCount
+      }
+    }
+  }
+`;
+
 async function searchSupplierProducts(query: string, filters: {
   category?: string;
   inStock?: boolean;
@@ -87,46 +148,43 @@ async function searchSupplierProducts(query: string, filters: {
   sort?: SortOption;
 }, categoryNames: Record<string, string>): Promise<AlgoliaHit[]> {
   try {
-    const data = await vendureShopFetch<{ supplierProducts: { items: Array<{
-      id: string;
-      supplierId: string;
-      name: string;
-      slug: string;
-      image?: string | null;
-      price: number;
-      originalPrice?: number | null;
-      category?: string | null;
-      stock: number;
-      enabled: boolean;
-    }> } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 });
+    const [data, supplierData] = await Promise.all([
+      vendureShopFetch<{ supplierProducts: { items: DbSupplierProduct[] } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 }),
+      vendureShopFetch<{ suppliers: { items: Array<Pick<DbSupplier, 'id' | 'businessName' | 'slug' | 'district' | 'lat' | 'lng' | 'rating' | 'reviewCount'>> } }>(SUPPLIERS_QUERY, undefined, { revalidate: 0 }).catch(() => ({ suppliers: { items: [] } })),
+    ]);
+    const suppliersById = new Map(supplierData.suppliers.items.map((supplier) => [supplier.id, supplier]));
 
-    const q = query.trim().toLowerCase();
     let hits = data.supplierProducts.items
       .filter((item) => item.enabled)
-      .filter((item) => !q ||
-        item.name.toLowerCase().includes(q) ||
-        item.slug.toLowerCase().includes(q) ||
-        (item.category ?? '').toLowerCase().includes(q)
-      )
+      .filter((item) => matchesSearch(query, [
+        item.name,
+        item.slug,
+        item.category,
+        categoryNames[item.category ?? ''],
+      ]))
       .filter((item) => !filters.category || (item.category ?? 'supplier') === filters.category)
       .filter((item) => !filters.inStock || item.stock > 0)
       .filter((item) => !filters.priceMin || item.price >= filters.priceMin)
       .filter((item) => !filters.priceMax || item.price <= filters.priceMax)
-      .map((item) => ({
-        objectID: `supplier-${item.id}`,
-        name: item.name,
-        slug: item.slug,
-        price: item.price,
-        salePrice: item.originalPrice ?? null,
-        brand: 'Нийлүүлэгч',
-        category: categoryNames[item.category ?? ''] || item.category || 'Нийлүүлэгч',
-        categorySlug: item.category || 'supplier',
-        rating: 0,
-        reviewCount: 0,
-        inStock: item.stock > 0,
-        imageUrl: item.image ?? '',
-        tags: [item.category ?? '', item.slug],
-      }));
+      .map((item) => {
+        const card = dbProductToCard(item, suppliersById.get(item.supplierId));
+        return {
+          objectID: `supplier-${item.id}`,
+          name: card.name,
+          slug: card.slug,
+          price: card.price,
+          salePrice: card.originalPrice ?? null,
+          brand: card.supplierName ?? 'Нийлүүлэгч',
+          category: categoryNames[item.category ?? ''] || item.category || 'Нийлүүлэгч',
+          categorySlug: item.category || 'supplier',
+          rating: card.rating ?? 0,
+          reviewCount: card.reviewCount ?? 0,
+          inStock: card.inStock !== false,
+          stock: card.stock,
+          imageUrl: card.image,
+          tags: [item.category ?? '', item.slug],
+        };
+      });
 
     if (filters.sort === 'price_asc') hits = [...hits].sort((a, b) => a.price - b.price);
     if (filters.sort === 'price_desc') hits = [...hits].sort((a, b) => b.price - a.price);
@@ -201,6 +259,7 @@ function hitToCard(hit: AlgoliaHit): ProductCardData {
     rating: hit.rating,
     reviewCount: hit.reviewCount,
     inStock: hit.inStock,
+    stock: hit.stock,
     badge: hit.salePrice ? 'ХЯМДРАЛ' : undefined,
   };
 }
@@ -347,6 +406,18 @@ function SearchContent() {
     () => backendCategories.map((category) => category.slug),
     [backendCategories],
   );
+  const queryTokens = useMemo(() => getSearchTokens(query), [query]);
+  const groupedHits = useMemo(() => {
+    const groups = new Map<string, AlgoliaHit[]>();
+
+    hits.forEach((hit) => {
+      const key = hit.category || 'Бусад';
+      groups.set(key, [...(groups.get(key) ?? []), hit]);
+    });
+
+    return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [hits]);
+  const topCategories = groupedHits.slice(0, 3).map(([category]) => category);
 
   useEffect(() => {
     let mounted = true;
@@ -386,6 +457,10 @@ function SearchContent() {
       if (hits.length > 0) trackViewItemList('Search results', hits.slice(0, 12).map(h => ({ id: h.objectID, variantId: h.objectID, name: h.name, price: h.price })));
     }).finally(() => setLoading(false));
   }, [query, activeCategory, activeBrand, inStockOnly, priceMin, priceMax, sort, categoryNames, filterCategories]);
+
+  useEffect(() => {
+    setLocalQ(query);
+  }, [query]);
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -537,9 +612,66 @@ function SearchContent() {
             {loading ? (
               <Skeleton />
             ) : hits.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-                {hits.map((hit, i) => (
-                  <ProductCard key={hit.objectID} product={hitToCard(hit)} index={i} />
+              <div className="space-y-8">
+                <section className="rounded-2xl border border-[var(--glass-border)] bg-card p-4 sm:p-5">
+                  <div className="flex justify-end mb-5">
+                    <div className="max-w-full rounded-2xl bg-surface px-4 py-2 text-sm font-semibold text-foreground break-words">
+                      {query}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      Таны хайлтаар {total} бараа олдлоо.
+                    </p>
+                    <p className="text-sm text-foreground-muted leading-6">
+                      {topCategories.length > 0
+                        ? `${topCategories.join(', ')} ангиллуудаас хамгийн ойр тохирох бараануудыг ялгаж харууллаа.`
+                        : 'Хамгийн ойр тохирох бараануудыг ялгаж харууллаа.'}
+                    </p>
+                    {queryTokens.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {queryTokens.slice(0, 8).map((token) => (
+                          <span
+                            key={token}
+                            className="rounded-full border border-[var(--glass-border)] bg-surface px-3 py-1 text-xs text-foreground-muted"
+                          >
+                            {token}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {groupedHits.map(([category, items], groupIndex) => (
+                  <section key={category} className="space-y-3">
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <h2 className="text-base font-bold text-foreground">{category}</h2>
+                        <p className="text-xs text-foreground-muted">{items.length} бараа</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleFilterChange('category', items[0]?.categorySlug ?? '')}
+                        className="text-xs font-semibold text-brand hover:underline"
+                      >
+                        Энэ ангиллаар харах
+                      </button>
+                    </div>
+
+                    <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+                      <div className="grid auto-cols-[minmax(180px,220px)] grid-flow-col gap-4 sm:auto-cols-[minmax(200px,240px)]">
+                        {items.map((hit, i) => (
+                          <ProductCard
+                            key={hit.objectID}
+                            product={hitToCard(hit)}
+                            index={groupIndex * 2 + i}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </section>
                 ))}
               </div>
             ) : query ? (

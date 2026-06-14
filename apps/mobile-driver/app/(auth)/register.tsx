@@ -14,6 +14,7 @@ import { colors } from '../../src/theme';
 type Step = 1 | 2 | 3;
 
 const vehicleTypes: Driver['vehicleType'][] = ['MOTORCYCLE', 'CAR', 'VAN', 'TRUCK'];
+const PLATE_RE = /^([А-ЯӨҮA-Z]{2}-?\d{4}[А-ЯӨҮA-Z]{2}|\d{4}[А-ЯӨҮA-Z]{3})$/;
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -48,11 +49,12 @@ export default function RegisterScreen() {
   const submit = async () => {
     clearError();
     const nextErrors: Record<string, string> = {};
-    if (plate.trim().length < 5) nextErrors.plate = 'Улсын дугаараа оруулна уу';
+    const normalizedPlate = plate.replace(/\s/g, '').toUpperCase();
+    if (!PLATE_RE.test(normalizedPlate)) nextErrors.plate = 'Улсын дугаарын формат буруу байна (ж: УБ-1234АА эсвэл 1234УБА)';
     if (model.trim().length < 2) nextErrors.model = 'Машины загвараа оруулна уу';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    const ok = await register({ ownerName: name, email, password, phone, vehicleType, vehiclePlate: plate, vehicleModel: model });
+    const ok = await register({ ownerName: name, email, password, phone, vehicleType, vehiclePlate: normalizedPlate, vehicleModel: model.trim() });
     if (ok) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStep(3);

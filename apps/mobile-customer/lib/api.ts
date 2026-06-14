@@ -1,4 +1,17 @@
-const API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL || 'https://shop.example.com/shop-api';
+import { API_URL as BASE_API_URL, normalizeDeviceUrl } from '@/app/config';
+
+const API_URL = process.env.EXPO_PUBLIC_SHOP_API_URL
+  ? normalizeDeviceUrl(process.env.EXPO_PUBLIC_SHOP_API_URL)
+  : `${BASE_API_URL.replace(/\/$/, '')}/shop-api`;
+let sessionToken: string | null = null;
+
+export function setShopSessionToken(token: string | null) {
+  sessionToken = token;
+}
+
+export function getShopSessionToken() {
+  return sessionToken;
+}
 
 export async function shopFetch<T>(
   query: string,
@@ -8,27 +21,45 @@ export async function shopFetch<T>(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  const authToken = token ?? sessionToken;
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
   }
 
   const response = await fetch(API_URL, {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify({ query, variables }),
   });
 
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+  const nextToken = response.headers.get('vendure-auth-token');
+  if (nextToken) {
+    sessionToken = nextToken;
   }
 
-  const json = await response.json();
+  const text = await response.text();
+  let json: { data?: T; errors?: Array<{ message?: string }>; message?: string } | null = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    // Keep the raw body below so HTTP errors are still actionable.
+  }
 
-  if (json.errors && json.errors.length > 0) {
+  if (!response.ok) {
+    const message = json?.errors?.[0]?.message || json?.message || text || `HTTP error! status: ${response.status}`;
+    throw new Error(message);
+  }
+
+  if (json?.errors && json.errors.length > 0) {
     throw new Error(json.errors[0].message);
   }
 
-  return json.data as T;
+  if (!json?.data) {
+    throw new Error('API-с хоосон хариу ирлээ');
+  }
+
+  return json.data;
 }
 
 export const LOGIN_MUTATION = `
@@ -46,6 +77,23 @@ export const LOGIN_MUTATION = `
   }
 `;
 
+export const PASSWORD_LOGIN_MUTATION = `
+  mutation CustomerPasswordLogin($identifier: String!, $password: String!) {
+    customerPasswordLogin(identifier: $identifier, password: $password) {
+      success
+      message
+      token
+      customer {
+        id
+        firstName
+        lastName
+        emailAddress
+        phoneNumber
+      }
+    }
+  }
+`;
+
 export const LOGOUT_MUTATION = `
   mutation Logout {
     logout {
@@ -55,15 +103,67 @@ export const LOGOUT_MUTATION = `
 `;
 
 export const REGISTER_MUTATION = `
-  mutation Register($input: RegisterCustomerInput!) {
-    registerCustomerAccount(input: $input) {
-      ... on Success {
-        success
+  mutation CustomerPasswordRegister($input: CustomerPasswordRegisterInput!) {
+    customerPasswordRegister(input: $input) {
+      success
+      message
+      token
+      customer {
+        id
+        firstName
+        lastName
+        emailAddress
+        phoneNumber
       }
-      ... on ErrorResult {
-        errorCode
-        message
-      }
+    }
+  }
+`;
+
+const CUSTOMER_AUTH_FIELDS = `
+  success
+  message
+  token
+  customer {
+    id
+    firstName
+    lastName
+    emailAddress
+    phoneNumber
+  }
+`;
+
+export const REQUEST_EMAIL_OTP_MUTATION = `
+  mutation RequestCustomerEmailOtp($emailAddress: String!) {
+    requestCustomerEmailOtp(emailAddress: $emailAddress) {
+      success
+      message
+      otp
+    }
+  }
+`;
+
+export const VERIFY_EMAIL_OTP_MUTATION = `
+  mutation VerifyCustomerEmailOtp($emailAddress: String!, $otp: String!) {
+    verifyCustomerEmailOtp(emailAddress: $emailAddress, otp: $otp) {
+      ${CUSTOMER_AUTH_FIELDS}
+    }
+  }
+`;
+
+export const REQUEST_PASSWORD_RESET_OTP_MUTATION = `
+  mutation RequestCustomerPasswordResetOtp($emailAddress: String!) {
+    requestCustomerPasswordResetOtp(emailAddress: $emailAddress) {
+      success
+      message
+      otp
+    }
+  }
+`;
+
+export const RESET_PASSWORD_WITH_OTP_MUTATION = `
+  mutation ResetCustomerPasswordWithOtp($emailAddress: String!, $otp: String!, $password: String!) {
+    resetCustomerPasswordWithOtp(emailAddress: $emailAddress, otp: $otp, password: $password) {
+      ${CUSTOMER_AUTH_FIELDS}
     }
   }
 `;
@@ -109,6 +209,50 @@ export const PRODUCTS_QUERY = `
   }
 `;
 
+export const SEARCH_QUERY = `
+  query Search($input: SearchInput!) {
+    search(input: $input) {
+      totalItems
+      items {
+        productId
+        productVariantId
+        productName
+        slug
+        productAsset {
+          preview
+        }
+        priceWithTax {
+          ... on SinglePrice {
+            value
+          }
+        }
+        inStock
+      }
+    }
+  }
+`;
+
+export const SEMANTIC_SEARCH_QUERY = `
+  query SemanticSearch($query: String!, $take: Int) {
+    semanticSearch(query: $query, take: $take) {
+      total
+      items {
+        id
+        variantId
+        name
+        slug
+        description
+        category
+        image
+        price
+        supplierId
+        source
+        score
+      }
+    }
+  }
+`;
+
 export const PRODUCT_QUERY = `
   query Product($slug: String!) {
     product(slug: $slug) {
@@ -145,10 +289,138 @@ export const COLLECTIONS_QUERY = `
         id
         name
         slug
+        description
+        customFields {
+          icon
+        }
         featuredAsset {
           preview
         }
+        children {
+          id
+          name
+          slug
+          customFields {
+            icon
+          }
+          productVariants(options: { take: 1 }) {
+            totalItems
+          }
+        }
+        productVariants(options: { take: 1 }) {
+          totalItems
+        }
       }
+    }
+  }
+`;
+
+export const HOMEPAGE_BANNERS_QUERY = `
+  query HomepageBanners {
+    homepageBanners {
+      id
+      title
+      subtitle
+      eyebrow
+      ctaLabel
+      ctaHref
+      imageUrl
+      accentColor
+    }
+  }
+`;
+
+export const SUPPLIERS_QUERY = `
+  query Suppliers($take: Int, $skip: Int) {
+    suppliers(take: $take, skip: $skip) {
+      items {
+        id
+        businessName
+        slug
+        rating
+      }
+      total
+    }
+  }
+`;
+
+export const SUPPLIER_PRODUCTS_QUERY = `
+  query SupplierProducts($supplierId: String) {
+    supplierProducts(supplierId: $supplierId) {
+      total
+      items {
+        id
+        supplierId
+        name
+        slug
+        description
+        category
+        image
+        price
+        originalPrice
+        stock
+        enabled
+      }
+    }
+  }
+`;
+
+export const SUPPLIER_BY_SLUG_QUERY = `
+  query SupplierBySlug($slug: String!) {
+    supplierBySlug(slug: $slug) {
+      id
+      businessName
+      slug
+      description
+      phone
+      address
+      district
+      lat
+      lng
+      rating
+      reviewCount
+      productCount
+      pickupEnabled
+      deliveryEnabled
+    }
+  }
+`;
+
+export const COLLECTION_BY_SLUG_QUERY = `
+  query CollectionBySlug($slug: String!) {
+    collection(slug: $slug) {
+      id
+      name
+      slug
+      customFields {
+        icon
+      }
+      children {
+        id
+        name
+        slug
+        customFields {
+          icon
+        }
+        productVariants(options: { take: 1 }) {
+          totalItems
+        }
+      }
+    }
+  }
+`;
+
+export const SUPPLIER_QUERY = `
+  query Supplier($id: ID!) {
+    supplier(id: $id) {
+      id
+      businessName
+      slug
+      phone
+      address
+      district
+      lat
+      lng
     }
   }
 `;
@@ -346,6 +618,8 @@ export const CREATE_DELIVERY_REQUEST_MUTATION = `
     $customerId: String!
     $customerName: String!
     $customerPhone: String!
+    $pickupStops: [PickupStopInput!]
+    $orderItems: [DeliveryOrderItemInput!]
     $dropoffAddress: String!
     $dropoffLat: Float!
     $dropoffLng: Float!
@@ -357,6 +631,8 @@ export const CREATE_DELIVERY_REQUEST_MUTATION = `
       customerId: $customerId
       customerName: $customerName
       customerPhone: $customerPhone
+      pickupStops: $pickupStops
+      orderItems: $orderItems
       dropoffAddress: $dropoffAddress
       dropoffLat: $dropoffLat
       dropoffLng: $dropoffLng
@@ -364,18 +640,21 @@ export const CREATE_DELIVERY_REQUEST_MUTATION = `
       paymentMethod: $paymentMethod
     ) {
       id
+      orderId
       orderNumber
+      trackingToken
       status
     }
   }
 `;
 
 export const DELIVERY_REQUEST_QUERY = `
-  query DeliveryRequest($orderId: String!) {
-    deliveryRequest(orderId: $orderId) {
+  query DeliveryRequest($orderId: String!, $token: String) {
+    deliveryRequest(orderId: $orderId, token: $token) {
       id
       orderId
       orderNumber
+      trackingToken
       status
       driverId
       driverLat

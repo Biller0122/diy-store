@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://diy-store.mn';
-const SITE_NAME = 'DIY Store';
-const DEFAULT_TITLE = 'DIY Store — Барилга. Засвар. Бүтээл.';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://shoptool.mn';
+const SITE_NAME = 'shoptool.mn';
+const DEFAULT_TITLE = 'shoptool.mn — Барилгын материалын ухаалаг шийдэл';
 const DEFAULT_DESCRIPTION =
-  'Монголын хамгийн том DIY, барилгын материал, багаж хэрэгслийн онлайн дэлгүүр. 10,000+ бараа нэг дор.';
+  'Барилгын материал, багаж хэрэгсэл, DIY барааг нэг дороос захиалах ухаалаг онлайн дэлгүүр.';
 const DEFAULT_OG = `${BASE_URL}/og-default.png`;
 
 // ─── Root layout metadata (re-exported for layout.tsx) ────────
@@ -20,6 +20,13 @@ export const rootMetadata: Metadata = {
   authors: [{ name: SITE_NAME }],
   creator: SITE_NAME,
   publisher: SITE_NAME,
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/shoptool-icon.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: [{ url: '/shoptool-icon.png', sizes: '512x512', type: 'image/png' }],
+  },
   robots: { index: true, follow: true },
   openGraph: {
     type: 'website',
@@ -79,7 +86,7 @@ export function generateProductMetadata(product: {
   const title = `${product.name}${product.brand ? ` — ${product.brand}` : ''}`;
   const description = product.description
     ? product.description.slice(0, 155)
-    : `${product.name} — DIY Store дэлгүүрт авах боломжтой. Шуурхай хүргэлт, баталгаат бараа.`;
+    : `${product.name} — shoptool.mn дэлгүүрт авах боломжтой. Шуурхай хүргэлт, баталгаат бараа.`;
   const image = product.imageUrl
     ? `${BASE_URL}/api/og?type=product&name=${encodeURIComponent(product.name)}&price=${product.price ?? 0}&image=${encodeURIComponent(product.imageUrl)}`
     : DEFAULT_OG;

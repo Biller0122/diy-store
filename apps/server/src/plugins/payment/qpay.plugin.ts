@@ -5,13 +5,14 @@ import {
   SettlePaymentResult,
   SettlePaymentErrorResult,
 } from '@vendure/core';
-import { createPaymentRecord, transition } from './payment-state';
+import { createPaymentRecord, paymentMockMode, transition } from './payment-state';
 
 // ─── Mock mode detection ──────────────────────────────────────
-// Automatically active when QPAY_USERNAME is empty or PAYMENT_MOCK_MODE=true
+// Active in non-production when QPAY_USERNAME is empty or PAYMENT_MOCK_MODE=true.
+// NEVER active in production (paymentMockMode forces false there).
 
 function isMockMode(): boolean {
-  return !process.env.QPAY_USERNAME || process.env.PAYMENT_MOCK_MODE === 'true';
+  return paymentMockMode(!!process.env.QPAY_USERNAME);
 }
 
 // ─── Mock data ────────────────────────────────────────────────

@@ -1,27 +1,67 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { Eye, EyeOff, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { BrandLogo } from '@/components/BrandLogo';
 
-type Tab = 'login' | 'register';
+type Tab = 'otp' | 'login';
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: { client_id: string; callback: (response: { credential?: string }) => void }) => void;
+          renderButton: (element: HTMLElement, options: Record<string, unknown>) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') ?? '/account';
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
-  const { login, register, isLoading, error, clearError, customer } = useAuthStore();
+  const {
+    login,
+    register,
+    requestEmailOtp,
+    verifyEmailOtp,
+    loginWithGoogle,
+    requestPasswordResetOtp,
+    resetPasswordWithOtp,
+    isLoading,
+    error,
+    clearError,
+    customer,
+  } = useAuthStore();
+
   const [tab, setTab] = useState<Tab>('login');
+  const [formError, setFormError] = useState('');
+  const [info, setInfo] = useState('');
 
-  useEffect(() => {
-    if (customer) router.replace(redirect);
-  }, [customer, redirect, router]);
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpStep, setOtpStep] = useState<'email' | 'code'>('email');
 
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPwd, setShowLoginPwd] = useState(false);
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetStep, setResetStep] = useState<'email' | 'reset'>('email');
 
   const [regFirstName, setRegFirstName] = useState('');
   const [regLastName, setRegLastName] = useState('');
@@ -30,35 +70,114 @@ function LoginForm() {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
   const [showRegPwd, setShowRegPwd] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [regSuccess, setRegSuccess] = useState(false);
-  const [formError, setFormError] = useState('');
 
-  const handleTabChange = (t: Tab) => {
-    setTab(t);
+  useEffect(() => {
+    if (customer) router.replace(redirect);
+  }, [customer, redirect, router]);
+
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    const reset = searchParams.get('reset');
+    if (mode === 'reset' || reset === '1' || reset === 'true') {
+      setTab('login');
+      setResetOpen(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
+
+    const render = () => {
+      if (!window.google || !googleButtonRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          if (!response.credential) {
+            setFormError('Google credential ирсэнгүй');
+            return;
+          }
+          const ok = await loginWithGoogle(response.credential);
+          if (ok) router.replace(redirect);
+        },
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: 360,
+        text: 'continue_with',
+      });
+    };
+
+    if (window.google) {
+      render();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = render;
+    document.head.appendChild(script);
+  }, [loginWithGoogle, redirect, router]);
+
+  const handleTabChange = (next: Tab) => {
+    setTab(next);
     clearError();
     setFormError('');
+    setInfo('');
     setRegSuccess(false);
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  async function handleRequestOtp(event: React.FormEvent) {
+    event.preventDefault();
+    setFormError('');
+    setInfo('');
+    if (!validEmail(otpEmail)) {
+      setFormError('И-мэйл хаяг буруу байна');
+      return;
+    }
+    const result = await requestEmailOtp(otpEmail);
+    if (result.ok) {
+      setOtpStep('code');
+      setInfo(result.otp ? `Туршилтын код: ${result.otp}` : 'Код и-мэйлээр илгээгдлээ');
+    }
+  }
+
+  async function handleVerifyOtp(event: React.FormEvent) {
+    event.preventDefault();
+    setFormError('');
+    if (!/^\d{4}$/.test(otpCode.trim())) {
+      setFormError('4 оронтой код оруулна уу');
+      return;
+    }
+    const ok = await verifyEmailOtp(otpEmail, otpCode);
+    if (ok) router.replace(redirect);
+  }
+
+  async function handleLogin(event: React.FormEvent) {
+    event.preventDefault();
     setFormError('');
     if (!loginEmail || !loginPassword) {
-      setFormError('И-мэйл болон нууц үгээ оруулна уу');
+      setFormError('И-мэйл/утас болон нууц үгээ оруулна уу');
       return;
     }
     const ok = await login(loginEmail, loginPassword);
     if (ok) router.replace(redirect);
-  };
+  }
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  async function handleRegister(event: React.FormEvent) {
+    event.preventDefault();
     setFormError('');
     if (!regFirstName || !regLastName || !regEmail || !regPassword) {
       setFormError('Бүх шаардлагатай талбарыг бөглөнө үү');
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail)) {
+    if (!validEmail(regEmail)) {
       setFormError('И-мэйл хаяг буруу байна');
       return;
     }
@@ -82,7 +201,41 @@ function LoginForm() {
       phoneNumber: regPhone || undefined,
     });
     if (ok) setRegSuccess(true);
-  };
+  }
+
+  async function handleRequestReset(event: React.FormEvent) {
+    event.preventDefault();
+    setFormError('');
+    setInfo('');
+    if (!validEmail(resetEmail)) {
+      setFormError('И-мэйл хаяг буруу байна');
+      return;
+    }
+    const result = await requestPasswordResetOtp(resetEmail);
+    if (result.ok) {
+      setResetStep('reset');
+      setInfo(result.otp ? `Туршилтын сэргээх код: ${result.otp}` : 'Сэргээх код и-мэйлээр илгээгдлээ');
+    }
+  }
+
+  async function handleResetPassword(event: React.FormEvent) {
+    event.preventDefault();
+    setFormError('');
+    if (!/^\d{4}$/.test(resetOtp.trim())) {
+      setFormError('4 оронтой сэргээх код оруулна уу');
+      return;
+    }
+    if (resetPassword.length < 8) {
+      setFormError('Шинэ нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой');
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      setFormError('Шинэ нууц үг таарахгүй байна');
+      return;
+    }
+    const ok = await resetPasswordWithOtp(resetEmail, resetOtp, resetPassword);
+    if (ok) router.replace(redirect);
+  }
 
   const displayError = formError || error;
 
@@ -90,218 +243,239 @@ function LoginForm() {
     <div className="min-h-screen bg-dark flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-2xl font-bold text-foreground">
-            🔨 <span>DIY Store</span>
+          <Link href="/" className="inline-flex items-center justify-center">
+            <BrandLogo imageClassName="w-56" />
           </Link>
-          <h1 className="text-xl font-black text-foreground mt-3">Нэвтрэх / Бүртгүүлэх</h1>
-          <p className="text-sm text-foreground-muted mt-1">Монголын гар урлалын дэлгүүр</p>
+          <h1 className="text-xl font-black text-foreground mt-3">Нэвтрэх</h1>
+          <p className="text-sm text-foreground-muted mt-1">Эхлээд email-ээр бүртгүүлээд, дараа нь email эсвэл утсаараа нэвтэрнэ</p>
         </div>
 
         <div className="bg-card rounded-2xl p-8">
-          {/* Tabs */}
           <div className="flex border-b border-[var(--glass-border)] mb-6">
-            {(['login', 'register'] as const).map((t) => (
+            {(['login', 'otp'] as const).map((item) => (
               <button
-                key={t}
-                onClick={() => handleTabChange(t)}
+                key={item}
+                type="button"
+                onClick={() => handleTabChange(item)}
                 className={`flex-1 pb-3 text-sm font-semibold transition-colors ${
-                  tab === t
-                    ? 'border-b-2 border-amber-500 text-brand'
-                    : 'text-foreground-muted hover:text-foreground'
+                  tab === item ? 'border-b-2 border-amber-500 text-brand' : 'text-foreground-muted hover:text-foreground'
                 }`}
               >
-                {t === 'login' ? 'Нэвтрэх' : 'Бүртгүүлэх'}
+                {item === 'login' ? 'Email/утсаар нэвтрэх' : 'Email код'}
               </button>
             ))}
           </div>
 
           {displayError && (
-            <div className="mb-4 p-3 bg-error/10 border border-error/20 rounded-xl text-sm text-error">
+            <div className="mb-4 rounded-xl border border-error/20 bg-error/10 p-3 text-sm text-error">
               {displayError}
             </div>
           )}
+          {info && (
+            <div className="mb-4 rounded-xl border border-success/20 bg-success/10 p-3 text-sm text-success">
+              {info}
+            </div>
+          )}
 
-          {/* Login */}
-          {tab === 'login' && (
+          {tab === 'otp' && otpStep === 'email' && (
+            <form onSubmit={handleRequestOtp} className="space-y-4">
+              <Field label="И-мэйл">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground-muted" size={17} />
+                  <input value={otpEmail} onChange={(event) => setOtpEmail(event.target.value)} type="email" autoComplete="email" placeholder="example@gmail.com" className="w-full rounded-xl border border-[var(--glass-border)] px-10 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                </div>
+              </Field>
+              <SubmitButton loading={isLoading} label="Код авах" loadingLabel="Илгээж байна..." />
+              <button type="button" onClick={() => { setTab('login'); setResetOpen(true); setResetEmail(otpEmail); setInfo(''); setFormError(''); }} className="w-full text-xs font-semibold text-brand hover:underline">
+                Нууц үг сэргээх
+              </button>
+            </form>
+          )}
+
+          {tab === 'otp' && otpStep === 'code' && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <Field label="И-мэйл">
+                <input value={otpEmail} onChange={(event) => setOtpEmail(event.target.value)} type="email" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <Field label="Баталгаажуулах код">
+                <div className="relative">
+                  <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground-muted" size={17} />
+                  <input value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="1234" className="w-full rounded-xl border border-[var(--glass-border)] px-10 py-3 text-center text-lg font-bold tracking-[0.4em] outline-none focus:ring-2 focus:ring-brand" />
+                </div>
+              </Field>
+              <SubmitButton loading={isLoading} label="Нэвтрэх" loadingLabel="Шалгаж байна..." />
+              <button type="button" onClick={() => setOtpStep('email')} className="w-full text-xs font-semibold text-foreground-muted hover:text-brand">
+                И-мэйлээ солих
+              </button>
+            </form>
+          )}
+
+          {tab === 'login' && !resetOpen && (
             <form data-testid="login-form" onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">И-мэйл</label>
-                <input
-                  data-testid="login-email"
-                  type="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="example@mail.com"
-                  autoComplete="email"
-                  className="w-full border border-[var(--glass-border)] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                />
+              <Field label="И-мэйл эсвэл утас">
+                <input data-testid="login-email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="example@mail.com эсвэл 99112233" autoComplete="username" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <Field label="Нууц үг">
+                <PasswordInput value={loginPassword} onChange={setLoginPassword} show={showLoginPwd} setShow={setShowLoginPwd} autoComplete="current-password" />
+              </Field>
+              <button type="button" onClick={() => { setResetOpen(true); setResetEmail(loginEmail); setInfo(''); setFormError(''); }} className="text-xs font-semibold text-brand hover:underline">
+                Нууц үгээ мартсан уу?
+              </button>
+              <SubmitButton loading={isLoading} label="Нэвтрэх" loadingLabel="Нэвтэрч байна..." />
+            </form>
+          )}
+
+          {tab === 'login' && resetOpen && resetStep === 'email' && (
+            <form onSubmit={handleRequestReset} className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <KeyRound size={16} />
+                Нууц үг сэргээх
               </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Нууц үг</label>
-                <div className="relative">
-                  <input
-                    data-testid="login-password"
-                    type={showLoginPwd ? 'text' : 'password'}
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    className="w-full border border-[var(--glass-border)] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand pr-12"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowLoginPwd((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground-muted hover:text-foreground-muted text-sm"
-                  >
-                    {showLoginPwd ? '🙈' : '👁'}
-                  </button>
-                </div>
-              </div>
-              <button
-                data-testid="login-submit"
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3 bg-brand text-white rounded-xl font-semibold hover:bg-brand-hover transition-colors disabled:opacity-50"
-              >
-                {isLoading ? 'Нэвтэрч байна...' : 'Нэвтрэх'}
+              <Field label="Бүртгэлтэй и-мэйл">
+                <input value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} type="email" placeholder="example@mail.com" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <SubmitButton loading={isLoading} label="Сэргээх код авах" loadingLabel="Илгээж байна..." />
+              <button type="button" onClick={() => setResetOpen(false)} className="w-full text-xs font-semibold text-foreground-muted hover:text-brand">
+                Буцах
               </button>
             </form>
           )}
 
-          {/* Register */}
-          {tab === 'register' && !regSuccess && (
-            <form data-testid="register-form" onSubmit={handleRegister} className="space-y-4">
+          {tab === 'login' && resetOpen && resetStep === 'reset' && (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <Field label="Сэргээх код">
+                <input value={resetOtp} onChange={(event) => setResetOtp(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="1234" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-center text-lg font-bold tracking-[0.4em] outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <Field label="Шинэ нууц үг">
+                <PasswordInput value={resetPassword} onChange={setResetPassword} show={showRegPwd} setShow={setShowRegPwd} autoComplete="new-password" />
+              </Field>
+              <Field label="Шинэ нууц үг давтах">
+                <input type={showRegPwd ? 'text' : 'password'} value={resetConfirm} onChange={(event) => setResetConfirm(event.target.value)} autoComplete="new-password" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <SubmitButton loading={isLoading} label="Нууц үг шинэчлэх" loadingLabel="Шинэчилж байна..." />
+            </form>
+          )}
+
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[var(--glass-border)] bg-card/70 p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-bold text-foreground">Шинэ хэрэглэгч үү?</h2>
+              <p className="mt-1 text-xs text-foreground-muted">Email-ээр бүртгүүлнэ. Дараа нь email эсвэл утсаараа нэвтэрч болно.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setRegisterOpen((value) => !value);
+                setFormError('');
+                clearError();
+              }}
+              className="rounded-xl border border-brand/30 px-4 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white transition-colors"
+            >
+              Бүртгэл үүсгэх
+            </button>
+          </div>
+
+          {registerOpen && !regSuccess && (
+            <form data-testid="register-form" onSubmit={handleRegister} className="mt-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">
-                    Нэр <span className="text-error">*</span>
-                  </label>
-                  <input
-                    data-testid="reg-firstname"
-                    value={regFirstName}
-                    onChange={(e) => setRegFirstName(e.target.value)}
-                    placeholder="Болд"
-                    className="w-full border border-[var(--glass-border)] rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">
-                    Овог <span className="text-error">*</span>
-                  </label>
-                  <input
-                    data-testid="reg-lastname"
-                    value={regLastName}
-                    onChange={(e) => setRegLastName(e.target.value)}
-                    placeholder="Баатар"
-                    className="w-full border border-[var(--glass-border)] rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                  />
-                </div>
+                <Field label="Нэр">
+                  <input data-testid="reg-firstname" value={regFirstName} onChange={(event) => setRegFirstName(event.target.value)} className="w-full rounded-xl border border-[var(--glass-border)] px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                </Field>
+                <Field label="Овог">
+                  <input data-testid="reg-lastname" value={regLastName} onChange={(event) => setRegLastName(event.target.value)} className="w-full rounded-xl border border-[var(--glass-border)] px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                </Field>
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  И-мэйл <span className="text-error">*</span>
-                </label>
-                <input
-                  data-testid="reg-email"
-                  type="email"
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="example@mail.com"
-                  autoComplete="email"
-                  className="w-full border border-[var(--glass-border)] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Утасны дугаар</label>
-                <input
-                  type="tel"
-                  value={regPhone}
-                  onChange={(e) => setRegPhone(e.target.value)}
-                  placeholder="9911 2233"
-                  className="w-full border border-[var(--glass-border)] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  Нууц үг <span className="text-error">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showRegPwd ? 'text' : 'password'}
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="Хамгийн багадаа 8 тэмдэгт"
-                    autoComplete="new-password"
-                    className="w-full border border-[var(--glass-border)] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand pr-12"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowRegPwd((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground-muted text-sm"
-                  >
-                    {showRegPwd ? '🙈' : '👁'}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  Нууц үг давтах <span className="text-error">*</span>
-                </label>
-                <input
-                  type={showRegPwd ? 'text' : 'password'}
-                  value={regConfirm}
-                  onChange={(e) => setRegConfirm(e.target.value)}
-                  placeholder="Нууц үгийг дахин оруулна уу"
-                  autoComplete="new-password"
-                  className="w-full border border-[var(--glass-border)] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-
-              <p className="text-xs text-foreground-muted">
-                Бүртгүүлснээр та манай{' '}
-                <span className="text-brand cursor-pointer">үйлчилгээний нөхцөл</span>-тэй
-                зөвшөөрч байна.
-              </p>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3 bg-brand text-white rounded-xl font-semibold hover:bg-brand-hover transition-colors disabled:opacity-50"
-              >
-                {isLoading ? 'Бүртгэж байна...' : 'Бүртгүүлэх'}
-              </button>
+              <Field label="И-мэйл">
+                <input data-testid="reg-email" type="email" value={regEmail} onChange={(event) => setRegEmail(event.target.value)} autoComplete="email" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <Field label="Утасны дугаар">
+                <input type="tel" value={regPhone} onChange={(event) => setRegPhone(event.target.value)} placeholder="9911 2233" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <Field label="Нууц үг">
+                <PasswordInput value={regPassword} onChange={setRegPassword} show={showRegPwd} setShow={setShowRegPwd} autoComplete="new-password" />
+              </Field>
+              <Field label="Нууц үг давтах">
+                <input type={showRegPwd ? 'text' : 'password'} value={regConfirm} onChange={(event) => setRegConfirm(event.target.value)} autoComplete="new-password" className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+              </Field>
+              <SubmitButton loading={isLoading} label="Бүртгэл үүсгэх" loadingLabel="Бүртгэж байна..." />
             </form>
           )}
 
-          {/* Register success */}
-          {tab === 'register' && regSuccess && (
-            <div className="text-center py-8">
-              <p className="text-5xl mb-4">✅</p>
-              <h3 className="font-bold text-foreground text-lg mb-2">Бүртгэл амжилттай!</h3>
-              <p className="text-sm text-foreground-muted mb-6">
-                {regEmail} хаягаар бүртгэл үүслээ. Одоо нэвтэрч болно.
-              </p>
-              <button
-                onClick={() => handleTabChange('login')}
-                className="px-6 py-3 bg-brand text-white rounded-xl font-semibold text-sm"
-              >
-                Нэвтрэх
+          {registerOpen && regSuccess && (
+            <div className="mt-6 rounded-xl border border-success/20 bg-success/10 p-5 text-center">
+              <h3 className="mb-2 text-lg font-bold text-foreground">Бүртгэл амжилттай</h3>
+              <p className="mb-4 text-sm text-foreground-muted">{regEmail} хаягаар бүртгэл үүслээ.</p>
+              <button onClick={() => { setRegisterOpen(false); handleTabChange('login'); }} className="rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white">
+                Нэвтрэх хэсэг рүү очих
               </button>
             </div>
           )}
         </div>
 
-        <p className="text-center text-xs text-foreground-muted mt-6">
-          <Link href="/" className="hover:text-brand transition-colors">
-            ← Нүүр хуудас руу буцах
+        <p className="mt-6 text-center text-xs text-foreground-muted">
+          <Link href="/" className="transition-colors hover:text-brand">
+            Нүүр хуудас руу буцах
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function PasswordInput({
+  value,
+  onChange,
+  show,
+  setShow,
+  autoComplete,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  show: boolean;
+  setShow: (value: boolean) => void;
+  autoComplete: string;
+}) {
+  return (
+    <div className="relative">
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Хамгийн багадаа 8 тэмдэгт"
+        autoComplete={autoComplete}
+        className="w-full rounded-xl border border-[var(--glass-border)] px-4 py-3 pr-12 text-sm outline-none focus:ring-2 focus:ring-brand"
+      />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground-muted hover:text-foreground"
+      >
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
+function SubmitButton({ loading, label, loadingLabel }: { loading: boolean; label: string; loadingLabel: string }) {
+  return (
+    <button
+      type="submit"
+      disabled={loading}
+      className="w-full rounded-xl bg-brand py-3 font-semibold text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
+    >
+      {loading ? loadingLabel : label}
+    </button>
   );
 }
 

@@ -1,6 +1,7 @@
 import { Package } from 'lucide-react';
 import { CategoryCard } from '@/components/ui/CategoryCard';
 import { vendureShopFetch, type VendureCollection } from '@/lib/vendure';
+import { getDbSupplierProducts, getSupplierProductCategoryCount } from '@/lib/supplier-products';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,10 @@ async function getCollections() {
 }
 
 export default async function CategoryIndexPage() {
-  const collections = await getCollections();
+  const [collections, supplierProducts] = await Promise.all([
+    getCollections(),
+    getDbSupplierProducts(),
+  ]);
 
   return (
     <div className="min-h-screen bg-dark pb-24 lg:pb-8">
@@ -71,7 +75,7 @@ export default async function CategoryIndexPage() {
                 name={category.name}
                 slug={category.slug}
                 icon={category.customFields?.icon ?? '📦'}
-                productCount={category.productVariants?.totalItems ?? 0}
+                productCount={(category.productVariants?.totalItems ?? 0) + getSupplierProductCategoryCount(supplierProducts, category, true)}
                 index={index}
               />
             ))}

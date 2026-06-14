@@ -54,6 +54,7 @@ const DELIVERY_SCHEMA_EXTENSION = `
     id: ID!
     orderId: String!
     orderNumber: String!
+    trackingToken: String!
     customerId: String!
     customerName: String!
     customerPhone: String!
@@ -81,7 +82,7 @@ const DELIVERY_SCHEMA_EXTENSION = `
   }
 
   extend type Query {
-    deliveryRequest(orderId: String!): DeliveryRequest
+    deliveryRequest(orderId: String!, token: String): DeliveryRequest
     activeDeliveriesForDriver(driverId: String!): [DeliveryRequest!]!
     deliveryHistoryForDriver(driverId: String!, limit: Int): [DeliveryRequest!]!
     availableDeliveries: [DeliveryRequest!]!
@@ -105,6 +106,7 @@ const DELIVERY_SCHEMA_EXTENSION = `
     acceptDelivery(deliveryId: ID!, driverId: String!): DeliveryRequest!
     rejectDelivery(deliveryId: ID!, driverId: String!): DeliveryRequest!
     updateDeliveryStatus(deliveryId: ID!, status: String!): DeliveryRequest!
+    updateDeliveryPickupStop(deliveryId: ID!, supplierId: String!, status: String!): DeliveryRequest!
     updateDeliveryLocation(deliveryId: ID!, lat: Float!, lng: Float!): DeliveryRequest!
     completeDeliveryWithCode(deliveryId: ID!, driverId: String!, code: String!): DeliveryRequest!
   }

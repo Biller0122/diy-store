@@ -7,7 +7,9 @@ let subscription: Location.LocationSubscription | null = null;
 
 export async function startLocationTracking(driverId: string, orderId?: string | null) {
   const foreground = await Location.requestForegroundPermissionsAsync();
-  if (foreground.status !== 'granted') throw new Error('Байршлын зөвшөөрөл шаардлагатай');
+  if (foreground.status !== 'granted') {
+    throw new Error('Байршлын зөвшөөрөл хэрэгтэй. Тохиргооноос Location зөвшөөрөөд дахин оролдоно уу.');
+  }
 
   subscription?.remove();
   subscription = await Location.watchPositionAsync(
@@ -26,9 +28,12 @@ export async function startLocationTracking(driverId: string, orderId?: string |
       };
       useDeliveryStore.getState().setDriverLocation({ lat: payload.lat, lng: payload.lng, heading: payload.heading });
       socketService.emitLocationUpdate(payload);
-      updateDriverLocation(payload.driverId, payload.lat, payload.lng, payload.heading, payload.orderId).catch(() => {});
+      void updateDriverLocation(payload.driverId, payload.lat, payload.lng, payload.heading, payload.orderId).catch((err) => {
+        console.warn('[location] failed to update driver location', err instanceof Error ? err.message : err);
+      });
     },
   );
+  return true;
 }
 
 export function stopLocationTracking() {

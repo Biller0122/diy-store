@@ -18,6 +18,13 @@ type Banner = {
 };
 
 type BannerForm = Omit<Banner, 'id'> & { id?: string };
+type Announcement = {
+  title: string;
+  message: string;
+  ctaLabel: string;
+  ctaHref: string;
+  enabled: boolean;
+};
 
 const EMPTY_FORM: BannerForm = {
   title: '',
@@ -43,6 +50,30 @@ const BANNERS_QUERY = `
       imageUrl
       accentColor
       sortOrder
+      enabled
+    }
+  }
+`;
+
+const ANNOUNCEMENT_QUERY = `
+  query AdminSiteAnnouncement {
+    adminSiteAnnouncement {
+      title
+      message
+      ctaLabel
+      ctaHref
+      enabled
+    }
+  }
+`;
+
+const UPDATE_ANNOUNCEMENT = `
+  mutation UpdateSiteAnnouncement($input: SiteAnnouncementInput!) {
+    updateSiteAnnouncement(input: $input) {
+      title
+      message
+      ctaLabel
+      ctaHref
       enabled
     }
   }
@@ -88,9 +119,17 @@ function toInput(form: BannerForm) {
 
 export default function AdminCmsPage() {
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [announcement, setAnnouncement] = useState<Announcement>({
+    title: 'Үнэгүй хүргэлт',
+    message: '₮100,000-с дээш захиалгад УБ дотор үнэгүй хүргэнэ!',
+    ctaLabel: 'Дэлгэрэнгүй →',
+    ctaHref: '/trade',
+    enabled: true,
+  });
   const [form, setForm] = useState<BannerForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -102,12 +141,38 @@ export default function AdminCmsPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await vendureAdminFetch<{ adminHomepageBanners: Banner[] }>(BANNERS_QUERY);
-      setBanners(data.adminHomepageBanners ?? []);
+      const [bannerData, announcementData] = await Promise.all([
+        vendureAdminFetch<{ adminHomepageBanners: Banner[] }>(BANNERS_QUERY),
+        vendureAdminFetch<{ adminSiteAnnouncement: Announcement }>(ANNOUNCEMENT_QUERY),
+      ]);
+      setBanners(bannerData.adminHomepageBanners ?? []);
+      setAnnouncement(announcementData.adminSiteAnnouncement);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Баннер уншихад алдаа гарлаа');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveAnnouncement(event: React.FormEvent) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    if (!announcement.title.trim() || !announcement.message.trim()) {
+      setError('Дээд зарын гарчиг болон тайлбар хоосон байж болохгүй.');
+      return;
+    }
+    setSavingAnnouncement(true);
+    try {
+      const data = await vendureAdminFetch<{ updateSiteAnnouncement: Announcement }>(UPDATE_ANNOUNCEMENT, {
+        input: announcement,
+      });
+      setAnnouncement(data.updateSiteAnnouncement);
+      setMessage('Дээд зар шинэчлэгдлээ.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Дээд зар хадгалахад алдаа гарлаа');
+    } finally {
+      setSavingAnnouncement(false);
     }
   }
 
@@ -243,6 +308,50 @@ export default function AdminCmsPage() {
           {error || message}
         </div>
       )}
+
+      <form onSubmit={saveAnnouncement} className="rounded-2xl border border-[var(--glass-border)] bg-card p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-foreground">Дээд зарын мөр</h3>
+            <p className="text-xs text-foreground-muted">Сайтын хамгийн дээр харагдах orange bar-ийн текст, холбоосыг засна.</p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={announcement.enabled}
+              onChange={(event) => setAnnouncement((current) => ({ ...current, enabled: event.target.checked }))}
+            />
+            Идэвхтэй
+          </label>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[180px_1fr_170px_180px_auto]">
+          {[
+            ['title', 'Гарчиг', 'Үнэгүй хүргэлт'],
+            ['message', 'Текст', '₮100,000-с дээш захиалгад УБ дотор үнэгүй хүргэнэ!'],
+            ['ctaLabel', 'Link текст', 'Дэлгэрэнгүй →'],
+            ['ctaHref', 'Link', '/trade'],
+          ].map(([key, label, placeholder]) => (
+            <label key={key} className={key === 'message' ? 'block md:min-w-0' : 'block'}>
+              <span className="mb-1.5 block text-xs font-semibold text-foreground-muted">{label}</span>
+              <input
+                value={String(announcement[key as keyof Announcement] ?? '')}
+                onChange={(event) => setAnnouncement((current) => ({ ...current, [key]: event.target.value }))}
+                placeholder={placeholder}
+                className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-brand/60"
+              />
+            </label>
+          ))}
+          <button
+            type="submit"
+            disabled={savingAnnouncement}
+            className="inline-flex items-center justify-center gap-2 self-end rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-hover disabled:opacity-60"
+          >
+            {savingAnnouncement ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+            Хадгалах
+          </button>
+        </div>
+      </form>
 
       <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
         <form onSubmit={saveBanner} className="rounded-2xl border border-[var(--glass-border)] bg-card p-5">

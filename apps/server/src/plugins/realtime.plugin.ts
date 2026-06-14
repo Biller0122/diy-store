@@ -1,6 +1,7 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { verifyToken, type TokenPayload } from '../utils/auth';
 import {
   deleteJsonState,
   listJsonState,
@@ -68,6 +69,12 @@ type RealtimeBridgeMessage = {
   payload: unknown;
 };
 
+type RealtimePrincipal = TokenPayload & { exp?: number };
+
+type RealtimeAuthOptions = {
+  canJoinOrder?: (principal: RealtimePrincipal | null, orderId: string, trackingToken?: string | null) => Promise<boolean>;
+};
+
 const REALTIME_EVENTS_CHANNEL = 'diy:realtime:events';
 
 // Track which drivers are currently online and their last known location
@@ -131,6 +138,37 @@ function validCoordinates(lat: unknown, lng: unknown) {
     && lat <= 90
     && lng >= -180
     && lng <= 180;
+}
+
+function getSocketToken(socket: Parameters<Parameters<Server['use']>[0]>[0]) {
+  const authToken = socket.handshake.auth?.token;
+  const header = socket.handshake.headers.authorization;
+  const headerValue = Array.isArray(header) ? header[0] : header;
+  const bearer = /^Bearer\s+(.+)$/i.exec(headerValue ?? '')?.[1];
+  return typeof authToken === 'string' ? authToken : bearer;
+}
+
+function getSocketTrackingToken(socket: Parameters<Parameters<Server['use']>[0]>[0]) {
+  const trackingToken = socket.handshake.auth?.trackingToken;
+  return typeof trackingToken === 'string' ? trackingToken : null;
+}
+
+function canJoinIdentityRoom(principal: RealtimePrincipal, role: TokenPayload['role'], id: string) {
+  return principal.role === role && principal.id === id;
+}
+
+function parseOrderJoinPayload(payload: unknown) {
+  if (typeof payload === 'string') return { orderId: payload, trackingToken: null };
+  if (!payload || typeof payload !== 'object') return { orderId: null, trackingToken: null };
+  const data = payload as { orderId?: unknown; token?: unknown; trackingToken?: unknown };
+  return {
+    orderId: typeof data.orderId === 'string' ? data.orderId : null,
+    trackingToken: typeof data.trackingToken === 'string'
+      ? data.trackingToken
+      : typeof data.token === 'string'
+        ? data.token
+        : null,
+  };
 }
 
 export function getIO(): Server | null {
@@ -203,7 +241,7 @@ async function startRealtimeBridge(io: Server) {
   }
 }
 
-export function startRealtimeServer() {
+export function startRealtimeServer(options: RealtimeAuthOptions = {}) {
   if (realtimeServerStarted) return;
   realtimeServerStarted = true;
 
@@ -222,29 +260,59 @@ export function startRealtimeServer() {
   _io = io;
   void startRealtimeBridge(io);
 
+  io.use((socket, next) => {
+    if (process.env.REALTIME_AUTH_DISABLED === 'true') {
+      socket.data.principal = null;
+      socket.data.trackingToken = getSocketTrackingToken(socket);
+      next();
+      return;
+    }
+    try {
+      const token = getSocketToken(socket);
+      if (token) {
+        socket.data.principal = verifyToken(token);
+      } else {
+        socket.data.principal = null;
+      }
+      socket.data.trackingToken = getSocketTrackingToken(socket);
+      if (!socket.data.principal && !socket.data.trackingToken) throw new Error('unauthorized');
+      next();
+    } catch {
+      next(new Error('unauthorized'));
+    }
+  });
+
   io.on('connection', (socket) => {
+    const principal = socket.data.principal as RealtimePrincipal | null;
     // Track which driverIds this socket owns (for cleanup on disconnect)
     const socketDriverIds = new Set<string>();
 
     // ─── Room joins ─────────────────────────────────────────────
-    socket.on('order:join', (orderId: string) => {
-      if (validRoomId(orderId)) socket.join(`order:${orderId}`);
+    socket.on('order:join', async (payload: unknown) => {
+      const { orderId, trackingToken } = parseOrderJoinPayload(payload);
+      if (!validRoomId(orderId)) return;
+      const socketTrackingToken = socket.data.trackingToken as string | null;
+      const allowed = await options.canJoinOrder?.(principal, orderId, trackingToken ?? socketTrackingToken).catch(() => false);
+      if (allowed) socket.join(`order:${orderId}`);
     });
 
     socket.on('driver:join', (driverId: string) => {
-      if (validRoomId(driverId)) {
+      if (validRoomId(driverId) && principal && canJoinIdentityRoom(principal, 'DRIVER', driverId)) {
         socket.join(`driver:${driverId}`);
         socketDriverIds.add(driverId);
       }
     });
 
     socket.on('customer:join', (customerId: string) => {
-      if (validRoomId(customerId)) socket.join(`customer:${customerId}`);
+      if (validRoomId(customerId) && principal && canJoinIdentityRoom(principal, 'CUSTOMER', customerId)) {
+        socket.join(`customer:${customerId}`);
+      }
     });
 
     // ─── Driver location ─────────────────────────────────────────
     socket.on('driver:location', (payload: DriverLocationPayload) => {
       if (!validRoomId(payload?.driverId) || !validCoordinates(payload?.lat, payload?.lng)) return;
+      if (!principal || !canJoinIdentityRoom(principal, 'DRIVER', payload.driverId)) return;
       // Update online driver's known location
       const existing = onlineDrivers.get(payload.driverId);
       if (existing) {
@@ -260,13 +328,17 @@ export function startRealtimeServer() {
     });
 
     // ─── Order status ─────────────────────────────────────────────
-    socket.on('order:status', (payload: OrderStatusPayload) => {
+    socket.on('order:status', async (payload: OrderStatusPayload) => {
       if (!validRoomId(payload?.orderId) || typeof payload?.status !== 'string') return;
+      if (!principal || !['ADMIN', 'DRIVER'].includes(principal.role)) return;
+      const allowed = await options.canJoinOrder?.(principal, payload.orderId, null).catch(() => false);
+      if (!allowed) return;
       io.to(`order:${payload.orderId}`).emit('order:status', payload);
     });
 
     socket.on('driver:accept_order', async (payload: DriverOrderDecisionPayload) => {
       if (!validRoomId(payload?.driverId) || !validRoomId(payload?.orderId)) return;
+      if (!principal || !canJoinIdentityRoom(principal, 'DRIVER', payload.driverId)) return;
       const accepted = await forwardDriverDecision('accept', payload);
       if (!accepted) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_accepted', payload);
@@ -275,6 +347,7 @@ export function startRealtimeServer() {
 
     socket.on('driver:reject_order', async (payload: DriverOrderDecisionPayload) => {
       if (!validRoomId(payload?.driverId) || !validRoomId(payload?.orderId)) return;
+      if (!principal || !canJoinIdentityRoom(principal, 'DRIVER', payload.driverId)) return;
       const rejected = await forwardDriverDecision('reject', payload);
       if (!rejected) return;
       io.to(`driver:${payload.driverId}`).emit('driver:order_rejected', payload);
@@ -285,6 +358,7 @@ export function startRealtimeServer() {
     socket.on('driver:online', (payload: DriverOnlinePayload) => {
       const driverId = typeof payload === 'string' ? payload : payload.driverId ?? payload.id;
       if (!validRoomId(driverId)) return;
+      if (!principal || !canJoinIdentityRoom(principal, 'DRIVER', driverId)) return;
       console.log('[realtime] driver online', driverId);
       socketDriverIds.add(driverId);
       socket.join(`driver:${driverId}`);
@@ -308,6 +382,7 @@ export function startRealtimeServer() {
 
     socket.on('driver:offline', (driverId: string) => {
       if (!validRoomId(driverId)) return;
+      if (!principal || !canJoinIdentityRoom(principal, 'DRIVER', driverId)) return;
       console.log('[realtime] driver offline', driverId);
       onlineDrivers.delete(driverId);
       void removePersistedOnlineDriver(driverId);

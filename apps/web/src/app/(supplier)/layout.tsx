@@ -6,10 +6,12 @@ import { useRouter, usePathname } from 'next/navigation';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Package, ShoppingCart, DollarSign,
-  Star, Settings, LogOut, Menu, X, ChevronRight, Bell, Store,
+  Star, Settings, LogOut, Menu, X, ChevronRight, Bell,
 } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { Providers } from '@/components/providers';
+import { getCustomerHomeHref } from '@/lib/portal-links';
+import { BrandLogo } from '@/components/BrandLogo';
 
 const NAV = [
   { href: '/supplier',          icon: LayoutDashboard, label: 'Хяналтын самбар' },
@@ -34,15 +36,9 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-[var(--glass-border)]">
-        <div className="w-9 h-9 rounded-xl bg-brand flex items-center justify-center shadow-lg shadow-brand/30 shrink-0">
-          <Store size={18} className="text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-foreground leading-tight">
-            DIY<span className="text-brand">Store</span>
-          </p>
-          <p className="text-[10px] text-foreground-muted">Нийлүүлэгч</p>
-        </div>
+        <Link href={getCustomerHomeHref()} onClick={onClose} className="flex min-w-0 items-center gap-3">
+          <BrandLogo variant="sidebar" portalLabel="Нийлүүлэгч" />
+        </Link>
         <button onClick={onClose} className="ml-auto lg:hidden text-foreground-muted hover:text-foreground">
           <X size={18} />
         </button>
@@ -130,18 +126,18 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function SupplierGuard({ children }: { children: React.ReactNode }) {
-  const { supplier } = useSupplierStore();
+  const { supplier, hasHydrated } = useSupplierStore();
   const router = useRouter();
   const pathname = usePathname();
   const publicRoute = pathname === '/supplier/login' || pathname === '/supplier/register' || pathname === '/supplier/pending';
 
   useEffect(() => {
-    if (!supplier && !publicRoute) {
+    if (hasHydrated && !supplier && !publicRoute) {
       router.replace('/supplier/login');
     }
-  }, [supplier, publicRoute, router]);
+  }, [supplier, hasHydrated, publicRoute, router]);
 
-  if (!supplier && !publicRoute) {
+  if ((!hasHydrated || !supplier) && !publicRoute) {
     return (
       <div className="min-h-screen bg-dark flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />

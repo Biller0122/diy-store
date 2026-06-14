@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -31,12 +32,6 @@ const C = {
   textTertiary: '#55556A',
 };
 
-const MOCK_PRODUCTS: SupplierProduct[] = [
-  { id: 'm1', name: 'Нийлүүлэгч багаж иж бүрдэл', slug: 'tool-set', enabled: true, price: 12500_00, stock: 15 },
-  { id: 'm2', name: 'Боолт M8 урт', slug: 'bolt-m8', enabled: true, price: 250_00, stock: 0 },
-  { id: 'm3', name: 'Цахилгаан кабель 2.5мм', slug: 'cable-2-5', enabled: true, price: 3200_00, stock: 50 },
-];
-
 function formatPrice(cents: number) {
   return '₮' + Math.round(cents / 100).toLocaleString('mn-MN');
 }
@@ -60,7 +55,7 @@ export default function ProductsScreen() {
       );
       setProducts(data.supplierProducts.items);
     } catch (err) {
-      setProducts(MOCK_PRODUCTS);
+      setProducts([]);
       setError(err instanceof Error ? err.message : 'Бараа татахад алдаа гарлаа');
     } finally {
       setLoading(false);
@@ -85,8 +80,10 @@ export default function ProductsScreen() {
     setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, enabled } : p)));
     try {
       await shopFetch(UPDATE_SUPPLIER_PRODUCT_MUTATION, { id: product.id, input: { enabled } }, token);
-    } catch {
+    } catch (err) {
+      console.error('supplier product toggle failed', err);
       setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, enabled: product.enabled } : p)));
+      Alert.alert('Алдаа', 'Барааны төлөв хадгалагдсангүй. Дахин оролдоно уу.');
     }
   };
 
@@ -116,7 +113,7 @@ export default function ProductsScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {filtered.length === 0 && !loading ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>Бүтээгдэхүүн олдсонгүй</Text>
+            <Text style={styles.emptyText}>{error ? 'Бараа ачаалж чадсангүй' : 'Бүтээгдэхүүн олдсонгүй'}</Text>
           </View>
         ) : null}
 

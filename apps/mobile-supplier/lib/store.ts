@@ -12,9 +12,13 @@ interface Supplier {
   id: string;
   ownerName: string;
   businessName: string;
+  description?: string | null;
   email: string;
   phone?: string | null;
+  address?: string | null;
   status: string;
+  bankName?: string | null;
+  bankAccount?: string | null;
   productCount?: number;
   rating?: number;
 }
@@ -23,12 +27,14 @@ interface SupplierState {
   supplier: Supplier | null;
   token: string | null;
   pendingEmail: string | null;
+  pendingOtp: string | null;
   isLoading: boolean;
   error: string | null;
   sendLoginCode: (email: string) => Promise<boolean>;
   registerAndSendCode: (ownerName: string, email: string) => Promise<boolean>;
   verifyEmailOtp: (email: string, otp: string) => Promise<boolean>;
   logout: () => void;
+  setSupplier: (supplier: Supplier) => void;
   clearError: () => void;
   hydrate: () => Promise<void>;
 }
@@ -37,6 +43,7 @@ type SupplierRegistrationResult = {
   success: boolean;
   message: string;
   email?: string | null;
+  otp?: string | null;
 };
 
 type SupplierOtpResult = {
@@ -65,6 +72,7 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
   supplier: null,
   token: null,
   pendingEmail: null,
+  pendingOtp: null,
   isLoading: false,
   error: null,
 
@@ -97,7 +105,7 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
         set({ isLoading: false, error: data.loginSupplier.message });
         return false;
       }
-      set({ isLoading: false, pendingEmail: email, error: null });
+      set({ isLoading: false, pendingEmail: email, pendingOtp: data.loginSupplier.otp ?? null, error: null });
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'И-мэйл код илгээхэд алдаа гарлаа';
@@ -128,7 +136,7 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
         set({ isLoading: false, error: data.registerSupplier.message });
         return false;
       }
-      set({ isLoading: false, pendingEmail: email, error: null });
+      set({ isLoading: false, pendingEmail: email, pendingOtp: data.registerSupplier.otp ?? null, error: null });
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Бүртгэл үүсгэхэд алдаа гарлаа';
@@ -163,7 +171,7 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
 
       const token = data.verifySupplierOTP.token ?? '';
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ supplier, token }));
-      set({ supplier, token, pendingEmail: null, isLoading: false, error: null });
+      set({ supplier, token, pendingEmail: null, pendingOtp: null, isLoading: false, error: null });
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Код баталгаажуулахад алдаа гарлаа';
@@ -174,7 +182,15 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
 
   logout: async () => {
     await AsyncStorage.removeItem(STORAGE_KEY);
-    set({ supplier: null, token: null, pendingEmail: null, error: null });
+    set({ supplier: null, token: null, pendingEmail: null, pendingOtp: null, error: null });
+  },
+
+  setSupplier: (supplier) => {
+    const token = get().token ?? '';
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ supplier, token })).catch((error) => {
+      console.warn('[supplier-store] supplier cache update failed', error);
+    });
+    set({ supplier });
   },
 
   clearError: () => set({ error: null }),

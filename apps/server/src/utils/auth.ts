@@ -18,6 +18,32 @@ export function generateOTP(): string {
   return String(Math.floor(1000 + Math.random() * 9000));
 }
 
+/**
+ * OTP "mock mode" is the ONLY condition under which we use a fixed code ('1234')
+ * or return the code in API responses. Crucially this is NOT tied to NODE_ENV —
+ * a non-production NODE_ENV must never leak/weaken OTPs on its own (a misset
+ * NODE_ENV in prod would otherwise expose codes). Opt in explicitly with
+ * OTP_MOCK_MODE=true for local/dev testing.
+ */
+export function isOtpMockMode(): boolean {
+  return process.env.OTP_MOCK_MODE === 'true';
+}
+
+/** Fixed '1234' only in mock mode, otherwise a real random 4-digit code. */
+export function generateMockableOtp(): string {
+  return isOtpMockMode() ? '1234' : generateOTP();
+}
+
+/** Return the OTP to the client only in mock mode; null otherwise. */
+export function exposeOtp(otp: string | null | undefined): string | null {
+  return isOtpMockMode() ? otp ?? null : null;
+}
+
+/** Mask an OTP for logs, e.g. '1234' -> '****' (only show full code in mock mode). */
+export function maskOtp(otp: string): string {
+  return isOtpMockMode() ? otp : '*'.repeat(otp.length);
+}
+
 function base64Url(input: string) {
   return Buffer.from(input).toString('base64url');
 }
@@ -78,9 +104,9 @@ export class InMemoryOtpService {
 
   async sendOTP(phone: string) {
     if (!validatePhone(phone)) return { success: false, message: 'Утасны дугаар буруу байна' };
-    const otp = process.env.NODE_ENV === 'production' ? generateOTP() : '1234';
+    const otp = generateMockableOtp();
     this.otps.set(phone, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
-    return { success: true, otp };
+    return { success: true, otp: exposeOtp(otp) };
   }
 
   async verifyOTP(phone: string, otp: string) {

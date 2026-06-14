@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, Edit3, Trash2, Package, ToggleLeft, ToggleRight } from 'lucide-react';
+import { BulkProductGrid } from '@/components/supplier/bulk-products/BulkProductGrid';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { vendureShopFetch } from '@/lib/vendure';
+import { formatPrice, parsePrice } from '@/lib/price';
 import {
   buildCategoryGroups,
   getCategoryDisplayName,
@@ -87,14 +89,6 @@ const PRODUCT_CATEGORIES_QUERY = `
   }
 `;
 
-function toFormPrice(value: number) {
-  return String(Math.round(value / 100));
-}
-
-function toMinorUnits(value: string) {
-  return Math.round(Number(value.replace(/[^\d]/g, '')) * 100);
-}
-
 export default function SupplierProductsPage() {
   const { supplier } = useSupplierStore();
   const [search, setSearch] = useState('');
@@ -104,6 +98,7 @@ export default function SupplierProductsPage() {
   const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
   const [serverLoaded, setServerLoaded] = useState(false);
   const [savingId, setSavingId] = useState('');
+  const [editError, setEditError] = useState('');
   const [editing, setEditing] = useState<SupplierProduct | null>(null);
   const [editForm, setEditForm] = useState({
     name: '',
@@ -227,9 +222,10 @@ export default function SupplierProductsPage() {
 
   function openEdit(product: SupplierProduct) {
     setEditing(product);
+    setEditError('');
     setEditForm({
       name: product.name,
-      price: toFormPrice(product.price),
+      price: formatPrice(product.price),
       stock: String(product.stock),
       category: product.category ?? '',
       description: product.description ?? '',
@@ -239,13 +235,23 @@ export default function SupplierProductsPage() {
 
   async function saveEdit() {
     if (!editing) return;
+    const nextError = !editForm.name.trim()
+      ? 'Барааны нэр оруулна уу'
+      : parsePrice(editForm.price) <= 0
+        ? 'Үнэ зөв оруулна уу'
+        : '';
+    if (nextError) {
+      setEditError(nextError);
+      return;
+    }
     setSavingId(editing.id);
+    setEditError('');
     try {
       await vendureShopFetch(UPDATE_SUPPLIER_PRODUCT_MUTATION, {
         id: editing.id,
         input: {
           name: editForm.name.trim(),
-          price: toMinorUnits(editForm.price),
+          price: parsePrice(editForm.price),
           stock: Math.max(0, Number(editForm.stock) || 0),
           category: editForm.category.trim(),
           description: editForm.description.trim(),
@@ -255,7 +261,7 @@ export default function SupplierProductsPage() {
       setEditing(null);
       await loadProducts();
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : 'Бараа засахад алдаа гарлаа');
+      setEditError(err instanceof Error ? err.message : 'Бараа засахад алдаа гарлаа');
     } finally {
       setSavingId('');
     }
@@ -313,6 +319,8 @@ export default function SupplierProductsPage() {
         </div>
       )}
 
+      <BulkProductGrid onSaved={loadProducts} />
+
       {/* Search */}
       <div className="relative">
         <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground-muted" />
@@ -360,9 +368,9 @@ export default function SupplierProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <p className="text-xs font-bold text-brand">₮{Math.round(product.price / 100).toLocaleString()}</p>
+                    <p className="text-xs font-bold text-brand">₮{Number(formatPrice(product.price)).toLocaleString()}</p>
                     {product.originalPrice && (
-                      <p className="text-[10px] text-foreground-muted line-through">₮{Math.round(product.originalPrice / 100).toLocaleString()}</p>
+                      <p className="text-[10px] text-foreground-muted line-through">₮{Number(formatPrice(product.originalPrice)).toLocaleString()}</p>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -423,15 +431,20 @@ export default function SupplierProductsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
           <div className="w-full max-w-lg rounded-2xl border border-[var(--glass-border)] bg-card p-5 shadow-2xl">
             <h3 className="text-base font-bold text-foreground">Бараа засах</h3>
+            {editError && (
+              <div className="mt-3 rounded-xl border border-error/20 bg-error/10 px-3 py-2 text-xs text-error">
+                {editError}
+              </div>
+            )}
             <div className="mt-4 grid gap-3">
               <label className="space-y-1">
                 <span className="text-xs text-foreground-muted">Нэр</span>
-                <input value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                <input value={editForm.name} onChange={(e) => { setEditError(''); setEditForm((p) => ({ ...p, name: e.target.value })); }} className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="space-y-1">
                   <span className="text-xs text-foreground-muted">Үнэ</span>
-                  <input value={editForm.price} inputMode="numeric" onChange={(e) => setEditForm((p) => ({ ...p, price: e.target.value }))} className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                  <input value={editForm.price} inputMode="numeric" onChange={(e) => { setEditError(''); setEditForm((p) => ({ ...p, price: e.target.value.replace(/[^\d]/g, '') })); }} className="w-full rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
                 </label>
                 <label className="space-y-1">
                   <span className="text-xs text-foreground-muted">Үлдэгдэл</span>
@@ -473,7 +486,7 @@ export default function SupplierProductsPage() {
               </button>
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setEditing(null)} className="rounded-xl border border-[var(--glass-border)] px-4 py-2 text-sm text-foreground-muted hover:text-foreground">Болих</button>
+              <button onClick={() => { setEditing(null); setEditError(''); }} className="rounded-xl border border-[var(--glass-border)] px-4 py-2 text-sm text-foreground-muted hover:text-foreground">Болих</button>
               <button disabled={savingId === editing.id} onClick={() => void saveEdit()} className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
                 {savingId === editing.id ? 'Хадгалж байна...' : 'Хадгалах'}
               </button>

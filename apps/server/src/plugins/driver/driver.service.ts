@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, MoreThanOrEqual } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { generateToken } from '../../utils/auth';
+import { generateMockableOtp, generateToken, isOtpMockMode, maskOtp } from '../../utils/auth';
 import { Driver, DriverStatus, VehicleType } from './driver.entity';
 import { DeliveryRequest, DeliveryStatus } from '../delivery/delivery-request.entity';
 
@@ -61,9 +61,10 @@ export class DriverService {
       totalEarnings: 0,
       otpCode: this.generateOtp(),
       otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      otpAttempts: 0,
     });
     const saved = await this.driverRepo.save(driver);
-    console.log(`[Driver OTP] ${phone}: ${saved.otpCode}`);
+    if (isOtpMockMode()) console.log(`[Driver OTP] ${phone}: ${maskOtp(saved.otpCode)}`);
     console.log(`DRIVER REGISTERED: id=${saved.id} name=${saved.firstName} ${saved.lastName}`.trim());
     return saved;
   }
@@ -73,10 +74,15 @@ export class DriverService {
     const driver = await this.driverRepo.findOne({ where: { phone } });
     if (!driver) throw new Error('Жолооч олдсонгүй');
     if (driver.status === DriverStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
+    // Rate limit: 60s cooldown between OTP requests.
+    if (driver.otpExpiresAt && driver.otpExpiresAt.getTime() - Date.now() > 4 * 60 * 1000) {
+      throw new Error('Та түр хүлээгээд (1 мин) дахин код аваарай');
+    }
     driver.otpCode = this.generateOtp();
     driver.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    driver.otpAttempts = 0;
     const saved = await this.driverRepo.save(driver);
-    console.log(`[Driver Login OTP] ${phone}: ${saved.otpCode}`);
+    if (isOtpMockMode()) console.log(`[Driver Login OTP] ${phone}: ${maskOtp(saved.otpCode)}`);
     return saved;
   }
 
@@ -95,13 +101,19 @@ export class DriverService {
     const phone = this.normalizePhone(phoneInput);
     const driver = await this.driverRepo.findOne({ where: { phone } });
     if (!driver) throw new Error('Жолооч олдсонгүй');
-    if (!driver.otpCode || driver.otpCode !== otp.trim()) throw new Error('Код буруу байна');
     if (!driver.otpExpiresAt || driver.otpExpiresAt.getTime() < Date.now()) throw new Error('Кодын хугацаа дууссан байна');
+    if ((driver.otpAttempts ?? 0) >= 5) throw new Error('Олон удаа буруу оролдлоо. Дахин код аваарай');
+    if (!driver.otpCode || driver.otpCode !== otp.trim()) {
+      driver.otpAttempts = (driver.otpAttempts ?? 0) + 1;
+      await this.driverRepo.save(driver);
+      throw new Error('Код буруу байна');
+    }
     if (driver.status === DriverStatus.PENDING_VERIFICATION) {
       driver.status = DriverStatus.PENDING_APPROVAL;
     }
     driver.otpCode = null;
     driver.otpExpiresAt = null;
+    driver.otpAttempts = 0;
     const saved = await this.driverRepo.save(driver);
     return { driver: saved, token: generateToken({ id: String(saved.id), role: 'DRIVER' }, '7d') };
   }
@@ -220,8 +232,7 @@ export class DriverService {
   }
 
   private generateOtp() {
-    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') return '1234';
-    return String(Math.floor(1000 + Math.random() * 9000));
+    return generateMockableOtp();
   }
 
   private distanceKm(aLat: number, aLng: number, bLat: number, bLng: number) {

@@ -3,9 +3,11 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ImagePlus, Package, Save } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ImagePlus, Package, Save, Sparkles, Wand2 } from 'lucide-react';
+import { makeProductSlug, normalizeProductPrice, onlyProductDigits } from '@diy-store/api-client';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { vendureShopFetch } from '@/lib/vendure';
+import { parsePrice } from '@/lib/price';
 import {
   buildCategoryGroups,
   getCategoryDisplayName,
@@ -40,6 +42,15 @@ type SupplierProduct = {
   inStock: boolean;
 };
 
+type ProductAnalysis = {
+  name?: string;
+  description?: string;
+  category?: string;
+  unit?: string;
+  confidence?: number;
+  error?: string;
+};
+
 const INITIAL_FORM: FormState = {
   name: '',
   slug: '',
@@ -52,6 +63,23 @@ const INITIAL_FORM: FormState = {
   imageName: '',
   inStock: true,
 };
+
+const AI_ANALYZE_TIMEOUT_MS = 35000;
+type EditedProductImage = { image: string; error?: string };
+type ImageEditMode = 'simple' | 'ai';
+
+async function editProductImage(image: string, mode: ImageEditMode): Promise<EditedProductImage> {
+  const response = await fetch('/edit-product-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image, outputSize: 900, mode }),
+  });
+  const result = (await response.json()) as EditedProductImage;
+  if (!response.ok || result.error) {
+    throw new Error(result.error || `Зураг янзлах алдаа: ${response.status}`);
+  }
+  return result;
+}
 
 const CREATE_SUPPLIER_PRODUCT_MUTATION = `
   mutation CreateSupplierProduct($input: SupplierProductInput!) {
@@ -77,18 +105,32 @@ const PRODUCT_CATEGORIES_QUERY = `
   }
 `;
 
-function makeSlug(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9\u0400-\u04ff-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/ё/g, 'е').trim();
 }
 
-function normalizePrice(value: string) {
-  return Number(value.replace(/[^\d]/g, ''));
+function findCategorySlug(categories: ProductCategoryOption[], aiCategory?: string) {
+  const normalized = normalizeText(aiCategory ?? '');
+  if (!normalized) return '';
+
+  const synonyms: Record<string, string[]> = {
+    'цемент': ['цемент', 'cement', 'tsement', 'sement', 'барилга'],
+    'төмөр': ['төмөр', 'tomor', 'armatur', 'арматур', 'rebar', 'металл'],
+    'мод': ['мод', 'wood', 'банз'],
+    'будаг': ['будаг', 'paint', 'лак', 'праймер'],
+    'тоосго': ['тоосго', 'toosgo', 'tosgo', 'brick'],
+    'сантехник': ['сантехник', 'ус', 'хоолой', 'холигч'],
+    'цахилгаан': ['цахилгаан', 'кабель', 'led', 'розетка'],
+    'багаж': ['багаж', 'tool', 'tools', 'өрөм', 'шлифлэгч'],
+    'барилга': ['барилга', 'building', 'хавтан', 'элс', 'хучилт'],
+  };
+
+  const candidates = synonyms[normalized] ?? [normalized];
+  const match = categories.find((category) => {
+    const haystack = normalizeText(`${category.name} ${category.slug} ${category.parent?.name ?? ''} ${category.parent?.slug ?? ''}`);
+    return candidates.some((candidate) => haystack.includes(normalizeText(candidate)));
+  });
+  return match?.slug ?? '';
 }
 
 function resizeImage(file: File, maxSize = 900, quality = 0.78): Promise<string> {
@@ -127,6 +169,10 @@ export default function NewSupplierProductPage() {
   const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [aiStatus, setAiStatus] = useState('');
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [imageEditing, setImageEditing] = useState(false);
+  const [imageEditMenuOpen, setImageEditMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const storageKey = useMemo(() => `diy-supplier-products:${supplier?.id ?? 'guest'}`, [supplier?.id]);
 
@@ -158,7 +204,7 @@ export default function NewSupplierProductPage() {
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      if (key === 'name' && !prev.slug) next.slug = makeSlug(String(value));
+      if (key === 'name' && !prev.slug) next.slug = makeProductSlug(String(value));
       return next;
     });
     setErrors((prev) => ({ ...prev, [key]: '' }));
@@ -184,11 +230,87 @@ export default function NewSupplierProductPage() {
         imageName: file.name,
       }));
       setErrors((prev) => ({ ...prev, image: '' }));
+      void analyzeSelectedImage(image);
     } catch (err) {
       setErrors((prev) => ({
         ...prev,
         image: err instanceof Error ? err.message : 'Зураг боловсруулахад алдаа гарлаа',
       }));
+    }
+  }
+
+  async function analyzeSelectedImage(image = form.image) {
+    if (!image) {
+      setErrors((prev) => ({ ...prev, image: 'Эхлээд зураг сонгоно уу' }));
+      return;
+    }
+
+    setAiAnalyzing(true);
+    setAiStatus('AI зураг шинжилж байна...');
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), AI_ANALYZE_TIMEOUT_MS);
+    try {
+      const response = await fetch('/analyze-product', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image }),
+      });
+      const result = (await response.json()) as ProductAnalysis;
+      if (!response.ok || result.error) {
+        throw new Error(result.error || `AI шинжилгээний алдаа: ${response.status}`);
+      }
+
+      const categorySlug = findCategorySlug(categories, result.category);
+      setForm((prev) => ({
+        ...prev,
+        name: result.name?.trim() || prev.name,
+        slug: prev.slug || makeProductSlug(result.name ?? ''),
+        description: result.description?.trim()
+          ? `${result.description.trim()}${result.unit ? `\nНэгж: ${result.unit}` : ''}`
+          : prev.description,
+        category: categorySlug || prev.category,
+      }));
+      setAiStatus(`AI санал бөглөлөө${typeof result.confidence === 'number' ? ` · итгэлцүүр ${result.confidence}%` : ''}`);
+    } catch (err) {
+      setAiStatus(err instanceof Error && err.name === 'AbortError' ? 'AI шинжилгээ хэт удаж байна. Дахин оролдоно уу.' : err instanceof Error ? err.message : 'AI шинжилгээ амжилтгүй боллоо');
+    } finally {
+      window.clearTimeout(timeout);
+      setAiAnalyzing(false);
+    }
+  }
+
+  async function handleEditProductImage(mode: ImageEditMode, image = form.image) {
+    if (!image) {
+      setErrors((prev) => ({ ...prev, image: 'Эхлээд зураг сонгоно уу' }));
+      return;
+    }
+
+    setImageEditMenuOpen(false);
+    setImageEditing(true);
+    setAiStatus(mode === 'simple' ? 'Энгийн янзалж байна: BiRefNet + лого...' : 'AI-аар янзалж байна...');
+    try {
+      const result = await editProductImage(image, mode);
+      if (!result.image) {
+        throw new Error('AI зураг сервер зураг буцаасангүй');
+      }
+      setForm((prev) => ({
+        ...prev,
+        image: result.image,
+        imageName: prev.imageName ? `edited-${prev.imageName}` : 'AI янзалсан зураг',
+      }));
+      setErrors((prev) => ({ ...prev, image: '' }));
+      setAiStatus(mode === 'simple'
+        ? 'Энгийн янзаллаа: гол объект цагаан дэвсгэр дээр, доод хэсэгт лого нэмэгдсэн.'
+        : 'AI-аар зураг янзлагдлаа: гол объект цагаан дэвсгэр дээр төвлөрсөн.');
+    } catch (err) {
+      setAiStatus(
+        err instanceof Error && err.name === 'AbortError'
+          ? 'Зураг янзлах хугацаа хэтэрлээ. Дахин оролдоно уу.'
+          : err instanceof Error ? err.message : 'Зураг янзлахад алдаа гарлаа',
+      );
+    } finally {
+      setImageEditing(false);
     }
   }
 
@@ -202,8 +324,8 @@ export default function NewSupplierProductPage() {
     const next: Record<string, string> = {};
     if (form.name.trim().length < 2) next.name = 'Барааны нэр оруулна уу';
     if (!form.slug.trim()) next.slug = 'Slug автоматаар үүсэхгүй бол гараар оруулна уу';
-    if (normalizePrice(form.price) <= 0) next.price = 'Үнэ зөв оруулна уу';
-    if (form.originalPrice && normalizePrice(form.originalPrice) <= normalizePrice(form.price)) {
+    if (normalizeProductPrice(form.price) <= 0) next.price = 'Үнэ зөв оруулна уу';
+    if (form.originalPrice && normalizeProductPrice(form.originalPrice) <= normalizeProductPrice(form.price)) {
       next.originalPrice = 'Хямдралын өмнөх үнэ үндсэн үнээс их байх ёстой';
     }
     if (Number(form.stock) < 0 || Number.isNaN(Number(form.stock))) next.stock = 'Нөөцийн тоо зөв оруулна уу';
@@ -226,8 +348,8 @@ export default function NewSupplierProductPage() {
       name: form.name.trim(),
       slug: form.slug.trim(),
       image: form.image.trim(),
-      price: normalizePrice(form.price) * 100,
-      originalPrice: form.originalPrice ? normalizePrice(form.originalPrice) * 100 : undefined,
+      price: parsePrice(form.price),
+      originalPrice: form.originalPrice ? parsePrice(form.originalPrice) : undefined,
       rating: 0,
       reviewCount: 0,
       badge: 'ШИНЭ',
@@ -295,7 +417,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Барааны код (SKU/slug) *</span>
             <input
               value={form.slug}
-              onChange={(event) => setField('slug', makeSlug(event.target.value))}
+              onChange={(event) => setField('slug', makeProductSlug(event.target.value))}
               placeholder="dulux-easycare-white"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.slug ? 'border-error' : 'border-[var(--glass-border)]'}`}
             />
@@ -347,7 +469,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Үнэ *</span>
             <input
               value={form.price}
-              onChange={(event) => setField('price', event.target.value)}
+              onChange={(event) => setField('price', onlyProductDigits(event.target.value))}
               inputMode="numeric"
               placeholder="59900"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.price ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -359,7 +481,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Хямдралын өмнөх үнэ</span>
             <input
               value={form.originalPrice}
-              onChange={(event) => setField('originalPrice', event.target.value)}
+              onChange={(event) => setField('originalPrice', onlyProductDigits(event.target.value))}
               inputMode="numeric"
               placeholder="69900"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.originalPrice ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -371,7 +493,7 @@ export default function NewSupplierProductPage() {
             <span className="text-xs font-semibold text-foreground">Нөөц</span>
             <input
               value={form.stock}
-              onChange={(event) => setField('stock', event.target.value)}
+              onChange={(event) => setField('stock', onlyProductDigits(event.target.value))}
               inputMode="numeric"
               placeholder="12"
               className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand ${errors.stock ? 'border-error' : 'border-[var(--glass-border)]'}`}
@@ -397,14 +519,53 @@ export default function NewSupplierProductPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-foreground">{form.imageName || 'Сонгосон зураг'}</p>
-                    <p className="mt-0.5 text-[11px] text-foreground-muted">Зураг бэлэн</p>
-                    <div className="mt-2 flex gap-2">
+                    <p className="mt-0.5 text-[11px] text-foreground-muted">{aiStatus || 'Зураг бэлэн'}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="rounded-lg bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-foreground hover:bg-white/10"
                       >
                         Солих
+                      </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setImageEditMenuOpen((open) => !open)}
+                          disabled={imageEditing}
+                          className="inline-flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-foreground hover:bg-white/10 disabled:opacity-60"
+                        >
+                          <Wand2 size={12} />
+                          {imageEditing ? 'Янзалж байна...' : 'Зураг янзлах'}
+                          <ChevronDown size={12} />
+                        </button>
+                        {imageEditMenuOpen && (
+                          <div className="absolute left-0 top-full z-20 mt-1 w-32 overflow-hidden rounded-lg border border-[var(--glass-border)] bg-card shadow-xl shadow-black/30">
+                            <button
+                              type="button"
+                              onClick={() => handleEditProductImage('simple')}
+                              className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-foreground hover:bg-white/5"
+                            >
+                              Энгийн
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEditProductImage('ai')}
+                              className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-brand hover:bg-brand/10"
+                            >
+                              AI-аар
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => analyzeSelectedImage()}
+                        disabled={aiAnalyzing}
+                        className="inline-flex items-center gap-1 rounded-lg bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/15 disabled:opacity-60"
+                      >
+                        <Sparkles size={12} />
+                        {aiAnalyzing ? 'Танин байна...' : 'AI-р таних'}
                       </button>
                       <button
                         type="button"
@@ -428,6 +589,12 @@ export default function NewSupplierProductPage() {
                 </button>
               )}
             </div>
+
+            {!form.image && (
+              <p className="text-[11px] text-foreground-muted">
+                Зураг сонгомогц AI нэр, ангилал, тайлбарыг санал болгоно. Үнэ ба нөөцийг та өөрөө оруулна.
+              </p>
+            )}
             {errors.image && <p className="text-xs text-error">{errors.image}</p>}
           </label>
 

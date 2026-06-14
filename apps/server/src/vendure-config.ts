@@ -14,8 +14,10 @@ import { AdminUiPlugin } from '@vendure/admin-ui-plugin';
 import { defaultEmailHandlers, EmailPlugin } from '@vendure/email-plugin';
 import { config as loadEnv } from 'dotenv';
 import { json } from 'body-parser';
+import { existsSync } from 'fs';
 import path from 'path';
 import { qpayPaymentHandler, monpayPaymentHandler } from './plugins/payment';
+import { assertPaymentMockModeAllowed } from './plugins/payment/payment-state';
 import { ReviewPlugin } from './plugins/review/review.plugin';
 import { SupplierPlugin } from './plugins/supplier/supplier.plugin';
 import { DriverPlugin } from './plugins/driver/driver.plugin';
@@ -24,8 +26,12 @@ import { RealtimePlugin } from './plugins/realtime.plugin';
 import { AdminStatsPlugin } from './plugins/admin-stats/admin-stats.plugin';
 import { DeviceTokenPlugin } from './plugins/device-token/device-token.plugin';
 import { CmsPlugin } from './plugins/cms/cms.plugin';
+import { SearchPlugin } from './plugins/search/search.plugin';
+import { ProductAiPlugin } from './plugins/product-ai/product-ai.plugin';
+import { CustomerAuthPlugin } from './plugins/customer-auth/customer-auth.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
+assertPaymentMockModeAllowed();
 
 const useSqliteDevDb = process.env.DB_TYPE === 'sqlite' || process.env.DB_TYPE === 'better-sqlite3';
 const vendureDbName = process.env.DB_NAME || process.env.VENDURE_DB_NAME || 'vendure';
@@ -33,6 +39,22 @@ const vendureDbUsername = process.env.DB_USERNAME || process.env.VENDURE_DB_USER
 const vendureDbPassword = process.env.DB_PASSWORD || process.env.VENDURE_DB_PASSWORD || 'vendure';
 const corsOrigins = [
   process.env.STOREFRONT_URL || 'http://localhost:3000',
+  'http://localhost:18080',
+  'http://localhost:18081',
+  'http://localhost:18082',
+  'http://localhost:18083',
+  'http://localhost:19006',
+  'http://localhost:19000',
+  'http://localhost:19010',
+  'http://localhost:19020',
+  'http://127.0.0.1:18080',
+  'http://127.0.0.1:18081',
+  'http://127.0.0.1:18082',
+  'http://127.0.0.1:18083',
+  'http://127.0.0.1:19006',
+  'http://127.0.0.1:19000',
+  'http://127.0.0.1:19010',
+  'http://127.0.0.1:19020',
   'http://localhost:3002',
   ...(process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
@@ -44,6 +66,11 @@ const s3AssetPrefix = (process.env.S3_PREFIX || '').replace(/^\/+|\/+$/g, '');
 const assetUrlPrefix = process.env.ASSET_URL_PREFIX
   ? process.env.ASSET_URL_PREFIX.replace(/\/?$/, '/')
   : undefined;
+const appEmailTemplatePath = path.join(__dirname, '../static/email/templates');
+const defaultEmailTemplatePath = path.join(__dirname, '../../../node_modules/@vendure/email-plugin/templates');
+const emailTemplatePath = existsSync(path.join(appEmailTemplatePath, 'email-verification/body.hbs'))
+  ? appEmailTemplatePath
+  : defaultEmailTemplatePath;
 
 class PrefixedAssetNamingStrategy extends HashedAssetNamingStrategy {
   constructor(private readonly prefix: string) {
@@ -178,6 +205,9 @@ export const config: VendureConfig = {
     AdminStatsPlugin,
     DeviceTokenPlugin,
     CmsPlugin,
+    SearchPlugin,
+    ProductAiPlugin,
+    CustomerAuthPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),
@@ -186,12 +216,12 @@ export const config: VendureConfig = {
     }),
     DefaultJobQueuePlugin.init({ useDatabaseForBuffer: true }),
     DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: true }),
-    EmailPlugin.init({
-      devMode: true,
+    EmailPlugin.init(({
       outputPath: path.join(__dirname, '../static/email/test-emails'),
       route: 'mailbox',
       handlers: defaultEmailHandlers,
-      templatePath: path.join(__dirname, '../static/email/templates'),
+      templatePath: emailTemplatePath,
+      ...(!process.env.SMTP_HOST ? { devMode: true as const } : {}),
       ...(process.env.SMTP_HOST
         ? {
             transport: {
@@ -212,7 +242,7 @@ export const config: VendureConfig = {
         passwordResetUrl: `${process.env.STOREFRONT_URL || 'http://localhost:3000'}/password-reset`,
         changeEmailAddressUrl: `${process.env.STOREFRONT_URL || 'http://localhost:3000'}/verify-email-address-change`,
       },
-    }),
+    }) as any),
     AdminUiPlugin.init({
       route: 'admin',
       port: 3002,

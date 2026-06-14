@@ -103,6 +103,16 @@ export const UPDATE_DELIVERY_STATUS = `
   }
 `;
 
+export const UPDATE_DELIVERY_PICKUP_STOP = `
+  mutation UpdateDeliveryPickupStop($deliveryId: ID!, $supplierId: String!, $status: String!) {
+    updateDeliveryPickupStop(deliveryId: $deliveryId, supplierId: $supplierId, status: $status) {
+      id
+      status
+      driverId
+    }
+  }
+`;
+
 export const COMPLETE_DELIVERY_WITH_CODE = `
   mutation CompleteDeliveryWithCode($deliveryId: ID!, $driverId: String!, $code: String!) {
     completeDeliveryWithCode(deliveryId: $deliveryId, driverId: $driverId, code: $code) {

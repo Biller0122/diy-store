@@ -1,0 +1,210 @@
+.shell {
+  min-height: 100vh;
+  padding: 24px;
+  background: #f5f7f8;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.toolbarGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.button {
+  border: 1px solid #d7dde2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172026;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.dangerButton {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.gridWrap {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #d7dde2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.dropActive {
+  outline: 3px solid #60a5fa;
+  outline-offset: 3px;
+}
+
+.grid {
+  block-size: 620px;
+}
+
+.imageCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.thumbButton {
+  width: 42px;
+  height: 42px;
+  border: 1px dashed #b7c0c9;
+  border-radius: 6px;
+  background: #f9fafb;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.thumbButton img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 76px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.statusNew {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.statusSaved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.statusFailed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.aiButton {
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  padding: 4px 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.spinner {
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.confidenceLow {
+  background: #fef3c7;
+}
+
+.confidenceHigh {
+  background: #dcfce7;
+}
+
+.invalidCell {
+  background: #fee2e2;
+}
+
+.toast {
+  margin-bottom: 12px;
+  border-radius: 6px;
+  background: #172026;
+  color: #ffffff;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.draftBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+  padding: 12px;
+}
+
+.emptyState {
+  min-height: 520px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #c5cdd5;
+  border-radius: 8px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.emptyIcon {
+  font-size: 56px;
+}
+
+.emptyTitle {
+  margin: 8px 0 4px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.emptySub {
+  margin: 0 0 18px;
+  color: #617180;
+}
+
+.contextMenu {
+  position: fixed;
+  z-index: 20;
+  border: 1px solid #d7dde2;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgb(15 23 42 / 18%);
+  padding: 6px;
+}
+
+.contextMenu button {
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  padding: 8px 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.footerAdd {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid #d7dde2;
+  background: #f9fafb;
+  padding: 10px;
+  font-size: 20px;
+  font-weight: 900;
+  cursor: pointer;
+}

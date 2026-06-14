@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:aws-local": "DOTENV_CONFIG_PATH=../../.env.aws-local ts-node-dev -r dotenv/config --respawn --transpile-only src/index.ts",
+    "dev:aws-local:win": "set DOTENV_CONFIG_PATH=../../.env.aws-local&& ts-node-dev -r dotenv/config --respawn --transpile-only src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "lint": "eslint src",
@@ -16,7 +17,10 @@
     "seed:collections": "ts-node src/seed/seed-collections.ts",
     "seed:sample": "ts-node src/seed/seed-sample-data.ts",
     "seed:sample:aws-local": "DOTENV_CONFIG_PATH=../../.env.aws-local ts-node -r dotenv/config src/seed/seed-sample-data.ts",
-    "sync-algolia": "ts-node src/plugins/search/sync-products.ts"
+    "seed:sample:aws-local:win": "set DOTENV_CONFIG_PATH=../../.env.aws-local&& ts-node -r dotenv/config src/seed/seed-sample-data.ts",
+    "sync-algolia": "ts-node src/plugins/search/sync-products.ts",
+    "search:index": "ts-node src/plugins/search/index-products.ts",
+    "search:index:aws-local:win": "set DOTENV_CONFIG_PATH=../../.env.aws-local&& ts-node -r dotenv/config src/plugins/search/index-products.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1061.0",
@@ -28,6 +32,7 @@
     "@vendure/core": "^3.6.0",
     "@vendure/email-plugin": "^3.6.0",
     "algoliasearch": "^5.52.1",
+    "bcryptjs": "^2.4.3",
     "ioredis": "^5.11.0",
     "nodemailer": "^8.0.5",
     "pg": "^8.11.3",

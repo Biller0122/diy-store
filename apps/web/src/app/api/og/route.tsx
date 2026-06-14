@@ -11,7 +11,7 @@ const MUTED = '#9999AA';
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const type  = searchParams.get('type') ?? 'default';
-  const name  = searchParams.get('name') ?? 'DIY Store';
+  const name  = searchParams.get('name') ?? 'shoptool.mn';
   const price = searchParams.get('price');
   const icon  = searchParams.get('icon') ?? '📦';
   const emoji = searchParams.get('emoji') ?? '📖';
@@ -36,8 +36,8 @@ export async function GET(req: NextRequest) {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '60px 64px', justifyContent: 'space-between' }}>
             {/* Brand */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🔨</div>
-              <span style={{ color: '#fff', fontWeight: 700, fontSize: 22 }}>DIY<span style={{ color: BRAND }}>Store</span></span>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>ST</div>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 22 }}>shoptool.mn</span>
             </div>
 
             {/* Product name */}
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
             </div>
 
             {/* Footer */}
-            <p style={{ color: MUTED, fontSize: 16, margin: 0 }}>diy-store.mn — Шуурхай хүргэлт</p>
+            <p style={{ color: MUTED, fontSize: 16, margin: 0 }}>shoptool.mn — Шуурхай хүргэлт</p>
           </div>
         </div>
       ),
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
         >
           <div style={{ fontSize: 120 }}>{icon}</div>
           <h1 style={{ color: '#fff', fontSize: 64, fontWeight: 800, margin: 0, textAlign: 'center' }}>{name}</h1>
-          <p style={{ color: MUTED, fontSize: 24, margin: 0 }}>diy-store.mn</p>
+          <p style={{ color: MUTED, fontSize: 24, margin: 0 }}>shoptool.mn</p>
           <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 6, background: BRAND }} />
         </div>
       ),
@@ -104,8 +104,8 @@ export async function GET(req: NextRequest) {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🔨</div>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 22 }}>DIY<span style={{ color: BRAND }}>Store</span> <span style={{ color: MUTED, fontWeight: 400 }}>/ Заавар</span></span>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>ST</div>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 22 }}>shoptool.mn <span style={{ color: MUTED, fontWeight: 400 }}>/ Заавар</span></span>
           </div>
 
           <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
             </h1>
           </div>
 
-          <p style={{ color: MUTED, fontSize: 20, margin: 0 }}>diy-store.mn/how-to</p>
+          <p style={{ color: MUTED, fontSize: 20, margin: 0 }}>shoptool.mn/how-to</p>
         </div>
       ),
       { width: 1200, height: 630 },
@@ -138,9 +138,9 @@ export async function GET(req: NextRequest) {
           gap: 20,
         }}
       >
-        <div style={{ fontSize: 80 }}>🔨</div>
-        <h1 style={{ color: '#fff', fontSize: 72, fontWeight: 900, margin: 0 }}>DIY<span style={{ color: BRAND }}>Store</span></h1>
-        <p style={{ color: MUTED, fontSize: 28, margin: 0 }}>Барилга. Засвар. Бүтээл.</p>
+        <div style={{ fontSize: 80 }}>ST</div>
+        <h1 style={{ color: '#fff', fontSize: 72, fontWeight: 900, margin: 0 }}>shoptool.mn</h1>
+        <p style={{ color: MUTED, fontSize: 28, margin: 0 }}>Барилгын материалын ухаалаг шийдэл</p>
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 6, background: BRAND }} />
       </div>
     ),

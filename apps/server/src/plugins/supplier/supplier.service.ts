@@ -1,10 +1,11 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { EmailOtpService } from '../../services/email-otp.service';
-import { generateToken } from '../../utils/auth';
+import { generateMockableOtp, generateToken, isOtpMockMode, maskOtp } from '../../utils/auth';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
+import { EmbeddingService } from '../search/embedding.service';
 
 export interface RegisterSupplierInput {
   ownerName: string;
@@ -42,7 +43,12 @@ export class SupplierService {
     @InjectRepository(SupplierProduct)
     private readonly supplierProductRepo: Repository<SupplierProduct>,
     @Optional()
+    @InjectDataSource()
+    private readonly dataSource?: DataSource,
+    @Optional()
     private readonly emailOtpService?: EmailOtpService,
+    @Optional()
+    private readonly embeddingService?: EmbeddingService,
   ) {}
 
   async registerSupplier(input: RegisterSupplierInput): Promise<Supplier> {
@@ -70,6 +76,7 @@ export class SupplierService {
       status: SupplierStatus.PENDING_VERIFICATION,
       otpCode,
       otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      otpAttempts: 0,
       commissionRate: 10,
       rating: 0,
       reviewCount: 0,
@@ -80,10 +87,9 @@ export class SupplierService {
     });
 
     const saved = await this.supplierRepo.save(supplier);
-    console.log(`[Supplier Email OTP] ${email}: ${otpCode}`);
+    if (isOtpMockMode()) console.log(`[Supplier Email OTP] ${email}: ${maskOtp(otpCode)}`);
     await this.emailOtpService?.sendSupplierOtp(email, otpCode, 'register');
     console.log(`SUPPLIER REGISTERED: id=${saved.id} name=${saved.ownerName}`);
-    console.log('[Supplier] NEW REGISTRATION:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
     return saved;
   }
 
@@ -95,10 +101,17 @@ export class SupplierService {
     if (supplier.status === SupplierStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
     if (supplier.status === SupplierStatus.REJECTED) throw new Error('Таны бүртгэл татгалзсан байна');
 
+    // Rate limit: 60s cooldown between OTP requests (expiry is +5min on issue,
+    // so >4min remaining means a code was sent < 1min ago).
+    if (supplier.otpExpiresAt && supplier.otpExpiresAt.getTime() - Date.now() > 4 * 60 * 1000) {
+      throw new Error('Та түр хүлээгээд (1 мин) дахин код аваарай');
+    }
+
     supplier.otpCode = this.generateOtp();
     supplier.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    supplier.otpAttempts = 0;
     const saved = await this.supplierRepo.save(supplier);
-    console.log(`[Supplier Login Email OTP] ${email}: ${saved.otpCode}`);
+    if (isOtpMockMode()) console.log(`[Supplier Login Email OTP] ${email}: ${maskOtp(saved.otpCode)}`);
     await this.emailOtpService?.sendSupplierOtp(email, saved.otpCode, 'login');
     return saved;
   }
@@ -107,8 +120,13 @@ export class SupplierService {
     const email = this.normalizeEmail(input.email);
     const supplier = await this.getSupplierByEmail(email);
     if (!supplier) throw new Error('Бүртгэл олдсонгүй');
-    if (!supplier.otpCode || supplier.otpCode !== input.otp.trim()) throw new Error('Код буруу байна');
     if (!supplier.otpExpiresAt || supplier.otpExpiresAt.getTime() < Date.now()) throw new Error('Кодын хугацаа дууссан байна');
+    if ((supplier.otpAttempts ?? 0) >= 5) throw new Error('Олон удаа буруу оролдлоо. Дахин код аваарай');
+    if (!supplier.otpCode || supplier.otpCode !== input.otp.trim()) {
+      supplier.otpAttempts = (supplier.otpAttempts ?? 0) + 1;
+      await this.supplierRepo.save(supplier);
+      throw new Error('Код буруу байна');
+    }
 
     if (supplier.status === SupplierStatus.PENDING_VERIFICATION) {
       supplier.status = SupplierStatus.PENDING_APPROVAL;
@@ -119,6 +137,7 @@ export class SupplierService {
     }
     supplier.otpCode = null;
     supplier.otpExpiresAt = null;
+    supplier.otpAttempts = 0;
     const saved = await this.supplierRepo.save(supplier);
     console.log('SUPPLIER EMAIL VERIFIED:', { id: saved.id, name: saved.ownerName, email: saved.email, status: saved.status });
     return { supplier: saved, token: generateToken({ id: String(saved.id), role: 'SUPPLIER' }, '7d') };
@@ -195,11 +214,30 @@ export class SupplierService {
     const saved = await this.supplierProductRepo.save(product);
     supplier.productCount = await this.supplierProductRepo.count({ where: { supplierId: String(input.supplierId) } });
     await this.supplierRepo.save(supplier);
+    void this.embeddingService?.indexSupplierProductById(String(saved.id));
     return saved;
   }
 
   async updateSupplierProduct(id: string, input: Partial<SupplierProductInput>): Promise<SupplierProduct> {
-    const product = await this.supplierProductRepo.findOne({ where: { id } });
+    const saved = this.dataSource
+      ? await this.dataSource.transaction((manager) => this.updateSupplierProductLocked(manager, id, input))
+      : await this.updateSupplierProductLocked(this.supplierProductRepo.manager as EntityManager | undefined, id, input);
+    void this.embeddingService?.indexSupplierProductById(String(saved.id));
+    return saved;
+  }
+
+  private async updateSupplierProductLocked(
+    manager: EntityManager | undefined,
+    id: string,
+    input: Partial<SupplierProductInput>,
+  ): Promise<SupplierProduct> {
+    const repo = manager?.getRepository?.(SupplierProduct) ?? this.supplierProductRepo;
+    const supportsPessimisticLock = this.supportsPessimisticLock();
+    const product = await repo.findOne(
+      supportsPessimisticLock
+        ? { where: { id }, lock: { mode: 'pessimistic_write' as const } }
+        : { where: { id } },
+    );
     if (!product) throw new Error('Бараа олдсонгүй');
     if (input.name !== undefined) product.name = input.name.trim();
     if (input.slug !== undefined) product.slug = input.slug.trim() || product.slug;
@@ -210,7 +248,7 @@ export class SupplierService {
     if (input.originalPrice !== undefined) product.originalPrice = input.originalPrice ? Math.round(input.originalPrice) : null;
     if (input.stock !== undefined) product.stock = Math.max(0, Math.round(input.stock));
     if (input.enabled !== undefined) product.enabled = input.enabled;
-    return this.supplierProductRepo.save(product);
+    return repo.save(product);
   }
 
   async deleteSupplierProduct(id: string): Promise<boolean> {
@@ -238,8 +276,12 @@ export class SupplierService {
   }
 
   private generateOtp() {
-    if (process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true') return '1234';
-    return String(Math.floor(1000 + Math.random() * 9000));
+    return generateMockableOtp();
+  }
+
+  private supportsPessimisticLock() {
+    const type = this.dataSource?.options?.type;
+    return Boolean(type && !['sqlite', 'better-sqlite3'].includes(String(type)));
   }
 
   private async createUniqueSlug(name: string) {

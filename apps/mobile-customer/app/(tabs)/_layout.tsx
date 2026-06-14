@@ -1,11 +1,14 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet } from 'react-native';
+import { useMemo } from 'react';
 import { useAppStore } from '@/lib/store';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 
 function CartTabIcon({ focused, color }: { focused: boolean; color: string }) {
   const cartCount = useAppStore((s) => s.cartCount);
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View style={styles.iconWrapper}>
       <Ionicons name={focused ? 'cart' : 'cart-outline'} size={24} color={color} />
@@ -19,13 +22,14 @@ function CartTabIcon({ focused, color }: { focused: boolean; color: string }) {
 }
 
 export default function TabLayout() {
+  const C = useTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: 'rgba(8,8,14,0.97)',
-          borderTopColor: 'rgba(255,255,255,0.06)',
+          backgroundColor: C.tabBar,
+          borderTopColor: C.tabBarBorder,
           height: 84,
           paddingBottom: 20,
           paddingTop: 8,
@@ -48,11 +52,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="categories"
         options={{
-          title: 'Хайх',
+          title: 'Ангилал',
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'search' : 'search-outline'} size={24} color={color} />
+            <Ionicons name={focused ? 'grid' : 'grid-outline'} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Бүртгэл',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
           ),
         }}
       />
@@ -66,20 +79,22 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="orders"
+        name="search"
         options={{
-          title: 'Захиалга',
+          href: null,
+          title: 'Хайх',
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'bag' : 'bag-outline'} size={24} color={color} />
+            <Ionicons name={focused ? 'search' : 'search-outline'} size={24} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="account"
+        name="orders"
         options={{
-          title: 'Бүртгэл',
+          href: null,
+          title: 'Захиалга',
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
+            <Ionicons name={focused ? 'receipt' : 'receipt-outline'} size={24} color={color} />
           ),
         }}
       />
@@ -87,29 +102,30 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  iconWrapper: {
-    position: 'relative',
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -6,
-    backgroundColor: C.primary,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-});
+const makeStyles = (C: ThemeColors) =>
+  StyleSheet.create({
+    iconWrapper: {
+      position: 'relative',
+      width: 28,
+      height: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    badge: {
+      position: 'absolute',
+      top: -4,
+      right: -6,
+      backgroundColor: C.accent,
+      borderRadius: 10,
+      minWidth: 18,
+      height: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 4,
+    },
+    badgeText: {
+      color: '#fff',
+      fontSize: 9,
+      fontWeight: '700',
+    },
+  });

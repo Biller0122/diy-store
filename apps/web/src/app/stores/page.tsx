@@ -22,7 +22,7 @@ const StoreMap = dynamic(() => import('@/components/StoreMap'), {
 const STORES: StoreLocation[] = [
   {
     id: '1',
-    name: 'DIY Store Баянзүрх',
+    name: 'shoptool.mn Баянзүрх',
     address: 'Баянзүрх дүүрэг, Нарны зам 5, 2-р хороо',
     district: 'Баянзүрх',
     phone: '7711-0001',
@@ -32,7 +32,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '2',
-    name: 'DIY Store Сүхбаатар',
+    name: 'shoptool.mn Сүхбаатар',
     address: 'Сүхбаатар дүүрэг, Бага тойруу 14, 4-р хороо',
     district: 'Сүхбаатар',
     phone: '7711-0002',
@@ -42,7 +42,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '3',
-    name: 'DIY Store Хан-Уул',
+    name: 'shoptool.mn Хан-Уул',
     address: 'Хан-Уул дүүрэг, Зайсан, 12-р хороо',
     district: 'Хан-Уул',
     phone: '7711-0003',
@@ -52,7 +52,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '4',
-    name: 'DIY Store Чингэлтэй',
+    name: 'shoptool.mn Чингэлтэй',
     address: 'Чингэлтэй дүүрэг, Энхтайваны өргөн чөлөө 3',
     district: 'Чингэлтэй',
     phone: '7711-0004',
@@ -62,7 +62,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '5',
-    name: 'DIY Store Баянгол',
+    name: 'shoptool.mn Баянгол',
     address: 'Баянгол дүүрэг, Чингисийн өргөн чөлөө 8',
     district: 'Баянгол',
     phone: '7711-0005',
@@ -72,7 +72,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '6',
-    name: 'DIY Store Налайх',
+    name: 'shoptool.mn Налайх',
     address: 'Налайх дүүрэг, Налайхын зам 1',
     district: 'Налайх',
     phone: '7711-0006',

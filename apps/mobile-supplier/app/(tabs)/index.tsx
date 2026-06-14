@@ -9,10 +9,14 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { type Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { useSupplierStore } from '@/lib/store';
 import { SUPPLIER_ORDERS_QUERY, shopFetch } from '@/lib/api';
 import { SupplierOrder } from '@/lib/types';
+
+const route = (href: string) => href as Href;
 
 const C = {
   bg: '#08080E',
@@ -54,6 +58,7 @@ function PulsingDot() {
 }
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const supplier = useSupplierStore((s) => s.supplier);
   const token = useSupplierStore((s) => s.token);
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
@@ -152,6 +157,18 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Ажлын цэс</Text>
+          <View style={styles.actionGrid}>
+            <ActionTile icon="add-circle-outline" label="Бараа нэмэх" onPress={() => router.push(route('/product/new'))} />
+            <ActionTile icon="cube-outline" label="Бараанууд" onPress={() => router.push(route('/(tabs)/products'))} />
+            <ActionTile icon="bag-check-outline" label="Захиалга" onPress={() => router.push(route('/(tabs)/orders'))} />
+            <ActionTile icon="stats-chart-outline" label="Орлого" onPress={() => router.push(route('/(tabs)/revenue'))} />
+            <ActionTile icon="star-outline" label="Сэтгэгдэл" onPress={() => router.push(route('/(tabs)/reviews'))} />
+            <ActionTile icon="settings-outline" label="Тохиргоо" onPress={() => router.push(route('/(tabs)/settings'))} />
+          </View>
+        </View>
+
         {/* Stats Row 2 */}
         <View style={styles.row}>
           <View style={[styles.statCard, { flex: 1, marginRight: 8 }]}>
@@ -224,6 +241,25 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function ActionTile({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.actionTile} onPress={onPress} activeOpacity={0.82}>
+      <View style={styles.actionIcon}>
+        <Ionicons name={icon} size={18} color={C.primary} />
+      </View>
+      <Text style={styles.actionLabel}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -307,6 +343,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 12,
     marginTop: 8,
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  actionTile: {
+    width: '31%',
+    minHeight: 88,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  actionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,69,0,0.12)',
+  },
+  actionLabel: {
+    color: C.text,
+    fontSize: 12,
+    fontWeight: '800',
   },
   orderCard: {
     backgroundColor: C.card,

@@ -14,6 +14,8 @@ const sharedPrefixes = [
   '/sitemap.xml',
   '/shop-api',
   '/admin-api',
+  '/analyze-product',
+  '/edit-product-image',
   '/mailbox',
   '/socket.io',
 ];
@@ -65,6 +67,10 @@ function portalGuard(request: NextRequest) {
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (process.env.NODE_ENV === 'production' && pathname.startsWith('/checkout/mock-psp')) {
+    return redirectTo(request, '/checkout', false);
+  }
+
   if (isSharedPath(pathname)) return NextResponse.next();
 
   const portalRedirect = portalGuard(request);

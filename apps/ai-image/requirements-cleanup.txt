@@ -1,0 +1,9 @@
+# Cleanup-only deps for a CPU box (e.g. EC2).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pillow==11.0.0
+numpy==2.2.0
+scipy==1.14.1
+rembg==2.0.60
+onnxruntime==1.20.1

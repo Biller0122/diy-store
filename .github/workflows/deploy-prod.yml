@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -42,8 +43,9 @@ env:
   WEB_ECR_REPOSITORY: ${{ vars.WEB_ECR_REPOSITORY || 'diy-store-web' }}
   SERVER_CONTAINER_NAME: ${{ vars.SERVER_CONTAINER_NAME || 'server' }}
   WEB_CONTAINER_NAME: ${{ vars.WEB_CONTAINER_NAME || 'web' }}
-  PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'http://diy-store-alb-418459496.ap-southeast-1.elb.amazonaws.com' }}
+  PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://shoptool.mn' }}
   NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL || '' }}
+  GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '' }}
 
 jobs:
   detect-changes:
@@ -73,6 +75,15 @@ jobs:
           fi
 
           if [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ "${{ github.ref_name }}" == "dev" ]]; then
+              echo "Dev branch push: deploy backend and web for AWS validation."
+              server=true
+              web=true
+              echo "server=$server" >> "$GITHUB_OUTPUT"
+              echo "web=$web" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             base="${{ github.event.before }}"
             if [[ "$base" =~ ^0+$ ]]; then
               base="HEAD~1"
@@ -139,6 +150,7 @@ jobs:
             --build-arg NEXT_PUBLIC_VENDURE_ADMIN_API=/admin-api \
             --build-arg NEXT_PUBLIC_SITE_URL="$PRODUCTION_BASE_URL" \
             --build-arg NEXT_PUBLIC_SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL" \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
             --build-arg INTERNAL_VENDURE_SHOP_API="$PRODUCTION_BASE_URL/shop-api" \
             --build-arg INTERNAL_VENDURE_ADMIN_API="$PRODUCTION_BASE_URL/admin-api" \
             --build-arg INTERNAL_VENDURE_ASSETS="$PRODUCTION_BASE_URL/assets/:path*" \
@@ -151,6 +163,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          describe_service_state() {
+            local service="$1"
+            echo "::group::ECS service state: $service"
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$service" \
+              --query 'services[0].{serviceName:serviceName,status:status,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,taskDefinition:taskDefinition,deployments:deployments[*].{id:id,status:status,rolloutState:rolloutState,rolloutStateReason:rolloutStateReason,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,failedTasks:failedTasks,taskDefinition:taskDefinition},events:events[0:10].message}' \
+              --output json || true
+
+            local target_group_arn
+            target_group_arn="$(aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$service" \
+              --query 'services[0].loadBalancers[0].targetGroupArn' \
+              --output text 2>/dev/null || true)"
+
+            if [[ -n "$target_group_arn" && "$target_group_arn" != "None" ]]; then
+              aws elbv2 describe-target-health \
+                --target-group-arn "$target_group_arn" \
+                --query 'TargetHealthDescriptions[*].{target:Target,health:TargetHealth}' \
+                --output json || true
+            fi
+            echo "::endgroup::"
+          }
 
           update_service_image() {
             local service="$1"
@@ -173,6 +210,7 @@ jobs:
             jq \
               --arg image "$image" \
               --arg preferredContainer "$preferred_container" \
+              --arg googleClientId "$GOOGLE_CLIENT_ID" \
               'del(
                 .taskDefinitionArn,
                 .revision,
@@ -187,6 +225,23 @@ jobs:
                     map(if .name == $preferredContainer then .image = $image else . end)
                   else
                     .[0].image = $image | .
+                  end
+                )
+              | .containerDefinitions |= map(
+                  .environment = ((.environment // []) | map(select(.name != "PAYMENT_MOCK_MODE")))
+                )
+              | .containerDefinitions |= (
+                  if $googleClientId == "" then
+                    .
+                  else
+                    map(
+                      .environment = ((.environment // [])
+                        | map(select(.name != "GOOGLE_CLIENT_ID" and .name != "NEXT_PUBLIC_GOOGLE_CLIENT_ID"))
+                        + [
+                          {"name":"GOOGLE_CLIENT_ID","value":$googleClientId},
+                          {"name":"NEXT_PUBLIC_GOOGLE_CLIENT_ID","value":$googleClientId}
+                        ])
+                    )
                   end
                 )' \
               current-task-definition.json > next-task-definition.json
@@ -203,9 +258,13 @@ jobs:
               --task-definition "$next_task_definition" \
               --force-new-deployment > /dev/null
 
-            aws ecs wait services-stable \
+            if ! aws ecs wait services-stable \
               --cluster "$ECS_CLUSTER" \
-              --services "$service"
+              --services "$service"; then
+              echo "::error::ECS service failed to stabilize: $service"
+              describe_service_state "$service"
+              exit 255
+            fi
           }
 
           if [[ "${{ needs.detect-changes.outputs.server }}" == "true" ]]; then
@@ -227,7 +286,7 @@ jobs:
           check_exact_200() {
             local path="$1"
             local code
-            code="$(curl -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
+            code="$(curl -k -L -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
             echo "$path -> $code"
             [[ "$code" == "200" ]]
           }
@@ -235,7 +294,7 @@ jobs:
           check_not_5xx() {
             local path="$1"
             local code
-            code="$(curl -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
+            code="$(curl -k -L -sS -o /dev/null -w '%{http_code}' "$PRODUCTION_BASE_URL$path")"
             echo "$path -> $code"
             [[ "$code" != "000" && "$code" -lt 500 ]]
           }

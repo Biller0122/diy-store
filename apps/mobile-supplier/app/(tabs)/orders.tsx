@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SupplierOrder, TabFilter } from '@/lib/types';
 import { SUPPLIER_ORDERS_QUERY, SUPPLIER_ORDER_ACTION_MUTATION, shopFetch } from '@/lib/api';
@@ -341,6 +342,14 @@ export default function OrdersScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {orders.length === 0 && !loading ? (
+          <View style={styles.empty}>
+            <Ionicons name="bag-check-outline" size={34} color={C.textTertiary} />
+            <Text style={styles.emptyTitle}>Захиалга алга</Text>
+            <Text style={styles.emptyText}>Энэ төлөвт харуулах захиалга одоогоор байхгүй байна.</Text>
+          </View>
+        ) : null}
+
         {orders.map((order) => (
           <View key={order.id} style={styles.card}>
             <View style={styles.cardHeader}>
@@ -468,6 +477,25 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
+  empty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 260,
+    paddingHorizontal: 28,
+  },
+  emptyTitle: {
+    color: C.text,
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  emptyText: {
+    color: C.textTertiary,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   card: {
     backgroundColor: C.card,
     borderRadius: 16,

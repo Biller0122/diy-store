@@ -3,8 +3,20 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import gql from 'graphql-tag';
 import { CmsResolver } from './cms.resolver';
 import { HomepageBanner } from './homepage-banner.entity';
+import { SiteAnnouncement } from './site-announcement.entity';
 
 const CMS_SCHEMA_EXTENSION = gql`
+  type SiteAnnouncement {
+    id: ID!
+    title: String!
+    message: String!
+    ctaLabel: String!
+    ctaHref: String!
+    enabled: Boolean!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
   type HomepageBanner {
     id: ID!
     title: String!
@@ -38,12 +50,23 @@ const CMS_SCHEMA_EXTENSION = gql`
     dataUrl: String!
   }
 
+  input SiteAnnouncementInput {
+    title: String
+    message: String
+    ctaLabel: String
+    ctaHref: String
+    enabled: Boolean
+  }
+
   extend type Query {
+    siteAnnouncement: SiteAnnouncement
+    adminSiteAnnouncement: SiteAnnouncement!
     homepageBanners: [HomepageBanner!]!
     adminHomepageBanners: [HomepageBanner!]!
   }
 
   extend type Mutation {
+    updateSiteAnnouncement(input: SiteAnnouncementInput!): SiteAnnouncement!
     createHomepageBanner(input: HomepageBannerInput!): HomepageBanner!
     updateHomepageBanner(id: ID!, input: HomepageBannerInput!): HomepageBanner!
     deleteHomepageBanner(id: ID!): Boolean!
@@ -52,9 +75,9 @@ const CMS_SCHEMA_EXTENSION = gql`
 `;
 
 @VendurePlugin({
-  imports: [PluginCommonModule, TypeOrmModule.forFeature([HomepageBanner])],
+  imports: [PluginCommonModule, TypeOrmModule.forFeature([HomepageBanner, SiteAnnouncement])],
   providers: [CmsResolver],
-  entities: [HomepageBanner],
+  entities: [HomepageBanner, SiteAnnouncement],
   shopApiExtensions: {
     schema: CMS_SCHEMA_EXTENSION,
     resolvers: [CmsResolver],

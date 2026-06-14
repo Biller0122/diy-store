@@ -1,0 +1,164 @@
+.wrap {
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.toolbar,
+.draft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.button {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fafafa;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primary {
+  border-color: rgba(255, 69, 0, 0.55);
+  background: #ff4500;
+  color: #ffffff;
+}
+
+.danger {
+  color: #ef4444;
+}
+
+.toast {
+  margin: 12px;
+  border-radius: 12px;
+  background: rgba(255, 69, 0, 0.12);
+  color: #ff6b35;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.grid {
+  block-size: 520px;
+  background: #111118;
+  color: #fafafa;
+  --rdg-background-color: #111118;
+  --rdg-header-background-color: #16161f;
+  --rdg-row-hover-background-color: rgba(255, 255, 255, 0.04);
+  --rdg-border-color: rgba(255, 255, 255, 0.08);
+  --rdg-color: #fafafa;
+}
+
+.dropActive {
+  outline: 3px solid rgba(255, 69, 0, 0.65);
+  outline-offset: -3px;
+}
+
+.imageCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.thumb {
+  width: 42px;
+  height: 42px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #a1a1aa;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.status {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.new {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+}
+
+.saved {
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+}
+
+.failed {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ef4444;
+}
+
+.ai {
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.low {
+  background: rgba(245, 158, 11, 0.18);
+}
+
+.high {
+  background: rgba(16, 185, 129, 0.16);
+}
+
+.invalid {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  text-align: center;
+  padding: 28px;
+}
+
+.emptyIcon {
+  font-size: 56px;
+}
+
+.add {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fafafa;
+  padding: 10px;
+  font-size: 18px;
+  font-weight: 900;
+  cursor: pointer;
+}

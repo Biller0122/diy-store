@@ -97,6 +97,7 @@ export default function LoginScreen() {
   const verifyEmailOtp = useSupplierStore((s) => s.verifyEmailOtp);
   const isLoading = useSupplierStore((s) => s.isLoading);
   const error = useSupplierStore((s) => s.error);
+  const pendingOtp = useSupplierStore((s) => s.pendingOtp);
   const clearError = useSupplierStore((s) => s.clearError);
 
   const submitEmail = async () => {
@@ -197,6 +198,12 @@ export default function LoginScreen() {
                 <TouchableOpacity style={styles.loginBtn} onPress={submitEmail} disabled={isLoading} activeOpacity={0.85}>
                   {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginBtnText}>Код авах</Text>}
                 </TouchableOpacity>
+
+                {mode === 'login' ? (
+                  <Text style={styles.helpText}>Анх удаа бол “Бүртгүүлэх” табыг сонгоод код аваарай.</Text>
+                ) : (
+                  <Text style={styles.helpText}>Бүртгүүлсний дараа кодоо баталгаажуулаад merchant dashboard руу орно.</Text>
+                )}
               </>
             ) : (
               <>
@@ -205,7 +212,7 @@ export default function LoginScreen() {
                 <TouchableOpacity style={styles.ghostBtn} onPress={() => setStep('email')}>
                   <Text style={styles.ghostText}>И-мэйл солих</Text>
                 </TouchableOpacity>
-                {__DEV__ ? <Text style={styles.devText}>dev code: 1234</Text> : null}
+                {__DEV__ ? <Text style={styles.devText}>dev code: {pendingOtp || '1234'}</Text> : null}
               </>
             )}
 
@@ -254,6 +261,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, color: C.text, fontSize: 15 },
   loginBtn: { height: 56, backgroundColor: C.primary, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  helpText: { color: C.textTertiary, fontSize: 12, lineHeight: 17, textAlign: 'center' },
   otpTitle: { color: C.text, fontSize: 18, fontWeight: '800', textAlign: 'center' },
   otpRow: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
   otpInput: {

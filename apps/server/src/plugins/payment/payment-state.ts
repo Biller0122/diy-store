@@ -36,6 +36,21 @@ export function canTransition(from: PaymentState, to: PaymentState): boolean {
   return TRANSITIONS[from]?.includes(to) ?? false;
 }
 
+// ─── Mock-mode guard ──────────────────────────────────────────
+// Mock payments auto-settle without money changing hands, so they MUST never run
+// in production. If real credentials are missing in production the handler should
+// fail loudly (real API path errors) rather than silently fake a settlement.
+export function paymentMockMode(hasRealCredentials: boolean): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  return !hasRealCredentials || process.env.PAYMENT_MOCK_MODE === 'true';
+}
+
+export function assertPaymentMockModeAllowed() {
+  if (process.env.NODE_ENV === 'production' && process.env.PAYMENT_MOCK_MODE === 'true') {
+    throw new Error('PAYMENT_MOCK_MODE=true is forbidden in production');
+  }
+}
+
 // ─── Factory ──────────────────────────────────────────────────
 
 export function createPaymentRecord(

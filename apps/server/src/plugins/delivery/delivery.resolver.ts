@@ -1,7 +1,8 @@
 import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
-import { Ctx, RequestContext } from '@vendure/core';
+import { Ctx, RequestContext, CustomerService } from '@vendure/core';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { DeliveryOrderItem, DeliveryRequest, DeliveryStatus, PickupStop } from './delivery-request.entity';
 import { dispatchOrder, type DispatchPickupStop } from '../../services/order-dispatch.service';
 import { generateOrderNumber } from '../../services/order-number.service';
@@ -11,6 +12,20 @@ import { requirePlatformRole } from '../../utils/auth';
 import { Driver, DriverStatus } from '../driver/driver.entity';
 import { SupplierProduct } from '../supplier/supplier-product.entity';
 
+const DELIVERY_TRANSITIONS: Record<DeliveryStatus, DeliveryStatus[]> = {
+  [DeliveryStatus.SEARCHING]: [DeliveryStatus.OFFERED, DeliveryStatus.ACCEPTED, DeliveryStatus.CANCELLED],
+  [DeliveryStatus.OFFERED]: [DeliveryStatus.ACCEPTED, DeliveryStatus.SEARCHING, DeliveryStatus.CANCELLED],
+  [DeliveryStatus.ACCEPTED]: [DeliveryStatus.IN_PROGRESS, DeliveryStatus.CANCELLED],
+  [DeliveryStatus.IN_PROGRESS]: [DeliveryStatus.CANCELLED, DeliveryStatus.COMPLETED],
+  [DeliveryStatus.COMPLETED]: [],
+  [DeliveryStatus.CANCELLED]: [],
+};
+
+export function canTransitionDelivery(from: DeliveryStatus, to: DeliveryStatus) {
+  if (from === to) return true;
+  return DELIVERY_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
 @Resolver()
 export class DeliveryResolver {
   constructor(
@@ -18,13 +33,21 @@ export class DeliveryResolver {
     private deliveryRepo: Repository<DeliveryRequest>,
     @InjectDataSource()
     private dataSource: DataSource,
+    private customerService: CustomerService,
   ) {}
 
   @Query()
-  async deliveryRequest(@Args('orderId') orderId: string) {
-    return this.deliveryRepo.findOne({
+  async deliveryRequest(
+    @Ctx() ctx: RequestContext,
+    @Args('orderId') orderId: string,
+    @Args('token', { nullable: true }) token?: string,
+  ) {
+    const delivery = await this.deliveryRepo.findOne({
       where: [{ orderId }, { orderNumber: orderId }],
     });
+    if (!delivery) return null;
+    this.requireDeliveryViewer(ctx, delivery, token);
+    return delivery;
   }
 
   @Query()
@@ -65,6 +88,7 @@ export class DeliveryResolver {
 
   @Mutation()
   async createDeliveryRequest(
+    @Ctx() ctx: RequestContext,
     @Args('orderId') orderId: string,
     @Args('customerId') customerId: string,
     @Args('customerName') customerName: string,
@@ -77,6 +101,15 @@ export class DeliveryResolver {
     @Args('orderTotal', { nullable: true }) orderTotal = 0,
     @Args('paymentMethod', { nullable: true }) paymentMethod?: string,
   ) {
+    // Security: never trust the client-supplied customerId for an authenticated
+    // session. If a Vendure customer is logged in, bind the delivery to THEIR id
+    // so a logged-in user cannot attribute an order to another customer. Guest
+    // checkout (no session) keeps the supplied identifier.
+    if (ctx.activeUserId) {
+      const sessionCustomer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId, false);
+      if (sessionCustomer) customerId = String(sessionCustomer.id);
+    }
+
     const orderNumber = await generateOrderNumber(this.dataSource);
 
     const pickupLat = pickupStops[0]?.lat ?? 47.9185;
@@ -91,6 +124,7 @@ export class DeliveryResolver {
     const request = this.deliveryRepo.create({
       orderId,
       orderNumber,
+      trackingToken: randomUUID(),
       customerId,
       customerName,
       customerPhone,
@@ -166,11 +200,19 @@ export class DeliveryResolver {
               driverId: result.driver.id,
               status: DeliveryStatus.ACCEPTED,
             });
+            emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status: DeliveryStatus.ACCEPTED });
+            if (current.orderNumber) {
+              emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status: DeliveryStatus.ACCEPTED });
+            }
           }
         } else if (result.status === 'TIMEOUT') {
           const current = await this.deliveryRepo.findOne({ where: { id: saved.id } });
           if (current?.status === DeliveryStatus.SEARCHING) {
             await this.deliveryRepo.update(saved.id, { status: DeliveryStatus.CANCELLED });
+            emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status: DeliveryStatus.CANCELLED });
+            if (current.orderNumber) {
+              emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status: DeliveryStatus.CANCELLED });
+            }
           }
         }
       })
@@ -193,6 +235,7 @@ export class DeliveryResolver {
     if (![DeliveryStatus.SEARCHING, DeliveryStatus.ACCEPTED].includes(current.status)) {
       throw new Error('Энэ хүргэлтийг авах боломжгүй байна');
     }
+    this.assertStatusTransition(current.status, DeliveryStatus.ACCEPTED);
     handleDriverOfferDecision('accept', { driverId, orderId: deliveryId });
     await this.deliveryRepo.update(deliveryId, {
       driverId,
@@ -217,6 +260,7 @@ export class DeliveryResolver {
     if (current.driverId && current.driverId !== driverId) {
       throw new Error('Өөр жолоочид оноогдсон хүргэлт байна');
     }
+    this.assertStatusTransition(current.status, DeliveryStatus.CANCELLED);
     handleDriverOfferDecision('reject', { driverId, orderId: deliveryId });
     await this.deliveryRepo.update(deliveryId, {
       driverId: current?.driverId ?? driverId,
@@ -239,10 +283,45 @@ export class DeliveryResolver {
     if (status === DeliveryStatus.COMPLETED) {
       throw new Error('Хүргэлт дуусгахын тулд хэрэглэгчийн буулгах код шаардлагатай');
     }
+    this.assertStatusTransition(current.status, status);
     await this.deliveryRepo.update(deliveryId, { status });
     emitToOrder(current.orderId, 'order:status', { orderId: current.orderId, status });
     if (current.orderNumber) {
       emitToOrder(current.orderNumber, 'order:status', { orderId: current.orderNumber, status });
+    }
+    return this.deliveryRepo.findOne({ where: { id: deliveryId } });
+  }
+
+  @Mutation()
+  async updateDeliveryPickupStop(
+    @Ctx() ctx: RequestContext,
+    @Args('deliveryId') deliveryId: string,
+    @Args('supplierId') supplierId: string,
+    @Args('status') status: 'ARRIVED' | 'PICKED_UP',
+  ) {
+    if (!['ARRIVED', 'PICKED_UP'].includes(status)) throw new Error('Авах цэгийн төлөв буруу байна');
+    const current = await this.deliveryRepo.findOne({ where: { id: deliveryId } });
+    if (!current) throw new Error('Хүргэлт олдсонгүй');
+    if (current.driverId) this.requireDriverOwner(ctx, current.driverId);
+    if (![DeliveryStatus.ACCEPTED, DeliveryStatus.IN_PROGRESS].includes(current.status)) {
+      throw new Error('Энэ хүргэлтийн авах цэгийг шинэчлэх боломжгүй байна');
+    }
+    const stopIndex = current.pickupStops.findIndex((stop) => String(stop.supplierId) === String(supplierId));
+    if (stopIndex < 0) throw new Error('Авах цэг олдсонгүй');
+    const currentStop = current.pickupStops[stopIndex];
+    if (currentStop.status === 'PICKED_UP' && status === 'ARRIVED') {
+      throw new Error('Авах цэгийн төлөв буцаах боломжгүй');
+    }
+    if (currentStop.status === 'PENDING' && status === 'PICKED_UP') {
+      throw new Error('Эхлээд авах цэг дээр ирсэн төлөв оруулна уу');
+    }
+    const pickupStops = current.pickupStops.map((stop, index) =>
+      index === stopIndex ? { ...stop, status } : stop,
+    );
+    await this.deliveryRepo.update(deliveryId, { pickupStops });
+    emitToOrder(current.orderId, 'order:pickup-stop', { orderId: current.orderId, supplierId, status });
+    if (current.orderNumber) {
+      emitToOrder(current.orderNumber, 'order:pickup-stop', { orderId: current.orderNumber, supplierId, status });
     }
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
@@ -262,6 +341,7 @@ export class DeliveryResolver {
     if (!current.deliveryCode || current.deliveryCode !== normalized) {
       throw new Error('Буулгах код буруу байна');
     }
+    this.assertStatusTransition(current.status, DeliveryStatus.COMPLETED);
     await this.deliveryRepo.update(deliveryId, {
       status: DeliveryStatus.COMPLETED,
       completedAt: new Date(),
@@ -289,9 +369,39 @@ export class DeliveryResolver {
     return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
+  private requireDeliveryViewer(ctx: RequestContext, delivery: DeliveryRequest, token?: string) {
+    if (token && delivery.trackingToken && token === delivery.trackingToken) return;
+
+    if (ctx.apiType === 'admin' && ctx.activeUserId) return;
+    const admin = this.tryPlatformRole(ctx, 'ADMIN');
+    if (admin) return;
+
+    const customer = this.tryPlatformRole(ctx, 'CUSTOMER');
+    if (customer?.id === String(delivery.customerId)) return;
+
+    const driver = this.tryPlatformRole(ctx, 'DRIVER');
+    if (driver && delivery.driverId && driver.id === String(delivery.driverId)) return;
+
+    throw new Error('Хандах эрхгүй');
+  }
+
+  private tryPlatformRole(ctx: RequestContext, role: 'CUSTOMER' | 'SUPPLIER' | 'DRIVER' | 'ADMIN') {
+    try {
+      return requirePlatformRole(ctx, role);
+    } catch {
+      return null;
+    }
+  }
+
   private requireDriverOwner(ctx: RequestContext, driverId: string) {
     const principal = requirePlatformRole(ctx, 'DRIVER');
     if (principal.id !== driverId) throw new Error('Өөр жолоочийн хүргэлтэд хандах эрхгүй');
+  }
+
+  private assertStatusTransition(from: DeliveryStatus, to: DeliveryStatus) {
+    if (!canTransitionDelivery(from, to)) {
+      throw new Error(`Хүргэлтийн төлөв ${from} → ${to} шилжих боломжгүй`);
+    }
   }
 
   private generateDeliveryCode() {
@@ -307,25 +417,37 @@ export class DeliveryResolver {
     );
     if (supplierItems.length === 0) return;
 
-    const repo = this.dataSource.getRepository(SupplierProduct);
-    for (const item of supplierItems) {
-      const where = [
-        item.productId ? { id: item.productId, supplierId: item.supplierId } : null,
-        item.variantId ? { id: item.variantId, supplierId: item.supplierId } : null,
-        item.sku ? { slug: item.sku, supplierId: item.supplierId } : null,
-      ].filter(Boolean) as Array<{ id?: string; slug?: string; supplierId: string }>;
-      if (where.length === 0) continue;
-      const product = await repo.findOne({
-        where: where as any,
-      });
-      if (!product) continue;
-      const qty = Math.max(1, Math.round(item.qty));
-      if (product.stock < qty) {
-        throw new Error(`${product.name} барааны үлдэгдэл хүрэлцэхгүй байна`);
+    await this.dataSource.transaction(async (manager) => {
+      for (const item of supplierItems) {
+        await this.reserveSupplierItemStock(manager, item);
       }
-      product.stock -= qty;
-      if (product.stock === 0) product.enabled = false;
-      await repo.save(product);
+    });
+  }
+
+  private async reserveSupplierItemStock(manager: EntityManager, item: DeliveryOrderItem) {
+    const repo = manager.getRepository(SupplierProduct);
+    const where = [
+      item.productId ? { id: item.productId, supplierId: item.supplierId } : null,
+      item.variantId ? { id: item.variantId, supplierId: item.supplierId } : null,
+      item.sku ? { slug: item.sku, supplierId: item.supplierId } : null,
+    ].filter(Boolean) as Array<{ id?: string; slug?: string; supplierId: string }>;
+    if (where.length === 0) return;
+    const canLock = this.supportsPessimisticLock();
+    const product = await repo.findOne({
+      where: where as any,
+      ...(canLock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
+    if (!product) return;
+    const qty = Math.max(1, Math.round(item.qty));
+    if (product.stock < qty) {
+      throw new Error(`${product.name} барааны үлдэгдэл хүрэлцэхгүй байна`);
     }
+    product.stock -= qty;
+    if (product.stock === 0) product.enabled = false;
+    await repo.save(product);
+  }
+
+  private supportsPessimisticLock() {
+    return !['better-sqlite3', 'sqlite'].includes(String(this.dataSource.options.type));
   }
 }

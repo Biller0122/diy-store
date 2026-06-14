@@ -46,6 +46,9 @@ export class Supplier extends VendureEntity {
   @Column({ nullable: true })
   otpExpiresAt: Date;
 
+  @Column({ default: 0 })
+  otpAttempts: number;
+
   @Column({ type: 'text', nullable: true })
   address: string;
 

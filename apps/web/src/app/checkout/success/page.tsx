@@ -11,6 +11,8 @@ function SuccessContent() {
   const router   = useRouter();
   const orderNo  = params.get('order') ?? 'ORD-UNKNOWN';
   const orderId  = params.get('id') ?? orderNo;
+  const trackingToken = params.get('t') ?? '';
+  const trackHref = trackingToken ? `/track/${orderId}?t=${encodeURIComponent(trackingToken)}` : `/track/${orderId}`;
   const firedRef = useRef(false);
   const [countdown, setCountdown] = useState(5);
 
@@ -38,14 +40,14 @@ function SuccessContent() {
       setCountdown((v) => {
         if (v <= 1) {
           window.clearInterval(interval);
-          router.push(`/track/${orderId}`);
+          router.push(trackHref);
           return 0;
         }
         return v - 1;
       });
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [orderId, router]);
+  }, [router, trackHref]);
 
   return (
     <div className="min-h-screen bg-dark flex items-center justify-center p-4">
@@ -140,7 +142,7 @@ function SuccessContent() {
           className="mt-5 space-y-3"
         >
           <Link
-            href={`/track/${orderId}`}
+            href={trackHref}
             className="block w-full py-3 rounded-xl bg-brand text-white font-bold text-sm hover:bg-brand-hover transition-colors text-center"
           >
             Захиалга хянах → {countdown > 0 && `(${countdown}с)`}

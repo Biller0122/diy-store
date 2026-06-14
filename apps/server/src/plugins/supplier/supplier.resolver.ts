@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
 import { RegisterSupplierInput, SupplierProductInput, SupplierService, VerifySupplierOtpInput } from './supplier.service';
-import { requirePlatformRole } from '../../utils/auth';
+import { exposeOtp, requirePlatformRole } from '../../utils/auth';
 import { DeliveryRequest } from '../delivery/delivery-request.entity';
 
 @Resolver()
@@ -24,6 +24,7 @@ export class SupplierResolver {
   @Query()
   @Allow(Permission.Public)
   async suppliers(
+    @Ctx() ctx: RequestContext,
     @Args('status') status?: SupplierStatus,
     @Args('take') take = 20,
     @Args('skip') skip = 0,
@@ -35,25 +36,28 @@ export class SupplierResolver {
       take,
       skip,
     });
-    return { items, total };
+    return { items: items.map((item) => this.sanitizeSupplier(ctx, item)), total };
   }
 
   @Query()
   @Allow(Permission.Public)
-  async getAllSuppliers() {
-    return this.supplierService.getAllSuppliers();
+  async getAllSuppliers(@Ctx() ctx: RequestContext) {
+    const result = await this.supplierService.getAllSuppliers();
+    return { items: result.items.map((item) => this.sanitizeSupplier(ctx, item)), total: result.total };
   }
 
   @Query()
   @Allow(Permission.Public)
-  async supplierBySlug(@Args('slug') slug: string) {
-    return this.supplierRepo.findOne({ where: { slug } });
+  async supplierBySlug(@Ctx() ctx: RequestContext, @Args('slug') slug: string) {
+    const supplier = await this.supplierRepo.findOne({ where: { slug } });
+    return this.sanitizeSupplier(ctx, supplier);
   }
 
   @Query()
   @Allow(Permission.Public)
-  async supplier(@Args('id') id: ID) {
-    return this.supplierService.getSupplierById(String(id));
+  async supplier(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+    const supplier = await this.supplierService.getSupplierById(String(id));
+    return this.sanitizeSupplier(ctx, supplier);
   }
 
   @Mutation()
@@ -65,7 +69,7 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
-        otp: this.exposeOtp(supplier.otpCode),
+        otp: exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
@@ -86,7 +90,7 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
-        otp: this.exposeOtp(supplier.otpCode),
+        otp: exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
@@ -296,6 +300,40 @@ export class SupplierResolver {
     if (principal.id !== supplierId) throw new Error('Өөр нийлүүлэгчийн мэдээлэлд хандах эрхгүй');
   }
 
+  private tryPlatformRole(ctx: RequestContext, role: 'SUPPLIER' | 'DRIVER' | 'ADMIN' | 'CUSTOMER') {
+    try {
+      return requirePlatformRole(ctx, role);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Strip sensitive fields (PII + bank + secrets) from a supplier unless the
+   * caller is an admin or the supplier owner. Public storefront queries
+   * (suppliers / supplierBySlug / supplier) must never leak email, bank
+   * details, registration number, OTP code or password hash.
+   */
+  private sanitizeSupplier<T extends Supplier | null | undefined>(ctx: RequestContext, supplier: T): T {
+    if (!supplier) return supplier;
+    if (ctx.apiType === 'admin' && ctx.activeUserId) return supplier;
+    if (this.tryPlatformRole(ctx, 'ADMIN')) return supplier;
+    const owner = this.tryPlatformRole(ctx, 'SUPPLIER');
+    if (owner && String(owner.id) === String(supplier.id)) return supplier;
+
+    return {
+      ...(supplier as Supplier),
+      email: null,
+      passwordHash: null,
+      otpCode: null,
+      otpExpiresAt: null,
+      bankAccount: null,
+      bankName: null,
+      bankAccountName: null,
+      registrationNumber: null,
+    } as unknown as T;
+  }
+
   private toSupplierOrder(order: Order) {
     return {
       id: String(order.id),
@@ -317,7 +355,4 @@ export class SupplierResolver {
     };
   }
 
-  private exposeOtp(otp: string | null) {
-    return process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true' ? otp : null;
-  }
 }

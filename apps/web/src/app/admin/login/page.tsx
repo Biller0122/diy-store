@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { m } from 'framer-motion';
 import { useAdminStore } from '@/lib/admin-store';
+import { BrandLogo } from '@/components/BrandLogo';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -27,12 +28,7 @@ export default function AdminLoginPage() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-brand flex items-center justify-center mx-auto mb-4 shadow-lg shadow-brand/30">
-            <span className="text-2xl">🔨</span>
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">
-            DIY<span className="text-brand">Store</span> Admin
-          </h1>
+          <BrandLogo imageClassName="mx-auto w-56" />
           <p className="text-sm text-foreground-muted mt-1">Удирдлагын самбар</p>
         </div>
 

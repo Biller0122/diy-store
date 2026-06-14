@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, m } from 'framer-motion';
@@ -27,6 +27,7 @@ const UB_DISTRICTS = [
   'Баянзүрх','Сүхбаатар','Хан-Уул','Баянгол',
   'Чингэлтэй','Сонгинохайрхан','Налайх','Багануур','Багахангай',
 ];
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 const STORES = [
   { id: '1', name: 'Баянзүрх салбар',  address: 'Баянзүрх дүүрэг, Нарны зам 5' },
@@ -54,6 +55,11 @@ type DispatchStatusData = {
   estimatedArrivalMinutes?: number;
 };
 
+type PublishedDelivery = {
+  orderNumber: string;
+  trackingToken: string;
+};
+
 function fmt(minor: number) {
   return `₮${Math.round(minor / 100).toLocaleString('mn-MN')}`;
 }
@@ -62,6 +68,12 @@ function fallbackOrderNo() {
   const year = new Date().getFullYear();
   const seq = String(Math.floor(Math.random() * 99999) + 1).padStart(5, '0');
   return `DIY-${year}-${seq}`;
+}
+
+function normalizeMongolianPhone(value: string) {
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('976') && digits.length > 8) digits = digits.slice(3);
+  return digits;
 }
 
 const CREATE_DELIVERY_REQUEST = `
@@ -94,6 +106,7 @@ const CREATE_DELIVERY_REQUEST = `
       id
       orderId
       orderNumber
+      trackingToken
       status
     }
   }
@@ -171,8 +184,8 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
   function validate() {
     const e: typeof errors = {};
     if (data.name.trim().length < 2) e.name = 'Нэр 2-оос дээш тэмдэгттэй байх ёстой';
-    const cleanPhone = data.phone.replace(/\D/g, '');
-    if (!/^[6789]\d{7}$/.test(cleanPhone)) e.phone = 'Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой';
+    const cleanPhone = normalizeMongolianPhone(data.phone);
+    if (!/^[6789]\d{7}$/.test(cleanPhone)) e.phone = 'Утасны дугаар +976 угтвартай байж болно, үндсэн дугаар нь 8 оронтой 6/7/8/9-өөр эхлэх ёстой';
     if (data.deliveryType === 'delivery') {
       if (!data.province) e.province = 'Аймаг/хот сонгоно уу';
       if (!data.district) e.district = 'Дүүрэг оруулна уу';
@@ -323,12 +336,15 @@ const METHOD_INFO: { id: PaymentMethod; icon: string; label: string; desc: strin
   { id: 'testpay', icon: '✅', label: 'Тест төлбөр', desc: 'Шууд төлөгдсөн болгоно', color: 'border-success/40 bg-success/5' },
 ];
 
-function StepPayment({ data, total, onChange, onBack, onNext }: {
-  data: PaymentData; total: number; onChange: (d: Partial<PaymentData>) => void; onBack: () => void; onNext: () => void;
+const visiblePaymentMethods = () => METHOD_INFO.filter((method) => IS_DEV || (method.id !== 'testpay' && method.id !== 'card'));
+
+function StepPayment({ data, total, submitting, onChange, onBack, onNext }: {
+  data: PaymentData; total: number; submitting: boolean; onChange: (d: Partial<PaymentData>) => void; onBack: () => void; onNext: () => void;
 }) {
   const [error, setError] = useState('');
 
   function handleConfirm() {
+    if (submitting) return;
     if (!data.method) { setError('Төлбөрийн аргаа сонгоно уу'); return; }
     if (data.vatRequired && (!data.companyName || !data.registerNo)) {
       setError('Компанийн нэр болон регистрийн дугаар оруулна уу'); return;
@@ -342,11 +358,11 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
       <section>
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground-muted">Төлбөрийн арга</h2>
         <div className="grid gap-3 sm:grid-cols-4">
-          {METHOD_INFO.map((m) => (
-            <button data-testid={`payment-${m.id}`} key={m.id} onClick={() => onChange({ method: m.id })}
+          {visiblePaymentMethods().map((m) => (
+            <button data-testid={`payment-${m.id}`} key={m.id} onClick={() => onChange({ method: m.id })} disabled={submitting}
               className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition ${
                 data.method === m.id ? m.color : 'border-[var(--glass-border)] hover:border-[var(--glass-border)]'
-              }`}>
+              } disabled:cursor-not-allowed disabled:opacity-60`}>
               <span className="text-3xl">{m.icon}</span>
               <span className="text-sm font-bold text-foreground">{m.label}</span>
               <span className="text-xs text-foreground-muted">{m.desc}</span>
@@ -361,8 +377,8 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
           <div className="text-sm text-foreground-muted">
             {data.method === 'qpay'   && <><span className="text-foreground font-semibold">QPay</span> — Дараа QR код харагдана. Банкны аппаа бэлдээрэй.</>}
             {data.method === 'monpay' && <><span className="text-foreground font-semibold">MonPay</span> — Дараа QR код харагдана. MonPay апп-аа бэлдээрэй.</>}
-            {data.method === 'card'   && <><span className="text-foreground font-semibold">Карт</span> — Дараагийн хуудсанд картын мэдээлэл оруулна уу.</>}
-            {data.method === 'testpay' && <><span className="text-foreground font-semibold">Тест төлбөр</span> — Дармагц төлбөр төлөгдсөн гэж үзээд захиалга үүсгэнэ.</>}
+            {IS_DEV && data.method === 'card'   && <><span className="text-foreground font-semibold">Карт</span> — Дараагийн хуудсанд картын мэдээлэл оруулна уу.</>}
+            {IS_DEV && data.method === 'testpay' && <><span className="text-foreground font-semibold">Тест төлбөр</span> — Дармагц төлбөр төлөгдсөн гэж үзээд захиалга үүсгэнэ.</>}
           </div>
         </div>
       )}
@@ -395,13 +411,13 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
       {error && <p className="text-sm text-error">{error}</p>}
 
       <div className="flex gap-3">
-        <button onClick={onBack}
-          className="flex-1 rounded-xl border border-[var(--glass-border)] py-3 text-sm font-semibold text-foreground-muted hover:bg-dark">
+        <button onClick={onBack} disabled={submitting}
+          className="flex-1 rounded-xl border border-[var(--glass-border)] py-3 text-sm font-semibold text-foreground-muted hover:bg-dark disabled:cursor-not-allowed disabled:opacity-60">
           ← Буцах
         </button>
-        <button data-testid="pay-btn" onClick={handleConfirm}
-          className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold text-white hover:bg-brand-hover">
-          Төлбөр хийх ✓
+        <button data-testid="pay-btn" onClick={handleConfirm} disabled={submitting}
+          className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface disabled:text-foreground-muted">
+          {submitting ? 'Илгээж байна...' : 'Төлбөр хийх ✓'}
         </button>
       </div>
     </div>
@@ -410,8 +426,19 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
 
 // ─── Step 3 — Confirmation ────────────────────────────────────
 
-function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
+function trackHref(orderNo: string, trackingToken?: string) {
+  return trackingToken ? `/track/${orderNo}?t=${encodeURIComponent(trackingToken)}` : `/track/${orderNo}`;
+}
+
+function dispatchStatusHref(orderNo: string, trackingToken?: string) {
+  return trackingToken
+    ? `/api/order/${encodeURIComponent(orderNo)}/dispatch-status?t=${encodeURIComponent(trackingToken)}`
+    : `/api/order/${encodeURIComponent(orderNo)}/dispatch-status`;
+}
+
+function StepConfirmation({ orderNo, trackingToken, estimatedMinutes, deliveryAddress }: {
   orderNo: string;
+  trackingToken?: string;
   estimatedMinutes: number;
   deliveryAddress?: string;
 }) {
@@ -423,8 +450,11 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
 
     async function fetchDispatchStatus() {
       try {
-        const response = await fetch(`/api/order/${encodeURIComponent(orderNo)}/dispatch-status`, {
+        const token = window.localStorage.getItem('diy-vendure-auth-token');
+        const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+        const response = await fetch(dispatchStatusHref(orderNo, trackingToken), {
           cache: 'no-store',
+          headers,
         });
         if (!response.ok) return;
         const data = await response.json() as DispatchStatusData;
@@ -440,7 +470,7 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [orderNo]);
+  }, [orderNo, trackingToken]);
 
   const accepted = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(dispatch.status);
   const offered = dispatch.status === 'OFFERED';
@@ -528,7 +558,7 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
       {/* Actions */}
       <div className="space-y-3">
         <Link
-          href={`/track/${orderNo}`}
+          href={trackHref(orderNo, trackingToken)}
           className="flex items-center justify-center gap-2 w-full rounded-xl bg-brand py-3.5 text-sm font-bold text-white hover:bg-brand-hover"
         >
           <Package size={16} /> Захиалга хянах
@@ -562,11 +592,17 @@ export default function CheckoutPage() {
   const [contact, setContact] = useState<ContactData>(CONTACT_INIT);
   const [payment, setPayment] = useState<PaymentData>(PAYMENT_INIT);
   const [orderNo, setOrderNo] = useState('');
+  const [trackingToken, setTrackingToken] = useState('');
   const [showQPay, setShowQPay] = useState(false);
   const [showMonPay, setShowMonPay] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [showSaveAddressPrompt, setShowSaveAddressPrompt] = useState(false);
   const [addressSaved, setAddressSaved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const submittingRef = useRef(false);
+  const deliveryPublishRef = useRef<Promise<PublishedDelivery> | null>(null);
+  const paymentSuccessHandledRef = useRef(false);
   const { items, promo, deliveryFee, customerAddress, clearCart } = useCartStore();
   const { addOrder } = useOrderStore();
   const { customer, fetchActiveCustomer } = useAuthStore();
@@ -610,13 +646,30 @@ export default function CheckoutPage() {
   // Estimated minutes from delivery fee calc (rough)
   const estimatedMinutes = 35;
 
+  function createSessionId() {
+    return `session-${globalThis.crypto.randomUUID()}`;
+  }
+
+  function lockSubmitting() {
+    if (submittingRef.current) return false;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setPaymentError('');
+    return true;
+  }
+
+  function unlockSubmitting() {
+    submittingRef.current = false;
+    setSubmitting(false);
+  }
+
   function goToPayment() {
     setStep(2);
     window.scrollTo(0, 0);
     trackBeginCheckout(items.map((i) => ({ id: i.productId, variantId: i.variantId, name: i.name, price: i.price, qty: i.qty })), total);
   }
 
-  function createOrder(no: string) {
+  function createOrder(no: string, token?: string) {
     addOrder({
       id: no,
       code: no,
@@ -634,43 +687,41 @@ export default function CheckoutPage() {
       deliveryAddress: contact.deliveryType === 'delivery'
         ? `${contact.district}, ${contact.address}`
         : undefined,
+      trackingToken: token,
       paymentMethod: payment.method ?? 'qpay',
     });
   }
 
-  async function publishDeliveryRequest(sessionId: string): Promise<string> {
+  async function publishDeliveryRequest(sessionId: string): Promise<PublishedDelivery> {
     const groups = getSupplierGroups(items);
-    const fallbackStop = {
-      supplierId: 'diy-store',
-      supplierName: 'DIY Store',
-      address: 'Улаанбаатар',
-      lat: 47.9185,
-      lng: 106.917,
+    if (groups.length === 0) {
+      throw new Error('Захиалгын бараа олдсонгүй. Сагсаа шалгаад дахин оролдоно уу.');
+    }
+    const missingLocation = groups.find((group) => group.supplierLat == null || group.supplierLng == null);
+    if (missingLocation) {
+      throw new Error(`${missingLocation.supplierName} нийлүүлэгчийн байршил байхгүй тул хүргэлт үүсгэх боломжгүй байна.`);
+    }
+    const pickupStops = groups.map((group) => ({
+      supplierId: group.supplierId,
+      supplierName: group.supplierName,
+      address: group.supplierDistrict || 'Улаанбаатар',
+      lat: group.supplierLat,
+      lng: group.supplierLng,
       status: 'PENDING',
-    };
-    const pickupStops = groups.length > 0
-      ? groups.map((group, index) => ({
-          supplierId: group.supplierId,
-          supplierName: group.supplierName,
-          address: group.supplierDistrict || 'Улаанбаатар',
-          lat: group.supplierLat ?? 47.9185 + index * 0.004,
-          lng: group.supplierLng ?? 106.917 + index * 0.004,
-          status: 'PENDING',
-        }))
-      : [fallbackStop];
+    }));
 
     try {
       const data = await vendureShopFetch<{
-        createDeliveryRequest: { id: string; orderId: string; orderNumber: string; status: string };
+        createDeliveryRequest: { id: string; orderId: string; orderNumber: string; trackingToken: string; status: string };
       }>(CREATE_DELIVERY_REQUEST, {
         orderId: sessionId,
-        customerId: customer?.id || contact.phone.replace(/\D/g, '') || 'guest',
+        customerId: customer?.id || normalizeMongolianPhone(contact.phone) || 'guest',
         customerName: contact.name.trim(),
-        customerPhone: contact.phone.replace(/\D/g, ''),
+        customerPhone: normalizeMongolianPhone(contact.phone),
         pickupStops,
         orderItems: items.map((item) => ({
           supplierId: item.supplierId ?? 'diy-store',
-          supplierName: item.supplierName ?? 'DIY Store',
+          supplierName: item.supplierName ?? 'shoptool.mn',
           productId: item.productId,
           variantId: item.variantId,
           name: item.name,
@@ -686,12 +737,24 @@ export default function CheckoutPage() {
         dropoffLat: 47.9189,
         dropoffLng: 106.9176,
       });
-      // Use the server-generated DIY-YYYY-XXXXX order number
-      return data.createDeliveryRequest.orderNumber || fallbackOrderNo();
+      if (!data.createDeliveryRequest.orderNumber) {
+        throw new Error('Захиалгын дугаар үүссэнгүй. Дахин оролдоно уу.');
+      }
+      return {
+        orderNumber: data.createDeliveryRequest.orderNumber,
+        trackingToken: data.createDeliveryRequest.trackingToken || '',
+      };
     } catch (err) {
       console.error('Delivery request publish failed', err);
-      return fallbackOrderNo();
+      throw err instanceof Error ? err : new Error('Хүргэлтийн хүсэлт үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.');
     }
+  }
+
+  function publishDeliveryRequestOnce(sessionId: string) {
+    if (!deliveryPublishRef.current) {
+      deliveryPublishRef.current = publishDeliveryRequest(sessionId);
+    }
+    return deliveryPublishRef.current;
   }
 
   function handleSelectAddress(address: CustomerAddress | null) {
@@ -733,7 +796,8 @@ export default function CheckoutPage() {
   }
 
   function handlePaymentConfirm() {
-    const sessionId = `session-${Date.now()}`;
+    if (!lockSubmitting()) return;
+    const sessionId = createSessionId();
 
     const methodLabel = payment.method === 'qpay' ? 'QPay' : payment.method === 'monpay' ? 'MonPay' : payment.method === 'testpay' ? 'TestPay' : 'Card';
     trackAddPaymentInfo((methodLabel === 'TestPay' ? 'Card' : methodLabel) as 'QPay' | 'MonPay' | 'Card');
@@ -742,39 +806,68 @@ export default function CheckoutPage() {
       setShowQPay(true);
       // Store sessionId for later use
       setOrderNo(sessionId);
+      setTrackingToken('');
     } else if (payment.method === 'monpay') {
       setShowMonPay(true);
       setOrderNo(sessionId);
+      setTrackingToken('');
     } else if (payment.method === 'card') {
+      if (!IS_DEV) {
+        setPaymentError('Картын тест төлбөр production орчинд идэвхгүй.');
+        unlockSubmitting();
+        return;
+      }
       setOrderNo(sessionId);
+      setTrackingToken('');
       const fallback = fallbackOrderNo();
       createOrder(fallback);
       clearCart();
       router.push(`/checkout/mock-psp?session=MOCK-CARD-${sessionId}&order=${fallback}&amount=${Math.round(total / 100)}`);
     } else if (payment.method === 'testpay') {
+      if (!IS_DEV) {
+        setPaymentError('Тест төлбөр production орчинд идэвхгүй.');
+        unlockSubmitting();
+        return;
+      }
       setOrderNo(sessionId);
+      setTrackingToken('');
       handlePaymentSuccess(sessionId);
+    } else {
+      unlockSubmitting();
     }
   }
 
   function handlePaymentSuccess(forcedSessionId?: string) {
-    const sessionId = forcedSessionId || orderNo || `session-${Date.now()}`;
+    if (paymentSuccessHandledRef.current) return;
+    paymentSuccessHandledRef.current = true;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setPaymentError('');
+    const sessionId = forcedSessionId || orderNo || createSessionId();
     const savedDeliveryType = contact.deliveryType;
     const savedAddress = contact.address;
     const savedAddressId = selectedAddressId;
-    clearCart();
     setShowQPay(false);
     setShowMonPay(false);
 
     // Publish delivery request and navigate to tracking with real order number
-    publishDeliveryRequest(sessionId).then((realOrderNo) => {
-      createOrder(realOrderNo);
-      setOrderNo(realOrderNo);
+    publishDeliveryRequestOnce(sessionId).then(({ orderNumber, trackingToken }) => {
+      createOrder(orderNumber, trackingToken);
+      clearCart();
+      setOrderNo(orderNumber);
+      setTrackingToken(trackingToken);
       setStep(3);
       window.scrollTo(0, 0);
       if (savedDeliveryType === 'delivery' && savedAddress.trim() && !savedAddressId && customer) {
         setShowSaveAddressPrompt(true);
       }
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : 'Хүргэлтийн хүсэлт үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.';
+      setPaymentError(message);
+      deliveryPublishRef.current = null;
+      paymentSuccessHandledRef.current = false;
+    }).finally(() => {
+      unlockSubmitting();
     });
   }
 
@@ -854,9 +947,15 @@ export default function CheckoutPage() {
               )}
               {step === 2 && (
                 <m.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                  {paymentError && (
+                    <div className="mb-4 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                      {paymentError}
+                    </div>
+                  )}
                   <StepPayment
                     data={payment}
                     total={total}
+                    submitting={submitting}
                     onChange={(d) => setPayment((p) => ({ ...p, ...d }))}
                     onBack={() => setStep(1)}
                     onNext={handlePaymentConfirm}
@@ -867,6 +966,7 @@ export default function CheckoutPage() {
                 <m.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
                   <StepConfirmation
                     orderNo={orderNo}
+                    trackingToken={trackingToken}
                     estimatedMinutes={estimatedMinutes}
                     deliveryAddress={
                       contact.deliveryType === 'delivery'
@@ -883,10 +983,10 @@ export default function CheckoutPage() {
 
       <AnimatePresence>
         {showQPay && (
-          <QPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => setShowQPay(false)} />
+          <QPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => { setShowQPay(false); unlockSubmitting(); }} />
         )}
         {showMonPay && (
-          <MonPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => setShowMonPay(false)} />
+          <MonPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => { setShowMonPay(false); unlockSubmitting(); }} />
         )}
       </AnimatePresence>
     </>

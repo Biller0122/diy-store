@@ -44,6 +44,9 @@ export class DeliveryRequest extends VendureEntity {
   @Column({ default: '' })
   orderNumber: string;
 
+  @Column({ default: '' })
+  trackingToken: string;
+
   @Column()
   customerId: string;
 

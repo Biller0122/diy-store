@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import * as Location from 'expo-location';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { useAppStore } from '@/lib/store';
 import {
   shopFetch,
@@ -22,6 +23,14 @@ import {
   SET_SHIPPING_ADDRESS_MUTATION,
   CREATE_DELIVERY_REQUEST_MUTATION,
 } from '@/lib/api';
+
+interface CreatedDeliveryRequest {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  trackingToken: string;
+  status: string;
+}
 
 interface OrderLine {
   id: string;
@@ -60,15 +69,19 @@ const UB_DISTRICTS = [
   'Багахангай',
 ];
 
+const DEFAULT_UB_COORDS = { lat: 47.9189, lng: 106.9176 };
+
 const PAYMENT_METHODS = [
-  { id: 'cash', label: 'Бэлнээр', icon: 'cash-outline' as const },
-  { id: 'qpay', label: 'QPay', icon: 'qr-code-outline' as const },
-  { id: 'card', label: 'Карт', icon: 'card-outline' as const },
+  { id: 'cash', label: 'Бэлнээр', icon: 'cash-outline' as const, available: true },
+  { id: 'qpay', label: 'QPay', icon: 'qr-code-outline' as const, available: false },
+  { id: 'card', label: 'Карт', icon: 'card-outline' as const, available: false },
 ];
 
 export default function CheckoutScreen() {
   const router = useRouter();
-  const { customer } = useAppStore();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const { customer, supplierCart, clearSupplierCart } = useAppStore();
 
   const [order, setOrder] = useState<ActiveOrder | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
@@ -82,22 +95,98 @@ export default function CheckoutScreen() {
   const [khoroo, setKhoroo] = useState('');
   const [streetDetail, setStreetDetail] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [dropoffCoords, setDropoffCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState('');
 
   useEffect(() => {
     shopFetch<{ activeOrder: ActiveOrder | null }>(ACTIVE_ORDER_QUERY)
       .then((d) => setOrder(d.activeOrder))
-      .catch(() => {})
+      .catch((error) => {
+        console.error('[CheckoutScreen] active order load failed', error);
+        Alert.alert('Сагсны мэдээлэл ачаалсангүй', error instanceof Error ? error.message : 'Сүлжээний алдаа гарлаа');
+      })
       .finally(() => setLoadingOrder(false));
   }, []);
 
   const dropoffAddress = `${district}, ${khoroo ? khoroo + '-р хороо, ' : ''}${streetDetail}`.trim().replace(/,\s*$/, '');
+
+  const requestDropoffLocation = async () => {
+    setLocationLoading(true);
+    setLocationError('');
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        const message = 'Хүргэлтийн бодит байршил авахын тулд байршлын зөвшөөрөл хэрэгтэй';
+        setLocationError(message);
+        Alert.alert('Байршлын зөвшөөрөл хэрэгтэй', message);
+        return null;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const coords = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+      setDropoffCoords(coords);
+      return coords;
+    } catch (error) {
+      console.error('[CheckoutScreen] current location failed', error);
+      const message = error instanceof Error ? error.message : 'Байршил авах боломжгүй байна';
+      setLocationError(message);
+      Alert.alert('Байршил авах боломжгүй', message);
+      return null;
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const geocodeDropoffAddress = async () => {
+    try {
+      const matches = await Location.geocodeAsync(`${dropoffAddress}, Улаанбаатар, Монгол`);
+      const match = matches[0];
+      if (!match) return null;
+      const coords = { lat: match.latitude, lng: match.longitude };
+      setDropoffCoords(coords);
+      setLocationError('');
+      return coords;
+    } catch (error) {
+      console.error('[CheckoutScreen] geocode failed', error);
+      return null;
+    }
+  };
+
+  const confirmAddressWithoutPreciseLocation = () =>
+    new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Байршлыг баталгаажуулах',
+        'GPS эсвэл geocode-оор хаягийг тогтоож чадсангүй. Оруулсан хаяг зөв гэдгийг баталгаажуулаад захиалгыг үргэлжлүүлэх үү?',
+        [
+          { text: 'Засах', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Үргэлжлүүлэх', onPress: () => resolve(true) },
+        ],
+      );
+    });
+
+  const resolveDropoffCoords = async () => {
+    if (dropoffCoords) return dropoffCoords;
+    const current = await requestDropoffLocation();
+    if (current) return current;
+    const geocoded = await geocodeDropoffAddress();
+    if (geocoded) return geocoded;
+    const confirmed = await confirmAddressWithoutPreciseLocation();
+    if (!confirmed) return null;
+    setLocationError('Нарийн координатгүй, баталгаажуулсан хаягаар илгээж байна.');
+    return DEFAULT_UB_COORDS;
+  };
 
   const handlePlaceOrder = async () => {
     if (!customer) {
       Alert.alert('Нэвтэрнэ үү', 'Захиалахын тулд нэвтэрнэ үү');
       return;
     }
-    if (!order || order.lines.length === 0) {
+    if ((!order || order.lines.length === 0) && supplierCart.length === 0) {
       Alert.alert('Сагс хоосон', 'Эхлээд бүтээгдэхүүн нэмнэ үү');
       return;
     }
@@ -105,31 +194,88 @@ export default function CheckoutScreen() {
       Alert.alert('Дутуу мэдээлэл', 'Нэр, утас, хаяг бүгдийг бөглөнө үү');
       return;
     }
+    if (paymentMethod !== 'cash') {
+      Alert.alert('Төлбөрийн арга идэвхгүй', 'Одоогоор mobile checkout дээр зөвхөн бэлэн төлбөр ажиллаж байна.');
+      return;
+    }
 
     setSubmitting(true);
     try {
-      await shopFetch(SET_SHIPPING_ADDRESS_MUTATION, {
-        input: {
-          streetLine1: dropoffAddress,
-          city: 'Улаанбаатар',
-          phoneNumber: phone.trim(),
-        },
+      if (order) {
+        await shopFetch(SET_SHIPPING_ADDRESS_MUTATION, {
+          input: {
+            streetLine1: dropoffAddress,
+            city: 'Улаанбаатар',
+            phoneNumber: phone.trim(),
+          },
+        });
+      }
+
+      const supplierGroups = new Map<string, typeof supplierCart>();
+      for (const item of supplierCart) {
+        const next = supplierGroups.get(item.supplierId) ?? [];
+        next.push(item);
+        supplierGroups.set(item.supplierId, next);
+      }
+
+      const pickupStops = Array.from(supplierGroups.values()).map((items) => {
+        const first = items[0];
+        if (first.supplierLat == null || first.supplierLng == null) {
+          throw new Error(`${first.supplierName} дэлгүүрийн байршил тохируулагдаагүй байна`);
+        }
+        return {
+          supplierId: first.supplierId,
+          supplierName: first.supplierName,
+          district: first.supplierDistrict ?? 'Улаанбаатар',
+          address: first.supplierAddress || first.supplierDistrict || 'Улаанбаатар',
+          phone: first.supplierPhone || '',
+          lat: first.supplierLat,
+          lng: first.supplierLng,
+          status: 'PENDING',
+        };
       });
 
-      await shopFetch(CREATE_DELIVERY_REQUEST_MUTATION, {
-        orderId: order.id,
+      const orderItems = supplierCart.map((item) => ({
+        supplierId: item.supplierId,
+        supplierName: item.supplierName,
+        productId: item.productId,
+        variantId: item.variantId,
+        name: item.name,
+        sku: item.slug,
+        qty: item.qty,
+        price: item.price,
+      }));
+
+      const supplierTotal = supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const orderId = order?.id ?? `MOB-${Date.now()}`;
+      const resolvedDropoffCoords = await resolveDropoffCoords();
+      if (!resolvedDropoffCoords) {
+        return;
+      }
+
+      const data = await shopFetch<{ createDeliveryRequest: CreatedDeliveryRequest }>(CREATE_DELIVERY_REQUEST_MUTATION, {
+        orderId,
         customerId: customer.id,
         customerName: fullName.trim(),
         customerPhone: phone.trim(),
+        pickupStops,
+        orderItems,
         dropoffAddress,
-        dropoffLat: 47.9185,
-        dropoffLng: 106.917,
-        orderTotal: Math.round(order.total / 100),
+        dropoffLat: resolvedDropoffCoords.lat,
+        dropoffLng: resolvedDropoffCoords.lng,
+        orderTotal: Math.round((order?.total ?? 0) / 100) + supplierTotal,
         paymentMethod,
       });
 
-      router.replace(`/track/${order.id}` as never);
+      clearSupplierCart();
+      const delivery = data.createDeliveryRequest;
+      const trackId = delivery.orderNumber || orderId;
+      const trackPath = delivery.trackingToken
+        ? `/track/${trackId}?t=${encodeURIComponent(delivery.trackingToken)}`
+        : `/track/${trackId}`;
+      router.replace(trackPath as never);
     } catch (e) {
+      console.error('[CheckoutScreen] place order failed', e);
       Alert.alert('Алдаа', e instanceof Error ? e.message : 'Захиалга хийх боломжгүй');
     } finally {
       setSubmitting(false);
@@ -176,6 +322,9 @@ export default function CheckoutScreen() {
     );
   }
 
+  const supplierTotal = supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const displayTotal = (order?.total ?? 0) + supplierTotal * 100;
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -198,10 +347,10 @@ export default function CheckoutScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Order summary */}
-        {order && order.lines.length > 0 && (
+        {((order && order.lines.length > 0) || supplierCart.length > 0) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Захиалга</Text>
-            {order.lines.map((line) => (
+            {order?.lines.map((line) => (
               <View key={line.id} style={styles.lineRow}>
                 <Text style={styles.lineName} numberOfLines={1}>
                   {line.productVariant.product.name}
@@ -210,9 +359,18 @@ export default function CheckoutScreen() {
                 <Text style={styles.linePrice}>{formatPrice(line.linePriceWithTax)}</Text>
               </View>
             ))}
+            {supplierCart.map((item) => (
+              <View key={item.id} style={styles.lineRow}>
+                <Text style={styles.lineName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.lineQty}>x{item.qty}</Text>
+                <Text style={styles.linePrice}>{'₮' + Math.round(item.price * item.qty).toLocaleString('mn-MN')}</Text>
+              </View>
+            ))}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Нийт</Text>
-              <Text style={styles.totalValue}>{formatPrice(order.total)}</Text>
+              <Text style={styles.totalValue}>
+                {formatPrice((order?.total ?? 0) + supplierCart.reduce((sum, item) => sum + item.price * item.qty, 0) * 100)}
+              </Text>
             </View>
           </View>
         )}
@@ -282,6 +440,22 @@ export default function CheckoutScreen() {
               <Text style={styles.addressPreviewText} numberOfLines={2}>{dropoffAddress}</Text>
             </View>
           )}
+
+          <TouchableOpacity
+            style={[styles.locationBtn, locationLoading && styles.locationBtnDisabled]}
+            onPress={requestDropoffLocation}
+            disabled={locationLoading}
+          >
+            {locationLoading ? (
+              <ActivityIndicator color={C.primary} />
+            ) : (
+              <Ionicons name={dropoffCoords ? 'checkmark-circle-outline' : 'navigate-outline'} size={18} color={dropoffCoords ? C.success : C.primary} />
+            )}
+            <Text style={[styles.locationBtnText, dropoffCoords && styles.locationBtnTextSuccess]}>
+              {dropoffCoords ? 'Бодит байршил авсан' : 'Одоогийн байршил авах'}
+            </Text>
+          </TouchableOpacity>
+          {locationError ? <Text style={styles.locationError}>{locationError}</Text> : null}
         </View>
 
         {/* Payment method */}
@@ -291,17 +465,29 @@ export default function CheckoutScreen() {
             {PAYMENT_METHODS.map((m) => (
               <TouchableOpacity
                 key={m.id}
-                style={[styles.paymentCard, paymentMethod === m.id && styles.paymentCardActive]}
-                onPress={() => setPaymentMethod(m.id)}
+                style={[
+                  styles.paymentCard,
+                  paymentMethod === m.id && styles.paymentCardActive,
+                  !m.available && styles.paymentCardDisabled,
+                ]}
+                onPress={() => {
+                  if (!m.available) {
+                    Alert.alert('Тун удахгүй', `${m.label} төлбөр mobile checkout дээр хараахан идэвхгүй байна.`);
+                    return;
+                  }
+                  setPaymentMethod(m.id);
+                }}
+                disabled={!m.available}
               >
                 <Ionicons
                   name={m.icon}
                   size={22}
-                  color={paymentMethod === m.id ? C.primary : C.textSub}
+                  color={!m.available ? C.textTertiary : paymentMethod === m.id ? C.primary : C.textSub}
                 />
                 <Text style={[styles.paymentLabel, paymentMethod === m.id && styles.paymentLabelActive]}>
                   {m.label}
                 </Text>
+                {!m.available ? <Text style={styles.paymentUnavailable}>Тун удахгүй</Text> : null}
               </TouchableOpacity>
             ))}
           </View>
@@ -315,7 +501,7 @@ export default function CheckoutScreen() {
           <View>
             <Text style={styles.bottomLabel}>Нийт дүн</Text>
             <Text style={styles.bottomTotal}>
-              {order ? formatPrice(order.total) : '—'}
+              {displayTotal > 0 ? formatPrice(displayTotal) : '—'}
             </Text>
           </View>
           <TouchableOpacity
@@ -339,7 +525,7 @@ export default function CheckoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: C.bg },
   safe: { backgroundColor: C.bg },
   navHeader: {
@@ -392,7 +578,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   totalLabel: { color: C.text, fontSize: 14, fontWeight: '700' },
-  totalValue: { color: C.primary, fontSize: 16, fontWeight: '800', fontFamily: 'monospace' },
+  totalValue: { color: C.accent, fontSize: 16, fontWeight: '800', fontFamily: 'monospace' },
 
   inputLabel: { color: C.textSub, fontSize: 12, fontWeight: '600', marginTop: 4 },
   input: {
@@ -432,6 +618,22 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,69,0,0.2)',
   },
   addressPreviewText: { flex: 1, color: C.text, fontSize: 12, lineHeight: 18 },
+  locationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: C.primaryGlow,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,69,0,0.24)',
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  locationBtnDisabled: { opacity: 0.7 },
+  locationBtnText: { color: C.primary, fontSize: 13, fontWeight: '700' },
+  locationBtnTextSuccess: { color: C.success },
+  locationError: { color: '#FF4444', fontSize: 12, lineHeight: 18 },
 
   paymentRow: { flexDirection: 'row', gap: 10 },
   paymentCard: {
@@ -446,8 +648,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface,
   },
   paymentCardActive: { borderColor: C.primary, backgroundColor: C.primaryGlow },
+  paymentCardDisabled: { opacity: 0.45 },
   paymentLabel: { color: C.textSub, fontSize: 12, fontWeight: '600' },
   paymentLabelActive: { color: C.primary },
+  paymentUnavailable: { color: C.textTertiary, fontSize: 10, fontWeight: '600' },
 
   primaryBtn: {
     backgroundColor: C.primary,
@@ -469,12 +673,12 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   bottomLabel: { color: C.textTertiary, fontSize: 11, marginBottom: 2 },
-  bottomTotal: { color: C.primary, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
+  bottomTotal: { color: C.accent, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
   placeOrderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: C.primary,
+    backgroundColor: C.accent,
     borderRadius: 14,
     paddingHorizontal: 24,
     paddingVertical: 14,

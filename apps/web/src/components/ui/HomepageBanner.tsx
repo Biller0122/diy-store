@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, Sparkles } from 'lucide-react';
+import { BrandLogo } from '@/components/BrandLogo';
 
 export type HomepageBannerData = {
   id: string;
@@ -88,7 +89,7 @@ export function HomepageBanner({ banners }: { banners: HomepageBannerData[] }) {
                         <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-3xl bg-white/15 text-5xl">
                           🛠️
                         </div>
-                        <p className="text-sm font-semibold text-white/80">DIY Store</p>
+                        <BrandLogo imageClassName="mx-auto w-56" />
                       </div>
                     </div>
                   )}

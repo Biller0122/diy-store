@@ -31,11 +31,11 @@ interface DeliveryRequestResult {
   }>;
 }
 
-const SHOP_API = process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
+const SHOP_API = process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:13001/shop-api';
 
 const DELIVERY_STATUS_GQL = `
-  query DeliveryStatus($orderId: String!) {
-    deliveryRequest(orderId: $orderId) {
+  query DeliveryStatus($orderId: String!, $token: String) {
+    deliveryRequest(orderId: $orderId, token: $token) {
       id
       orderId
       orderNumber
@@ -71,10 +71,17 @@ const DRIVER_GQL = `
   }
 `;
 
-async function vendureFetch<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+async function vendureFetch<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  token?: string | null,
+): Promise<T> {
   const response = await fetch(SHOP_API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ query, variables }),
     cache: 'no-store',
   });
@@ -115,15 +122,25 @@ async function getDriver(driverId?: string | null): Promise<DriverSummary | unde
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1] ?? null;
+  const trackingToken = req.nextUrl.searchParams.get('t') ?? null;
+
+  if (!token && !trackingToken) {
+    return NextResponse.json(
+      { status: 'SEARCHING', orderNumber: id, error: 'Tracking token required' },
+      { status: 401 },
+    );
+  }
 
   try {
     const data = await vendureFetch<{ deliveryRequest: DeliveryRequestResult | null }>(
       DELIVERY_STATUS_GQL,
-      { orderId: id },
+      { orderId: id, token: trackingToken },
+      token,
     );
     const delivery = data.deliveryRequest;
     if (!delivery) {
@@ -143,9 +160,11 @@ export async function GET(
       pickupStops: delivery.pickupStops ?? [],
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Dispatch status unavailable';
+    const status = message === 'Хандах эрхгүй' ? 403 : 502;
     return NextResponse.json(
-      { status: 'SEARCHING', orderNumber: id, error: err instanceof Error ? err.message : 'Dispatch status unavailable' },
-      { status: 502 },
+      { status: 'SEARCHING', orderNumber: id, error: message },
+      { status },
     );
   }
 }

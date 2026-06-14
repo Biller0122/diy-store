@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { useAppStore } from '@/lib/store';
-import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY } from '@/lib/api';
+import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY, SUPPLIER_PRODUCTS_QUERY, SUPPLIER_QUERY } from '@/lib/api';
 
 interface ProductVariant {
   id: string;
@@ -32,6 +33,17 @@ interface Product {
   featuredAsset: { preview: string } | null;
   variants: ProductVariant[];
   collections: { id: string; name: string }[];
+  supplierProduct?: boolean;
+  supplier?: {
+    id: string;
+    businessName: string;
+    slug?: string;
+    phone?: string | null;
+    address?: string | null;
+    district?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+  } | null;
 }
 
 function formatPrice(price: number) {
@@ -40,8 +52,10 @@ function formatPrice(price: number) {
 
 export default function ProductDetailScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { customer, setCartCount } = useAppStore();
+  const { customer, setCartCount, addSupplierCartItem } = useAppStore();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,14 +65,87 @@ export default function ProductDetailScreen() {
 
   useEffect(() => {
     if (!slug) return;
-    shopFetch<{ product: Product | null }>(PRODUCT_QUERY, { slug })
-      .then((data) => setProduct(data.product))
-      .catch(() => {})
+    const decodedSlug = safeDecode(String(slug));
+    shopFetch<{ product: Product | null }>(PRODUCT_QUERY, { slug: decodedSlug })
+      .then(async (data) => {
+        if (data.product) {
+          setProduct(data.product);
+          return;
+        }
+        const supplierData = await shopFetch<{ supplierProducts: { items: any[] } }>(SUPPLIER_PRODUCTS_QUERY);
+        const supplierProduct = (supplierData.supplierProducts?.items ?? []).find((item) => item.slug === decodedSlug);
+        if (!supplierProduct) {
+          setProduct(null);
+          return;
+        }
+        let supplier: Product['supplier'] = null;
+        if (supplierProduct.supplierId) {
+          try {
+            const supplierData = await shopFetch<{ supplier: NonNullable<Product['supplier']> | null }>(
+              SUPPLIER_QUERY,
+              { id: supplierProduct.supplierId },
+          );
+          supplier = supplierData.supplier;
+          } catch (error) {
+            console.error('[ProductDetailScreen] supplier lookup failed', error);
+            supplier = null;
+          }
+        }
+        setProduct({
+          id: supplierProduct.id,
+          name: supplierProduct.name,
+          slug: supplierProduct.slug,
+          description: supplierProduct.description || '',
+          featuredAsset: supplierProduct.image ? { preview: supplierProduct.image } : null,
+          variants: [{
+            id: supplierProduct.id,
+            name: supplierProduct.name,
+            priceWithTax: supplierProduct.price * 100,
+            currencyCode: 'MNT',
+            stockLevel: supplierProduct.enabled && supplierProduct.stock > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK',
+            options: [],
+          }],
+          collections: supplierProduct.category ? [{ id: supplierProduct.category, name: supplierProduct.category }] : [],
+          supplierProduct: true,
+          supplier,
+        });
+      })
+      .catch((error) => {
+        console.error('[ProductDetailScreen] product load failed', error);
+        Alert.alert('Бүтээгдэхүүн ачаалсангүй', error instanceof Error ? error.message : 'Сүлжээний алдаа гарлаа');
+      })
       .finally(() => setLoading(false));
   }, [slug]);
 
   const handleAddToCart = async () => {
     if (!product) return;
+    const variant = product.variants[selectedVariant] ?? product.variants[0];
+    const price = variant?.priceWithTax ?? 0;
+    if (product.supplierProduct) {
+      const supplier = product.supplier;
+      addSupplierCartItem({
+        productId: product.id,
+        variantId: product.id,
+        name: product.name,
+        slug: product.slug,
+        image: product.featuredAsset?.preview,
+        price: Math.round(price),
+        qty: quantity,
+        supplierId: supplier?.id ?? 'unknown',
+        supplierName: supplier?.businessName ?? 'Нийлүүлэгч',
+        supplierSlug: supplier?.slug,
+        supplierDistrict: supplier?.district,
+        supplierAddress: supplier?.address,
+        supplierPhone: supplier?.phone,
+        supplierLat: supplier?.lat,
+        supplierLng: supplier?.lng,
+      });
+      Alert.alert('Амжилттай', `${product.name} (${quantity} ш) сагсанд нэмэгдлээ`, [
+        { text: 'Сагс харах', onPress: () => router.push('/(tabs)/cart' as never) },
+        { text: 'Үргэлжлүүлэх' },
+      ]);
+      return;
+    }
     if (!customer) {
       Alert.alert('Нэвтэрнэ үү', 'Сагсанд нэмэхийн тулд нэвтэрнэ үү', [
         { text: 'Болих', style: 'cancel' },
@@ -66,7 +153,6 @@ export default function ProductDetailScreen() {
       ]);
       return;
     }
-    const variant = product.variants[selectedVariant];
     if (!variant) return;
     setAdding(true);
     try {
@@ -148,10 +234,14 @@ export default function ProductDetailScreen() {
       </SafeAreaView>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="cube-outline" size={72} color={C.textTertiary} />
-          <Text style={styles.imagePlaceholderLabel}>Зураг</Text>
-        </View>
+        {product.featuredAsset?.preview ? (
+          <Image source={{ uri: product.featuredAsset.preview }} style={styles.productImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Ionicons name="cube-outline" size={72} color={C.textTertiary} />
+            <Text style={styles.imagePlaceholderLabel}>Зураг</Text>
+          </View>
+        )}
 
         <View style={styles.content}>
           <Text style={styles.productName}>{product.name}</Text>
@@ -253,7 +343,15 @@ export default function ProductDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   navHeader: {
     flexDirection: 'row',
@@ -289,6 +387,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  productImage: {
+    width: '100%',
+    height: 320,
+    backgroundColor: C.surface,
+  },
   imagePlaceholderLabel: { color: C.textTertiary, fontSize: 13 },
 
   content: { padding: 16 },
@@ -301,7 +404,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  price: { color: C.primary, fontSize: 26, fontWeight: '800', fontFamily: 'monospace' },
+  price: { color: C.accent, fontSize: 26, fontWeight: '800', fontFamily: 'monospace' },
   stockBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -373,7 +476,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   stickyLabel: { color: C.textTertiary, fontSize: 11, marginBottom: 2 },
-  stickyPrice: { color: C.primary, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
+  stickyPrice: { color: C.accent, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
   addToCartBtn: {
     flexDirection: 'row',
     alignItems: 'center',

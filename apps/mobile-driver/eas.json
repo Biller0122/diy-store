@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "env": {
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_API_URL": "https://shoptool.mn",
+        "EXPO_PUBLIC_SOCKET_URL": "https://shoptool.mn",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$GOOGLE_MAPS_API_KEY"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "environment": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_API_URL": "https://shoptool.mn",
+        "EXPO_PUBLIC_SOCKET_URL": "https://shoptool.mn",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$GOOGLE_MAPS_API_KEY"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "environment": "production",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://shoptool.mn",
+        "EXPO_PUBLIC_SOCKET_URL": "https://shoptool.mn",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$GOOGLE_MAPS_API_KEY"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

@@ -1,4 +1,4 @@
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://diy-store.mn';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://shoptool.mn';
 
 // ─── Product schema ───────────────────────────────────────────
 
@@ -34,7 +34,7 @@ export function generateProductSchema(product: {
         ? 'https://schema.org/InStock'
         : 'https://schema.org/OutOfStock',
       url: `${BASE_URL}/product/${product.slug}`,
-      seller: { '@type': 'Organization', name: 'DIY Store' },
+      seller: { '@type': 'Organization', name: 'shoptool.mn' },
     },
   };
 
@@ -72,10 +72,10 @@ export function generateOrganizationSchema() {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
-    name: 'DIY Store',
+    name: 'shoptool.mn',
     url: BASE_URL,
-    logo: `${BASE_URL}/logo.png`,
-    description: 'Монголын хамгийн том DIY, барилгын материал, багаж хэрэгслийн онлайн дэлгүүр',
+    logo: `${BASE_URL}/shoptool-logo.png`,
+    description: 'Барилгын материалын ухаалаг шийдэл',
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: '+976-7777-0000',
@@ -83,8 +83,8 @@ export function generateOrganizationSchema() {
       availableLanguage: 'Mongolian',
     },
     sameAs: [
-      'https://www.facebook.com/diystore.mn',
-      'https://www.instagram.com/diystore.mn',
+      'https://www.facebook.com/shoptool.mn',
+      'https://www.instagram.com/shoptool.mn',
     ],
   };
 }
@@ -111,8 +111,8 @@ export function generateArticleSchema(article: {
     author: { '@type': 'Person', name: article.author },
     publisher: {
       '@type': 'Organization',
-      name: 'DIY Store',
-      logo: { '@type': 'ImageObject', url: `${BASE_URL}/logo.png` },
+      name: 'shoptool.mn',
+      logo: { '@type': 'ImageObject', url: `${BASE_URL}/shoptool-logo.png` },
     },
     mainEntityOfPage: { '@type': 'WebPage', '@id': `${BASE_URL}/how-to/${article.slug}` },
   };
@@ -133,7 +133,7 @@ export function generateLocalBusinessSchema(store: {
   return {
     '@context': 'https://schema.org',
     '@type': 'HomeAndConstructionBusiness',
-    name: `DIY Store — ${store.name}`,
+    name: `shoptool.mn — ${store.name}`,
     address: {
       '@type': 'PostalAddress',
       streetAddress: store.address,

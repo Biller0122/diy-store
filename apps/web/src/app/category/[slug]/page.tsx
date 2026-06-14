@@ -8,7 +8,7 @@ import { FacetValueResult } from './filter-sidebar';
 import { generateCategoryMetadata } from '@/lib/seo/metadata';
 import { generateBreadcrumbSchema } from '@/lib/seo/structured-data';
 import { JsonLd } from '@/components/common/JsonLd';
-import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers, getSupplierProductCategoryCount, supplierProductMatchesCategory } from '@/lib/supplier-products';
 
 const PAGE_SIZE = 12;
 
@@ -177,13 +177,18 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     getDbSupplierProducts(),
     getDbSuppliers({ status: 'ACTIVE', take: 100 }),
   ]);
-  const categorySlugs = new Set([slug, ...(collection?.children ?? []).map((child) => child.slug)]);
   const supplierById = new Map(suppliersResult.items.map((supplier) => {
     const card = dbSupplierToCard(supplier);
     return [card.id, card];
   }));
+  const subcategories = (collection?.children ?? []).map((category) => ({
+    ...category,
+    productVariants: {
+      totalItems: (category.productVariants?.totalItems ?? 0) + getSupplierProductCategoryCount(supplierProducts, category),
+    },
+  }));
   const supplierCategoryProducts = supplierProducts
-    .filter((product) => product.enabled && product.category && categorySlugs.has(product.category))
+    .filter((product) => product.enabled && collection && supplierById.has(product.supplierId) && supplierProductMatchesCategory(product, collection, true))
     .map((product) => dbProductToCard(product, supplierById.get(product.supplierId)));
 
   const totalItems = (searchResult?.totalItems ?? 0) + supplierCategoryProducts.length;
@@ -208,7 +213,6 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
   const icon = collection?.customFields?.icon ?? '📦';
   const name = collection?.name ?? slug;
-  const subcategories = collection?.children ?? [];
 
   return (
     <>

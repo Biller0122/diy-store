@@ -70,7 +70,10 @@ export async function POST(req: NextRequest) {
     const resolvedStops = pickupStops.map((s) => {
       if (s.lat != null && s.lng != null) return { lat: s.lat, lng: s.lng };
       const coords = s.district ? DISTRICT_COORDS[s.district] : null;
-      return coords ?? DRIVER_START;
+      if (!coords) {
+        throw new Error(`Missing pickup location for supplier ${s.supplierId ?? 'unknown'}`);
+      }
+      return coords;
     });
 
     // Resolve dropoff coords
@@ -110,7 +113,16 @@ export async function POST(req: NextRequest) {
         totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
       },
     });
-  } catch {
-    return NextResponse.json({ fee: 550_000, estimatedMinutes: 45, breakdown: null }, { status: 200 });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : 'Delivery fee calculation failed',
+        fallback: true,
+        fee: 550_000,
+        estimatedMinutes: 45,
+        breakdown: null,
+      },
+      { status: 500 },
+    );
   }
 }
