@@ -3,7 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { COLLECTIONS_QUERY, SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 import {
   encodeRoutePart,
@@ -27,6 +27,8 @@ type ProductSection = {
 
 export default function ProductsScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const params = useLocalSearchParams<{ mode?: string }>();
   const mode = params.mode === 'sale' ? 'sale' : 'new';
   const [products, setProducts] = useState<ProductWithCategory[]>([]);
@@ -162,7 +164,7 @@ function groupProducts(products: ProductWithCategory[], categories: MarketplaceC
   return sections;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row',

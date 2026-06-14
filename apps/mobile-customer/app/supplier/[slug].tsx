@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { shopFetch, SUPPLIER_BY_SLUG_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 import { encodeRoutePart, mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
 import { ProductTile } from '@/components/MarketplaceCards';
@@ -30,6 +30,8 @@ type SupplierDetail = {
 
 export default function SupplierScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [supplier, setSupplier] = useState<SupplierDetail | null>(null);
   const [products, setProducts] = useState<MarketplaceProduct[]>([]);
@@ -158,7 +160,7 @@ function safeDecode(value: string) {
   }
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   navHeader: {
     flexDirection: 'row',

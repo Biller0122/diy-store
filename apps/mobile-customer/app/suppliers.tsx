@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { shopFetch, SUPPLIERS_QUERY } from '@/lib/api';
 import { encodeRoutePart, mapSupplier, MarketplaceSupplier } from '@/lib/marketplace';
 import { SupplierTile } from '@/components/MarketplaceCards';
 
 export default function SuppliersScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [suppliers, setSuppliers] = useState<MarketplaceSupplier[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,7 +64,7 @@ export default function SuppliersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row',

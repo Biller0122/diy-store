@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { useAppStore } from '@/lib/store';
 import {
   shopFetch,
@@ -79,6 +79,8 @@ const PAYMENT_METHODS = [
 
 export default function CheckoutScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { customer, supplierCart, clearSupplierCart } = useAppStore();
 
   const [order, setOrder] = useState<ActiveOrder | null>(null);
@@ -523,7 +525,7 @@ export default function CheckoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: C.bg },
   safe: { backgroundColor: C.bg },
   navHeader: {
@@ -576,7 +578,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   totalLabel: { color: C.text, fontSize: 14, fontWeight: '700' },
-  totalValue: { color: C.primary, fontSize: 16, fontWeight: '800', fontFamily: 'monospace' },
+  totalValue: { color: C.accent, fontSize: 16, fontWeight: '800', fontFamily: 'monospace' },
 
   inputLabel: { color: C.textSub, fontSize: 12, fontWeight: '600', marginTop: 4 },
   input: {
@@ -671,12 +673,12 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   bottomLabel: { color: C.textTertiary, fontSize: 11, marginBottom: 2 },
-  bottomTotal: { color: C.primary, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
+  bottomTotal: { color: C.accent, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
   placeOrderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: C.primary,
+    backgroundColor: C.accent,
     borderRadius: 14,
     paddingHorizontal: 24,
     paddingVertical: 14,

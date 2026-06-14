@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { COLLECTION_BY_SLUG_QUERY, SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 import { encodeRoutePart, mapSearchProduct, mapSupplierProduct, MarketplaceProduct, supplierProductMatchesCategory } from '@/lib/marketplace';
 import { ProductTile } from '@/components/MarketplaceCards';
@@ -18,6 +18,8 @@ type CollectionDetail = {
 
 export default function CategoryScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [products, setProducts] = useState<MarketplaceProduct[]>([]);
   const [totalItems, setTotalItems] = useState(0);
@@ -104,7 +106,7 @@ function safeDecode(value: string) {
   }
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row',

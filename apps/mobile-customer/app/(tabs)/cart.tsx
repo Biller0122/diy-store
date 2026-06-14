@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { SupplierCartItem, useAppStore } from '@/lib/store';
 import {
   shopFetch,
@@ -63,6 +63,8 @@ function CartLineRow({
   onAdjust: (id: string, qty: number) => void;
   onRemove: (id: string) => void;
 }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View style={styles.lineRow}>
       {line.productVariant.product.featuredAsset?.preview ? (
@@ -124,6 +126,8 @@ function SupplierLineRow({
   onAdjust: (id: string, qty: number) => void;
   onRemove: (id: string) => void;
 }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View style={styles.lineRow}>
       {item.image ? (
@@ -165,6 +169,8 @@ function SupplierLineRow({
 
 export default function CartScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { customer, supplierCart, setCartCount, updateSupplierCartQty, removeSupplierCartItem } = useAppStore();
   const [order, setOrder] = useState<ActiveOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -352,7 +358,7 @@ export default function CartScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: C.bg },
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
@@ -414,7 +420,7 @@ const styles = StyleSheet.create({
   lineInfo: { flex: 1, gap: 3 },
   lineName: { color: C.text, fontSize: 13, fontWeight: '600', lineHeight: 18 },
   lineVariant: { color: C.textSub, fontSize: 11 },
-  linePrice: { color: C.primary, fontSize: 14, fontWeight: '700', fontFamily: 'monospace', marginTop: 2 },
+  linePrice: { color: C.accent, fontSize: 14, fontWeight: '700', fontFamily: 'monospace', marginTop: 2 },
   lineActions: { alignItems: 'flex-end', gap: 8 },
   deleteBtn: {
     width: 28,
@@ -455,7 +461,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   totalLabel: { color: C.text, fontSize: 16, fontWeight: '700' },
-  totalValue: { color: C.primary, fontSize: 18, fontWeight: '800', fontFamily: 'monospace' },
+  totalValue: { color: C.accent, fontSize: 18, fontWeight: '800', fontFamily: 'monospace' },
 
   bottomBar: {
     backgroundColor: C.card,
@@ -469,12 +475,12 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   bottomLabel: { color: C.textTertiary, fontSize: 11, marginBottom: 2 },
-  bottomTotal: { color: C.primary, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
+  bottomTotal: { color: C.accent, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
   checkoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: C.primary,
+    backgroundColor: C.accent,
     borderRadius: 14,
     paddingHorizontal: 24,
     paddingVertical: 14,

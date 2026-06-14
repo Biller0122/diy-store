@@ -48,6 +48,8 @@ export interface SupplierCartItem {
   supplierLng?: number | null;
 }
 
+type ThemeMode = 'dark' | 'light';
+
 interface AppState {
   customer: Customer | null;
   token: string | null;
@@ -55,6 +57,9 @@ interface AppState {
   supplierCart: SupplierCartItem[];
   isLoading: boolean;
   error: string | null;
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+  toggleTheme: () => void;
   login: (identifier: string, password: string) => Promise<boolean>;
   requestEmailOtp: (email: string) => Promise<{ ok: boolean; otp?: string | null }>;
   verifyEmailOtp: (email: string, otp: string) => Promise<boolean>;
@@ -109,6 +114,10 @@ export const useAppStore = create<AppState>()(
       supplierCart: [],
       isLoading: false,
       error: null,
+      theme: 'dark',
+
+      setTheme: (theme: ThemeMode) => set({ theme }),
+      toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
 
       login: async (identifier: string, password: string): Promise<boolean> => {
         set({ isLoading: true, error: null });
@@ -261,6 +270,7 @@ export const useAppStore = create<AppState>()(
         customer: state.customer,
         token: state.token,
         supplierCart: state.supplierCart,
+        theme: state.theme,
       }),
       onRehydrateStorage: () => (state) => {
         setShopSessionToken(state?.token ?? null);

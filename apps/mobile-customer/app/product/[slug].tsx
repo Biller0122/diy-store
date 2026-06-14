@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { useAppStore } from '@/lib/store';
 import { shopFetch, PRODUCT_QUERY, ADD_TO_CART_MUTATION, ACTIVE_ORDER_QUERY, SUPPLIER_PRODUCTS_QUERY, SUPPLIER_QUERY } from '@/lib/api';
 
@@ -52,6 +52,8 @@ function formatPrice(price: number) {
 
 export default function ProductDetailScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { customer, setCartCount, addSupplierCartItem } = useAppStore();
 
@@ -349,7 +351,7 @@ function safeDecode(value: string) {
   }
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   navHeader: {
     flexDirection: 'row',
@@ -402,7 +404,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  price: { color: C.primary, fontSize: 26, fontWeight: '800', fontFamily: 'monospace' },
+  price: { color: C.accent, fontSize: 26, fontWeight: '800', fontFamily: 'monospace' },
   stockBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -474,7 +476,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   stickyLabel: { color: C.textTertiary, fontSize: 11, marginBottom: 2 },
-  stickyPrice: { color: C.primary, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
+  stickyPrice: { color: C.accent, fontSize: 20, fontWeight: '800', fontFamily: 'monospace' },
   addToCartBtn: {
     flexDirection: 'row',
     alignItems: 'center',

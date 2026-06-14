@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Linking, Pressable, ScrollVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { COLLECTIONS_QUERY, HOMEPAGE_BANNERS_QUERY, SEARCH_QUERY, shopFetch, SUPPLIERS_QUERY, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 import {
   CATEGORY_ICONS,
@@ -61,6 +61,8 @@ function getBackendCategoryProductCount(collection: any, supplierProducts: any[]
 }
 
 function FeaturedBanner({ banner }: { banner?: HomepageBanner }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   if (!banner) return null;
   return (
     <TouchableOpacity style={styles.bannerCard} activeOpacity={0.9}>
@@ -80,6 +82,8 @@ function FeaturedBanner({ banner }: { banner?: HomepageBanner }) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [data, setData] = useState<HomeData>({
     suppliers: [],
     categories: [],
@@ -262,7 +266,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16, paddingBottom: 18 },

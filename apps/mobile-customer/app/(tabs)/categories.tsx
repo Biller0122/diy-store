@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { COLLECTIONS_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 import { CATEGORY_ICONS, encodeRoutePart, MarketplaceCategory, supplierProductMatchesCategory } from '@/lib/marketplace';
 import { CategoryTile } from '@/components/MarketplaceCards';
@@ -28,6 +28,8 @@ function getBackendCategoryProductCount(collection: any, supplierProducts: any[]
 
 export default function CategoriesScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -197,7 +199,7 @@ export default function CategoriesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 18 },

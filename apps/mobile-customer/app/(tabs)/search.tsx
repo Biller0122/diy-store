@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { COLLECTIONS_QUERY, SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
 import { encodeRoutePart, mapSearchProduct, mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
 import { ProductTile, SectionHeading } from '@/components/MarketplaceCards';
@@ -140,6 +140,8 @@ function groupResults(results: SearchProduct[], query: string): ResultGroup[] {
 
 export default function SearchScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const params = useLocalSearchParams<{ query?: string }>();
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -380,7 +382,7 @@ export default function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
   headerTitle: { color: C.text, fontSize: 24, fontWeight: '900' },

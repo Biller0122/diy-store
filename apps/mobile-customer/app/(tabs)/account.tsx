@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   View,
@@ -15,15 +15,45 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/lib/store';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { MY_ORDERS_QUERY, shopFetch } from '@/lib/api';
 
 type AccountOrder = { id: string; code: string; state: string; total: number; createdAt?: string };
 
-function StatusColor(status: string) {
+function statusColor(C: ThemeColors, status: string) {
   if (status === 'Хүргэгдлээ') return C.success;
-  if (status === 'Цуцлагдсан') return '#FF4444';
+  if (status === 'Цуцлагдсан') return C.danger;
   return C.warning;
+}
+
+function AppearanceToggle() {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const mode = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Үзэмж</Text>
+      <View style={styles.themeRow}>
+        <TouchableOpacity
+          style={[styles.themeOption, mode === 'light' && styles.themeOptionActive]}
+          onPress={() => setTheme('light')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="sunny-outline" size={18} color={mode === 'light' ? C.onPrimary : C.textSub} />
+          <Text style={[styles.themeOptionText, mode === 'light' && styles.themeOptionTextActive]}>Цайвар</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.themeOption, mode === 'dark' && styles.themeOptionActive]}
+          onPress={() => setTheme('dark')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="moon-outline" size={18} color={mode === 'dark' ? C.onPrimary : C.textSub} />
+          <Text style={[styles.themeOptionText, mode === 'dark' && styles.themeOptionTextActive]}>Бараан</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 function formatPrice(price: number) {
@@ -35,6 +65,8 @@ function validEmail(value: string) {
 }
 
 function AuthPanel() {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [tab, setTab] = useState<'login' | 'otp'>('login');
   const [formError, setFormError] = useState('');
   const [info, setInfo] = useState('');
@@ -343,11 +375,15 @@ function AuthPanel() {
           </View>
         ) : null}
       </View>
+
+      <AppearanceToggle />
     </ScrollView>
   );
 }
 
 function AuthField({ label, children, style }: { label: string; children: ReactNode; style?: object }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View style={[styles.inputGroup, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
@@ -367,6 +403,8 @@ function PasswordField({
   show: boolean;
   setShow: (value: boolean) => void;
 }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View style={styles.passwordWrapper}>
       <TextInput
@@ -386,6 +424,8 @@ function PasswordField({
 
 function LoggedInPanel() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { customer, logout } = useAppStore();
   const [orders, setOrders] = useState<AccountOrder[]>([]);
 
@@ -435,7 +475,7 @@ function LoggedInPanel() {
         {orders.slice(0, 3).map((order) => (
           <View key={order.id} style={styles.miniOrderCard}>
             <Text style={styles.miniOrderCode}>{order.code}</Text>
-            <Text style={[styles.miniOrderStatus, { color: StatusColor(order.state) }]}>
+            <Text style={[styles.miniOrderStatus, { color: statusColor(C, order.state) }]}>
               {order.state}
             </Text>
             <Text style={styles.miniOrderTotal}>{formatPrice(order.total)}</Text>
@@ -465,6 +505,8 @@ function LoggedInPanel() {
         </TouchableOpacity>
       </View>
 
+      <AppearanceToggle />
+
       {/* Logout */}
       <TouchableOpacity
         style={styles.logoutBtn}
@@ -487,6 +529,8 @@ function LoggedInPanel() {
 
 export default function AccountScreen() {
   const customer = useAppStore((s) => s.customer);
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -504,7 +548,7 @@ export default function AccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
     paddingHorizontal: 16,
@@ -513,6 +557,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
+  themeRow: { flexDirection: 'row', gap: 10 },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+  },
+  themeOptionActive: { backgroundColor: C.primary, borderColor: C.primary },
+  themeOptionText: { color: C.textSub, fontSize: 13, fontWeight: '700' },
+  themeOptionTextActive: { color: C.onPrimary },
   headerTitle: { color: C.text, fontSize: 22, fontWeight: '800' },
 
   // Auth
@@ -663,7 +723,7 @@ const styles = StyleSheet.create({
   },
   miniOrderCode: { color: C.text, fontSize: 12, fontFamily: 'monospace', flex: 1 },
   miniOrderStatus: { fontSize: 11, fontWeight: '600', flex: 1, textAlign: 'center' },
-  miniOrderTotal: { color: C.primary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+  miniOrderTotal: { color: C.accent, fontSize: 12, fontWeight: '700', textAlign: 'right' },
 
   addressCard: {
     flexDirection: 'row',

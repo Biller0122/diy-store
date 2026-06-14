@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { shopFetch, DELIVERY_REQUEST_QUERY } from '@/lib/api';
 
 interface DeliveryRequest {
@@ -95,6 +95,8 @@ function formatFee(fee: number) {
 
 export default function TrackScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { id, t } = useLocalSearchParams<{ id: string; t?: string }>();
   const [delivery, setDelivery] = useState<DeliveryRequest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -275,7 +277,7 @@ export default function TrackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   navHeader: {
     flexDirection: 'row',

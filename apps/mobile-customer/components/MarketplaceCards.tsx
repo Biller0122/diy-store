@@ -1,6 +1,7 @@
+import { useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { formatProductPrice, MarketplaceCategory, MarketplaceProduct, MarketplaceSupplier } from '@/lib/marketplace';
 
 export function SectionHeading({
@@ -14,6 +15,8 @@ export function SectionHeading({
   action?: string;
   onPress?: () => void;
 }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View style={styles.sectionHeading}>
       <View style={{ flex: 1 }}>
@@ -39,6 +42,8 @@ export function RemoteImage({
   icon?: keyof typeof Ionicons.glyphMap;
   style?: object;
 }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   if (uri) {
     return <Image source={{ uri }} style={[styles.remoteImage, style]} resizeMode="cover" />;
   }
@@ -58,6 +63,8 @@ export function ProductTile({
   wide?: boolean;
   onPress: () => void;
 }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <TouchableOpacity style={[styles.productTile, wide && styles.productTileWide]} onPress={onPress} activeOpacity={0.88}>
       <View style={styles.productImageWrap}>
@@ -84,6 +91,8 @@ export function ProductTile({
 }
 
 export function SupplierTile({ supplier, onPress }: { supplier: MarketplaceSupplier; onPress: () => void }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <TouchableOpacity style={styles.supplierTile} onPress={onPress} activeOpacity={0.86}>
       <View style={styles.supplierAvatar}>
@@ -110,6 +119,8 @@ export function SupplierTile({ supplier, onPress }: { supplier: MarketplaceSuppl
 }
 
 export function CategoryTile({ category, onPress, selected = false }: { category: MarketplaceCategory; onPress: () => void; selected?: boolean }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <TouchableOpacity style={[styles.categoryTile, selected && styles.categoryTileSelected]} onPress={onPress} activeOpacity={0.82}>
       <Text style={styles.categoryIcon}>{category.icon}</Text>
@@ -119,7 +130,7 @@ export function CategoryTile({ category, onPress, selected = false }: { category
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   sectionHeading: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -149,7 +160,7 @@ const styles = StyleSheet.create({
   productBody: { padding: 11, minHeight: 94 },
   productName: { color: C.text, fontSize: 13, fontWeight: '700', lineHeight: 18 },
   productSupplier: { color: C.textTertiary, fontSize: 11, marginTop: 4 },
-  productPrice: { color: C.primary, fontSize: 15, fontWeight: '800', fontFamily: 'monospace', marginTop: 'auto' },
+  productPrice: { color: C.accent, fontSize: 15, fontWeight: '800', fontFamily: 'monospace', marginTop: 'auto' },
   badge: {
     position: 'absolute',
     top: 10,
@@ -157,7 +168,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    backgroundColor: C.primary,
+    backgroundColor: C.accent,
   },
   badgeAmber: { backgroundColor: C.warning },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
@@ -177,7 +188,7 @@ const styles = StyleSheet.create({
   stockPillOff: { backgroundColor: 'rgba(255,68,68,0.18)' },
   stockDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.success },
   stockDotOff: { backgroundColor: '#FF4444' },
-  stockText: { color: C.success, fontSize: 10, fontWeight: '700' },
+  stockText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   stockTextOff: { color: '#FF7777' },
 
   supplierTile: {
@@ -208,7 +219,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 3,
-    backgroundColor: 'rgba(0,212,170,0.12)',
+    backgroundColor: 'rgba(34,197,94,0.14)',
     color: C.success,
     fontSize: 10,
     fontWeight: '800',
