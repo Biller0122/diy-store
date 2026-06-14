@@ -101,7 +101,7 @@ describe('Security hardening guards', () => {
   });
 
   test('delivery status state machine blocks invalid backward transition', () => {
-    const resolver = new DeliveryResolver({} as any, {} as any) as any;
+    const resolver = new DeliveryResolver({} as any, {} as any, {} as any) as any;
     expect(() => resolver.assertStatusTransition(DeliveryStatus.COMPLETED, DeliveryStatus.SEARCHING)).toThrow();
     expect(() => resolver.assertStatusTransition(DeliveryStatus.CANCELLED, DeliveryStatus.IN_PROGRESS)).toThrow();
     expect(() => resolver.assertStatusTransition(DeliveryStatus.ACCEPTED, DeliveryStatus.SEARCHING)).toThrow();
@@ -132,7 +132,7 @@ describe('Security hardening guards', () => {
           : null;
       },
     };
-    const resolver = new DeliveryResolver(repo as any, {} as any);
+    const resolver = new DeliveryResolver(repo as any, {} as any, {} as any);
     const anonymousCtx = { apiType: 'shop', req: { headers: {} } };
 
     await expect(resolver.deliveryRequest(anonymousCtx as any, 'DIY-2026-01001')).rejects.toThrow('Хандах эрхгүй');

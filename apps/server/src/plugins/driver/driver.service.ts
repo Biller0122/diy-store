@@ -74,6 +74,10 @@ export class DriverService {
     const driver = await this.driverRepo.findOne({ where: { phone } });
     if (!driver) throw new Error('Жолооч олдсонгүй');
     if (driver.status === DriverStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
+    // Rate limit: 60s cooldown between OTP requests.
+    if (driver.otpExpiresAt && driver.otpExpiresAt.getTime() - Date.now() > 4 * 60 * 1000) {
+      throw new Error('Та түр хүлээгээд (1 мин) дахин код аваарай');
+    }
     driver.otpCode = this.generateOtp();
     driver.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
     driver.otpAttempts = 0;

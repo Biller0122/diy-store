@@ -101,6 +101,12 @@ export class SupplierService {
     if (supplier.status === SupplierStatus.SUSPENDED) throw new Error('Таны данс түр хаагдсан байна');
     if (supplier.status === SupplierStatus.REJECTED) throw new Error('Таны бүртгэл татгалзсан байна');
 
+    // Rate limit: 60s cooldown between OTP requests (expiry is +5min on issue,
+    // so >4min remaining means a code was sent < 1min ago).
+    if (supplier.otpExpiresAt && supplier.otpExpiresAt.getTime() - Date.now() > 4 * 60 * 1000) {
+      throw new Error('Та түр хүлээгээд (1 мин) дахин код аваарай');
+    }
+
     supplier.otpCode = this.generateOtp();
     supplier.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
     supplier.otpAttempts = 0;

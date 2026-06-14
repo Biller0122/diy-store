@@ -172,7 +172,6 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     ownerName: String!
     phone: String!
     email: String!
-    passwordHash: String
     address: String
     district: String
     khoroo: String

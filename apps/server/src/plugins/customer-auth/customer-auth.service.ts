@@ -105,6 +105,24 @@ export class CustomerAuthService {
     const emailAddress = this.normalizeEmail(emailInput);
     this.assertEmail(emailAddress);
 
+    // Rate limiting: 1 request / 60s cooldown and max 5 requests / hour per
+    // email+purpose to prevent OTP / email bombing and brute-force priming.
+    const now = Date.now();
+    const { MoreThan } = await import('typeorm');
+    const recent = await this.otpRepo.findOne({
+      where: { emailAddress, purpose },
+      order: { createdAt: 'DESC' },
+    });
+    if (recent && now - recent.createdAt.getTime() < 60_000) {
+      return { success: false, message: 'Та түр хүлээгээд (1 мин) дахин код аваарай', emailAddress, otp: null };
+    }
+    const recentCount = await this.otpRepo.count({
+      where: { emailAddress, purpose, createdAt: MoreThan(new Date(now - 60 * 60 * 1000)) },
+    });
+    if (recentCount >= 5) {
+      return { success: false, message: 'Хэт олон удаа код хүслээ. 1 цагийн дараа дахин оролдоно уу', emailAddress, otp: null };
+    }
+
     const otpCode = this.generateOtp();
     const otp = this.otpRepo.create({
       emailAddress,

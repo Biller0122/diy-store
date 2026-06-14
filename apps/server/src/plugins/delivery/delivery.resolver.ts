@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
-import { Ctx, RequestContext } from '@vendure/core';
+import { Ctx, RequestContext, CustomerService } from '@vendure/core';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -33,6 +33,7 @@ export class DeliveryResolver {
     private deliveryRepo: Repository<DeliveryRequest>,
     @InjectDataSource()
     private dataSource: DataSource,
+    private customerService: CustomerService,
   ) {}
 
   @Query()
@@ -87,6 +88,7 @@ export class DeliveryResolver {
 
   @Mutation()
   async createDeliveryRequest(
+    @Ctx() ctx: RequestContext,
     @Args('orderId') orderId: string,
     @Args('customerId') customerId: string,
     @Args('customerName') customerName: string,
@@ -99,6 +101,15 @@ export class DeliveryResolver {
     @Args('orderTotal', { nullable: true }) orderTotal = 0,
     @Args('paymentMethod', { nullable: true }) paymentMethod?: string,
   ) {
+    // Security: never trust the client-supplied customerId for an authenticated
+    // session. If a Vendure customer is logged in, bind the delivery to THEIR id
+    // so a logged-in user cannot attribute an order to another customer. Guest
+    // checkout (no session) keeps the supplied identifier.
+    if (ctx.activeUserId) {
+      const sessionCustomer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId, false);
+      if (sessionCustomer) customerId = String(sessionCustomer.id);
+    }
+
     const orderNumber = await generateOrderNumber(this.dataSource);
 
     const pickupLat = pickupStops[0]?.lat ?? 47.9185;
