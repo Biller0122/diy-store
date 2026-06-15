@@ -165,6 +165,14 @@ const SUPPLIERS_QUERY = `
   }
 `;
 
+const SEMANTIC_SEARCH_QUERY = `
+  query SemanticSearch($query: String!, $take: Int) {
+    semanticSearch(query: $query, take: $take) {
+      items { id source score }
+    }
+  }
+`;
+
 async function searchSupplierProducts(query: string, filters: {
   category?: string;
   inStock?: boolean;
@@ -173,15 +181,22 @@ async function searchSupplierProducts(query: string, filters: {
   sort?: SortOption;
 }, categoryNames: Record<string, string>): Promise<AlgoliaHit[]> {
   try {
-    const [data, supplierData] = await Promise.all([
+    const [data, supplierData, semantic] = await Promise.all([
       vendureShopFetch<{ supplierProducts: { items: DbSupplierProduct[] } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 }),
       vendureShopFetch<{ suppliers: { items: Array<Pick<DbSupplier, 'id' | 'businessName' | 'slug' | 'district' | 'lat' | 'lng' | 'rating' | 'reviewCount'>> } }>(SUPPLIERS_QUERY, undefined, { revalidate: 0 }).catch(() => ({ suppliers: { items: [] } })),
+      vendureShopFetch<{ semanticSearch: { items: Array<{ id: string; source: string; score: number }> } }>(SEMANTIC_SEARCH_QUERY, { query, take: 60 }, { revalidate: 0 }).catch(() => ({ semanticSearch: { items: [] } })),
     ]);
     const suppliersById = new Map(supplierData.suppliers.items.map((supplier) => [supplier.id, supplier]));
+    const scoreById = new Map(
+      (semantic.semanticSearch?.items ?? [])
+        .filter((item) => item.source === 'supplier')
+        .map((item) => [String(item.id), item.score] as const),
+    );
 
     let hits = data.supplierProducts.items
       .filter((item) => item.enabled)
-      .filter((item) => matchesSearch(query, [
+      // semantic membership (embedding + vector math) first; lexical fallback
+      .filter((item) => scoreById.has(String(item.id)) || matchesSearch(query, [
         item.name,
         item.slug,
         item.category,
@@ -191,6 +206,7 @@ async function searchSupplierProducts(query: string, filters: {
       .filter((item) => !filters.inStock || item.stock > 0)
       .filter((item) => !filters.priceMin || item.price >= filters.priceMin)
       .filter((item) => !filters.priceMax || item.price <= filters.priceMax)
+      .sort((a, b) => (scoreById.get(String(b.id)) ?? 0) - (scoreById.get(String(a.id)) ?? 0))
       .map((item) => {
         const card = dbProductToCard(item, suppliersById.get(item.supplierId));
         return {
