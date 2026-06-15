@@ -253,7 +253,7 @@ export class EmbeddingService {
   /** Romanized Mongolian (Latin script) → Cyrillic, so a fully Latin query like
    * "gagnuur", "gagnyyr", "honh", "khonh", "honkh" maps to "гагнуур" / "хонх". */
   private latinToCyrillic(word: string): string {
-    let w = word.toLowerCase()
+    const w = word.toLowerCase()
       .replace(/kh/g, 'х').replace(/ch/g, 'ч').replace(/sh/g, 'ш').replace(/ts/g, 'ц')
       .replace(/yo/g, 'ё').replace(/yu/g, 'ю').replace(/ya/g, 'я');
     const map: Record<string, string> = {

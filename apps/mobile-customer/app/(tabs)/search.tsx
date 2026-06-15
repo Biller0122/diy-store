@@ -69,8 +69,36 @@ const TOKEN_VARIANTS: Record<string, string[]> = {
   'тоосго': ['toosgo', 'tosgo', 'brick', 'тоосго'],
 };
 
+const HOMOGLYPH_MAP: Record<string, string> = {
+  a: 'а', c: 'с', e: 'е', k: 'к', m: 'м', o: 'о', p: 'р', x: 'х', y: 'у', t: 'т', h: 'н',
+};
+const LATIN_MAP: Record<string, string> = {
+  a: 'а', b: 'б', c: 'ц', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'х', i: 'и', j: 'ж',
+  k: 'к', l: 'л', m: 'м', n: 'н', o: 'о', p: 'п', q: 'к', r: 'р', s: 'с', t: 'т',
+  u: 'у', v: 'в', w: 'в', x: 'х', y: 'у', z: 'з',
+};
+
+function latinWordToCyrillic(word: string) {
+  const w = word
+    .replace(/kh/g, 'х').replace(/ch/g, 'ч').replace(/sh/g, 'ш').replace(/ts/g, 'ц')
+    .replace(/yo/g, 'ё').replace(/yu/g, 'ю').replace(/ya/g, 'я');
+  return w.replace(/[a-z]/g, (ch) => LATIN_MAP[ch] ?? ch);
+}
+
+// Lowercase + ё→е, then map romanized Mongolian (Latin) to Cyrillic so a query
+// like "gagnuur"/"honh" finds Cyrillic products. Cyrillic words only get stray
+// Latin homoglyphs fixed (e.g. "гагнyyр" → "гагнуур").
 function normalizeSearchText(text: string) {
-  return text.toLowerCase().replace(/ё/g, 'е');
+  return text
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .split(/\s+/)
+    .map((word) =>
+      /[Ѐ-ӿ]/.test(word)
+        ? word.replace(/[a-z]/g, (ch) => HOMOGLYPH_MAP[ch] ?? ch)
+        : latinWordToCyrillic(word),
+    )
+    .join(' ');
 }
 
 function getSearchTokens(term: string) {
