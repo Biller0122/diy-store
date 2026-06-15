@@ -205,26 +205,113 @@ export class EmbeddingService {
 
     const limit = Math.max(1, Math.min(take, 50));
     const intents = await this.parseSearchIntents(trimmed);
-    if (intents.length > 1) {
-      const perIntentTake = Math.max(3, Math.ceil(limit / intents.length));
-      const groups = await Promise.all(intents.map((intent) => this.searchSingleIntent(intent, perIntentTake)));
-      const seen = new Set<string>();
-      const items = groups
-        .flat()
-        .sort((a, b) => b.score - a.score)
-        .filter((item) => {
-          const key = `${item.source}:${item.id}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .slice(0, limit);
+    const perIntentTake = intents.length > 1 ? Math.max(3, Math.ceil(limit / intents.length)) : limit;
 
-      return { items, total: items.length };
+    // Hybrid retrieval:
+    //  - semantic (vector) search per intent, on a normalised query so mixed
+    //    Latin/Cyrillic typos like "гагнyyр" still embed close to "гагнуур";
+    //  - a lexical (name ILIKE) pass over every word so exact-name matches and
+    //    several products typed in a row all surface together, even if a
+    //    typo pushes the vector score below the threshold.
+    const semanticGroups = await Promise.all(
+      intents.map((intent) => this.searchSingleIntent(this.normalizeText(intent), perIntentTake).catch(() => [])),
+    );
+    const lexical = await this.lexicalSearch(this.normalizeText(trimmed), limit).catch(() => []);
+
+    const best = new Map<string, SemanticSearchItem>();
+    for (const item of [...semanticGroups.flat(), ...lexical]) {
+      const key = `${item.source}:${item.id}`;
+      const existing = best.get(key);
+      if (!existing || item.score > existing.score) best.set(key, item);
     }
 
-    const items = await this.searchSingleIntent(trimmed, limit);
+    const items = Array.from(best.values()).sort((a, b) => b.score - a.score).slice(0, limit);
     return { items, total: items.length };
+  }
+
+  /** Lowercase, normalise ё→е, and fix stray Latin homoglyphs inside Cyrillic
+   * words (e.g. Latin "y"→"у") without touching pure-Latin words (brand names). */
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .split(/\s+/)
+      .map((word) => (/[Ѐ-ӿ]/.test(word) ? this.transliterateHomoglyphs(word) : word))
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+
+  private transliterateHomoglyphs(word: string): string {
+    const map: Record<string, string> = {
+      a: 'а', c: 'с', e: 'е', k: 'к', m: 'м', o: 'о', p: 'р', x: 'х', y: 'у', t: 'т', h: 'н',
+    };
+    return word.replace(/[a-z]/g, (ch) => map[ch] ?? ch);
+  }
+
+  /** Name-based lexical search: a product matches if its name contains ANY of
+   * the query words. This makes several products typed in a row all appear. */
+  private async lexicalSearch(normalizedQuery: string, take: number): Promise<SemanticSearchItem[]> {
+    const words = normalizedQuery
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter((word) => word.length >= 2)
+      .slice(0, 8);
+    if (words.length === 0) return [];
+
+    const patterns = words.map((word) => `%${word}%`);
+    const rows = await this.connection.rawConnection.query(
+      `
+        SELECT * FROM (
+          SELECT
+            sp.id::text AS id,
+            sp.id::text AS "variantId",
+            sp.name AS name,
+            sp.slug AS slug,
+            COALESCE(sp.description, '') AS description,
+            COALESCE(sp.category, '') AS category,
+            sp.image AS image,
+            sp.price AS price,
+            sp."supplierId" AS "supplierId",
+            'supplier' AS source,
+            0.9 AS score
+          FROM supplier_product sp
+          WHERE sp.enabled = true AND lower(sp.name) LIKE ANY($1::text[])
+          LIMIT $2
+        ) supplier_lexical
+        UNION ALL
+        SELECT * FROM (
+          SELECT
+            p.id::text AS id,
+            pv.id::text AS "variantId",
+            pt.name AS name,
+            pt.slug AS slug,
+            COALESCE(pt.description, '') AS description,
+            COALESCE(ct.name, '') AS category,
+            a.preview AS image,
+            COALESCE(pvp.price, 0) AS price,
+            NULL::text AS "supplierId",
+            'catalog' AS source,
+            0.9 AS score
+          FROM product_translation pt
+          JOIN product p ON p.id = pt."baseId"
+          LEFT JOIN product_variant pv ON pv."productId" = p.id
+          LEFT JOIN product_variant_price pvp ON pvp."variantId" = pv.id
+          LEFT JOIN asset a ON a.id = p."featuredAssetId"
+          LEFT JOIN collection_product_variants_product_variant cpv ON cpv."productVariantId" = pv.id
+          LEFT JOIN collection_translation ct ON ct."baseId" = cpv."collectionId"
+          WHERE lower(pt.name) LIKE ANY($1::text[])
+          LIMIT $2
+        ) catalog_lexical
+      `,
+      [patterns, take],
+    ) as Array<SemanticSearchItem & { score: string | number; price: string | number }>;
+
+    return rows.map((row) => ({
+      ...row,
+      price: Number(row.price ?? 0),
+      score: Number(row.score ?? 0),
+    }));
   }
 
   private async parseSearchIntents(query: string): Promise<string[]> {
