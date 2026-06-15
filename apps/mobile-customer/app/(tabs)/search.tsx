@@ -5,8 +5,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, type ThemeColors } from '@/lib/theme';
-import { COLLECTIONS_QUERY, SEARCH_QUERY, shopFetch, SUPPLIER_PRODUCTS_QUERY } from '@/lib/api';
-import { encodeRoutePart, mapSearchProduct, mapSupplierProduct, MarketplaceProduct } from '@/lib/marketplace';
+import { SEMANTIC_SEARCH_QUERY, shopFetch } from '@/lib/api';
+import { encodeRoutePart, mapSemanticProduct, MarketplaceProduct } from '@/lib/marketplace';
 import { ProductTile, SectionHeading } from '@/components/MarketplaceCards';
 
 const POPULAR_CHIPS = ['Перфоратор', 'LED гэрэл', 'PVC хоолой', 'Цемент', 'Мод', 'Кабель', 'Будаг', 'Плита'];
@@ -122,25 +122,6 @@ function tokenLabel(token: string) {
   return TOKEN_LABELS[normalized] ?? normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-function matchesSearch(term: string, values: Array<string | null | undefined>) {
-  const normalized = normalizeSearchText(term.trim());
-  const tokens = getSearchTokens(term);
-  const variants = tokens.flatMap(getTokenVariants);
-  const haystack = normalizeSearchText(values.filter(Boolean).join(' '));
-
-  if (!normalized) return true;
-  if (haystack.includes(normalized)) return true;
-  return variants.some((variant) => haystack.includes(variant));
-}
-
-function buildCategoryNames(items: any[]) {
-  const entries = items.flatMap((item) => [
-    [item.slug, item.name],
-    ...((item.children ?? []).map((child: any) => [child.slug, child.name])),
-  ]);
-  return new Map<string, string>(entries);
-}
-
 function groupResults(results: SearchProduct[], query: string): ResultGroup[] {
   const tokens = getSearchTokens(query);
   const canonicalTokens = tokens.map(getCanonicalToken);
@@ -210,41 +191,21 @@ export default function SearchScreen() {
     setSearching(true);
     setSearchError('');
     try {
-      const [catalogData, supplierProductData, collectionData] = await Promise.all([
-        shopFetch<{ search: { items: any[]; totalItems: number } }>(SEARCH_QUERY, {
-          input: { term: q.trim(), take: 48, groupByProduct: true },
-        }),
-        shopFetch<{ supplierProducts: { items: any[]; total: number } }>(SUPPLIER_PRODUCTS_QUERY),
-        shopFetch<{ collections: { items: any[] } }>(COLLECTIONS_QUERY, {
-          options: { take: 100, sort: { position: 'ASC' } },
-        }).catch((error) => {
-          console.error('[SearchScreen] collections lookup failed', error);
-          return { collections: { items: [] } };
-        }),
-      ]);
-      const categoryNames = buildCategoryNames(collectionData.collections?.items ?? []);
-      const supplierProducts = (supplierProductData.supplierProducts?.items ?? [])
-        .filter((item) => item.enabled !== false)
-        .filter((item) => matchesSearch(q, [
-          item.name,
-          item.slug,
-          item.category,
-          categoryNames.get(item.category ?? ''),
-        ]))
-        .map((item, index) => ({
-          ...mapSupplierProduct(item, index),
-          category: categoryNames.get(item.category ?? '') ?? item.category ?? 'Нийлүүлэгч',
-          categorySlug: item.category ?? 'supplier',
-          source: 'supplier' as const,
-        }));
-      const catalogProducts = (catalogData.search?.items ?? []).map((item, index) => ({
-        ...mapSearchProduct(item, index),
-        category: 'Каталог',
-        categorySlug: 'catalog',
-        source: 'catalog' as const,
+      // Server-side semantic search: query embedding + vector cosine math +
+      // lexical/fuzzy + multi-intent — Latin, typos and several products in one
+      // query are all handled on the server.
+      const data = await shopFetch<{ semanticSearch: { items: any[]; total: number } }>(
+        SEMANTIC_SEARCH_QUERY,
+        { query: q.trim(), take: 48 },
+      );
+      const items: SearchProduct[] = (data.semanticSearch?.items ?? []).map((item, index) => ({
+        ...mapSemanticProduct(item, index),
+        category: item.category || (item.source === 'supplier' ? 'Нийлүүлэгч' : 'Каталог'),
+        categorySlug: item.category ?? item.source,
+        source: item.source === 'supplier' ? ('supplier' as const) : ('catalog' as const),
       }));
-      setResults([...supplierProducts, ...catalogProducts]);
-      setTotalItems(supplierProducts.length + (catalogData.search?.totalItems ?? 0));
+      setResults(items);
+      setTotalItems(data.semanticSearch?.total ?? items.length);
     } catch (error) {
       console.error('[SearchScreen] search failed', error);
       const message = error instanceof Error ? error.message : 'Хайлт хийхэд алдаа гарлаа';
