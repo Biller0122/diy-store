@@ -29,12 +29,23 @@ function registerRealtimeDecisionWebhook(app: Awaited<ReturnType<typeof bootstra
   httpInstance.post('/realtime/driver-decision', handler);
 }
 
+function registerQpayCallback(app: Awaited<ReturnType<typeof bootstrap>>) {
+  const httpAdapter = app.getHttpAdapter() as any;
+  const httpInstance = httpAdapter.getInstance?.() ?? httpAdapter;
+  // QPay calls this when a payment is made. The frontend verifies via
+  // checkQpayPayment polling, so here we just acknowledge with 200.
+  const handler = (_req: any, res: any) => res.status(200).json({ ok: true });
+  httpInstance.get('/qpay/callback', handler);
+  httpInstance.post('/qpay/callback', handler);
+}
+
 bootstrap(config)
   .then(async (app) => {
     const dataSource = app.get(DataSource);
     await ensureRuntimeSchema(dataSource);
     await app.get(JobQueueService).start();
     registerRealtimeDecisionWebhook(app);
+    registerQpayCallback(app);
     if (process.env.REALTIME_EMBEDDED !== 'false') {
       startRealtimeServer({
         canJoinOrder: async (principal, orderId, trackingToken) => {

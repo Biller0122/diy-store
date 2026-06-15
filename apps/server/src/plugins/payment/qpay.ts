@@ -28,7 +28,15 @@ interface QPayCheck {
   rows: Array<{ payment_id: string; payment_status: string; payment_date: string }>;
 }
 
+// QPay warns the token must be reused within its validity window (it is issued
+// per timestamp), so cache it per merchant and only re-auth when near expiry.
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
 async function getToken(username: string, password: string): Promise<string> {
+  const cached = tokenCache.get(username);
+  if (cached && cached.expiresAt > Date.now() + 60_000) {
+    return cached.token;
+  }
   const res = await fetch(`${QPAY_BASE}/auth/token`, {
     method: 'POST',
     headers: {
@@ -37,6 +45,8 @@ async function getToken(username: string, password: string): Promise<string> {
   });
   if (!res.ok) throw new Error(`QPay auth failed: ${res.status}`);
   const data = await res.json() as QPayToken;
+  const ttlMs = (Number(data.expires_in) > 0 ? Number(data.expires_in) : 3600) * 1000;
+  tokenCache.set(username, { token: data.access_token, expiresAt: Date.now() + ttlMs });
   return data.access_token;
 }
 
@@ -67,8 +77,18 @@ async function createInvoice(
 }
 
 async function checkPayment(token: string, invoiceId: string): Promise<QPayCheck> {
-  const res = await fetch(`${QPAY_BASE}/payment/check?id=${invoiceId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+  // QPay v2: POST /payment/check with a JSON body keyed by the invoice object.
+  const res = await fetch(`${QPAY_BASE}/payment/check`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      object_type: 'INVOICE',
+      object_id: invoiceId,
+      offset: { page_number: 1, page_limit: 100 },
+    }),
   });
   if (!res.ok) throw new Error(`QPay check failed: ${res.status}`);
   return res.json() as Promise<QPayCheck>;

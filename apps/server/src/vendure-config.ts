@@ -29,6 +29,7 @@ import { CmsPlugin } from './plugins/cms/cms.plugin';
 import { SearchPlugin } from './plugins/search/search.plugin';
 import { ProductAiPlugin } from './plugins/product-ai/product-ai.plugin';
 import { CustomerAuthPlugin } from './plugins/customer-auth/customer-auth.plugin';
+import { QpayCheckoutPlugin } from './plugins/payment/qpay-checkout.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
 assertPaymentMockModeAllowed();
@@ -208,6 +209,7 @@ export const config: VendureConfig = {
     SearchPlugin,
     ProductAiPlugin,
     CustomerAuthPlugin,
+    QpayCheckoutPlugin,
     AssetServerPlugin.init({
       route: 'assets',
       assetUploadDir: path.join(__dirname, '../static/assets'),
