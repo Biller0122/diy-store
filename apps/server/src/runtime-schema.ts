@@ -52,6 +52,7 @@ export async function ensureRuntimeSchema(dataSource: DataSource) {
 async function ensureEmbeddingSchema(dataSource: DataSource) {
   const statements = [
     'CREATE EXTENSION IF NOT EXISTS vector',
+    'CREATE EXTENSION IF NOT EXISTS pg_trgm',
     'ALTER TABLE product_translation ADD COLUMN IF NOT EXISTS embedding vector(1024)',
     'ALTER TABLE supplier_product ADD COLUMN IF NOT EXISTS embedding vector(1024)',
     'CREATE INDEX IF NOT EXISTS product_translation_embedding_idx ON product_translation USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)',

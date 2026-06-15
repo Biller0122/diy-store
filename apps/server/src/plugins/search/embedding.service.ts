@@ -216,10 +216,11 @@ export class EmbeddingService {
     const semanticGroups = await Promise.all(
       intents.map((intent) => this.searchSingleIntent(this.normalizeText(intent), perIntentTake).catch(() => [])),
     );
-    const lexical = await this.lexicalSearch(this.normalizeText(trimmed), limit).catch(() => []);
+    const lexical = await this.lexicalSearch(trimmed, limit).catch(() => []);
+    const fuzzy = await this.fuzzySearch(this.normalizeText(trimmed), limit).catch(() => []);
 
     const best = new Map<string, SemanticSearchItem>();
-    for (const item of [...semanticGroups.flat(), ...lexical]) {
+    for (const item of [...semanticGroups.flat(), ...lexical, ...fuzzy]) {
       const key = `${item.source}:${item.id}`;
       const existing = best.get(key);
       if (!existing || item.score > existing.score) best.set(key, item);
@@ -236,7 +237,7 @@ export class EmbeddingService {
       .toLowerCase()
       .replace(/ё/g, 'е')
       .split(/\s+/)
-      .map((word) => (/[Ѐ-ӿ]/.test(word) ? this.transliterateHomoglyphs(word) : word))
+      .map((word) => (/[Ѐ-ӿ]/.test(word) ? this.transliterateHomoglyphs(word) : this.latinToCyrillic(word)))
       .filter(Boolean)
       .join(' ')
       .trim();
@@ -249,17 +250,41 @@ export class EmbeddingService {
     return word.replace(/[a-z]/g, (ch) => map[ch] ?? ch);
   }
 
+  /** Romanized Mongolian (Latin script) → Cyrillic, so a fully Latin query like
+   * "gagnuur", "gagnyyr", "honh", "khonh", "honkh" maps to "гагнуур" / "хонх". */
+  private latinToCyrillic(word: string): string {
+    let w = word.toLowerCase()
+      .replace(/kh/g, 'х').replace(/ch/g, 'ч').replace(/sh/g, 'ш').replace(/ts/g, 'ц')
+      .replace(/yo/g, 'ё').replace(/yu/g, 'ю').replace(/ya/g, 'я');
+    const map: Record<string, string> = {
+      a: 'а', b: 'б', c: 'ц', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'х', i: 'и', j: 'ж',
+      k: 'к', l: 'л', m: 'м', n: 'н', o: 'о', p: 'п', q: 'к', r: 'р', s: 'с', t: 'т',
+      u: 'у', v: 'в', w: 'в', x: 'х', y: 'у', z: 'з',
+    };
+    return w.replace(/[a-z]/g, (ch) => map[ch] ?? ch);
+  }
+
   /** Name-based lexical search: a product matches if its name contains ANY of
    * the query words. This makes several products typed in a row all appear. */
-  private async lexicalSearch(normalizedQuery: string, take: number): Promise<SemanticSearchItem[]> {
-    const words = normalizedQuery
+  private async lexicalSearch(rawQuery: string, take: number): Promise<SemanticSearchItem[]> {
+    const words = rawQuery
+      .toLowerCase()
+      .replace(/ё/g, 'е')
       .split(/\s+/)
       .map((word) => word.trim())
       .filter((word) => word.length >= 2)
       .slice(0, 8);
     if (words.length === 0) return [];
 
-    const patterns = words.map((word) => `%${word}%`);
+    // Match each word both as typed (Latin brand names, Cyrillic) and after
+    // Latin→Cyrillic transliteration (romanized Mongolian like "gagnuur").
+    const patternSet = new Set<string>();
+    for (const word of words) {
+      patternSet.add(`%${word}%`);
+      const cyrillic = /[Ѐ-ӿ]/.test(word) ? this.transliterateHomoglyphs(word) : this.latinToCyrillic(word);
+      if (cyrillic && cyrillic !== word) patternSet.add(`%${cyrillic}%`);
+    }
+    const patterns = Array.from(patternSet);
     const rows = await this.connection.rawConnection.query(
       `
         SELECT * FROM (
@@ -305,6 +330,42 @@ export class EmbeddingService {
         ) catalog_lexical
       `,
       [patterns, take],
+    ) as Array<SemanticSearchItem & { score: string | number; price: string | number }>;
+
+    return rows.map((row) => ({
+      ...row,
+      price: Number(row.price ?? 0),
+      score: Number(row.score ?? 0),
+    }));
+  }
+
+  /** Trigram (pg_trgm) fuzzy match on the transliterated query, to tolerate
+   * spelling slips like "gannuur" → "гагнуур". Safe-by-design: if pg_trgm is
+   * unavailable the query throws and the caller falls back to []. */
+  private async fuzzySearch(normalizedQuery: string, take: number): Promise<SemanticSearchItem[]> {
+    const q = normalizedQuery.trim();
+    if (q.length < 3) return [];
+
+    const rows = await this.connection.rawConnection.query(
+      `
+        SELECT
+          sp.id::text AS id,
+          sp.id::text AS "variantId",
+          sp.name AS name,
+          sp.slug AS slug,
+          COALESCE(sp.description, '') AS description,
+          COALESCE(sp.category, '') AS category,
+          sp.image AS image,
+          sp.price AS price,
+          sp."supplierId" AS "supplierId",
+          'supplier' AS source,
+          (0.55 + 0.35 * word_similarity($1, lower(sp.name))) AS score
+        FROM supplier_product sp
+        WHERE sp.enabled = true AND word_similarity($1, lower(sp.name)) > 0.4
+        ORDER BY word_similarity($1, lower(sp.name)) DESC
+        LIMIT $2
+      `,
+      [q, take],
     ) as Array<SemanticSearchItem & { score: string | number; price: string | number }>;
 
     return rows.map((row) => ({
