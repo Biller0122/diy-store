@@ -15,7 +15,7 @@ export interface CartItem {
   price: number;       // priceWithTax in minor units (÷100 = ₮)
   currencyCode: string;
   qty: number;
-  mode: 'pickup' | 'delivery';
+  mode: 'delivery';
   storeId: string | null;
   sku: string;
   supplierId?: string;
@@ -25,6 +25,12 @@ export interface CartItem {
   supplierLat?: number;
   supplierLng?: number;
   stock?: number;
+}
+
+function asDeliveryItem<T extends { mode: CartItem['mode']; storeId: string | null }>(
+  item: T,
+): Omit<T, 'mode' | 'storeId'> & { mode: 'delivery'; storeId: null } {
+  return { ...item, mode: 'delivery', storeId: null };
 }
 
 export interface Address {
@@ -73,7 +79,7 @@ interface CartState {
   addItem: (item: Omit<CartItem, 'id'>) => void;
   removeItem: (id: string) => void;
   updateQty: (id: string, qty: number) => void;
-  updateMode: (id: string, mode: 'pickup' | 'delivery', storeId?: string) => void;
+  updateMode: (id: string, mode: 'delivery', storeId?: string) => void;
   clearCart: () => void;
   applyPromo: (code: string) => { success: boolean; message: string };
   removePromo: () => void;
@@ -116,7 +122,7 @@ export const useCartStore = create<CartState>()(
           }
           if (typeof item.stock === 'number' && item.qty > item.stock) return {};
           return {
-            items: [...s.items, { ...item, id: cartRowId(item.variantId) }],
+            items: [...s.items, asDeliveryItem({ ...item, id: cartRowId(item.variantId) })],
           };
         }),
 
@@ -133,7 +139,7 @@ export const useCartStore = create<CartState>()(
       updateMode: (id, mode, storeId) =>
         set((s) => ({
           items: s.items.map((i) =>
-            i.id === id ? { ...i, mode, ...(storeId ? { storeId } : {}) } : i,
+            i.id === id ? asDeliveryItem({ ...i, mode, ...(storeId ? { storeId } : {}) }) : i,
           ),
         })),
 
@@ -152,9 +158,9 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'diy-store-cart',
-      version: 2,
+      version: 3,
       migrate: (persisted) => ({
-        items: (persisted as Partial<CartState> | undefined)?.items ?? [],
+        items: ((persisted as Partial<CartState> | undefined)?.items ?? []).map(asDeliveryItem),
         promo: null,
         customerAddress: (persisted as Partial<CartState> | undefined)?.customerAddress ?? null,
         deliveryFee: (persisted as Partial<CartState> | undefined)?.deliveryFee ?? DEFAULT_DELIVERY_FEE,
@@ -202,7 +208,7 @@ export const calcSubtotal = (items: CartItem[]) =>
 export const calcDiscount = (_subtotal: number, _promo: PromoResult | null) => 0;
 
 export const calcDeliveryFee = (items: CartItem[], storedFee?: number) =>
-  items.some((i) => i.mode === 'delivery') ? (storedFee ?? DEFAULT_DELIVERY_FEE) : 0;
+  items.length > 0 ? (storedFee ?? DEFAULT_DELIVERY_FEE) : 0;
 
 export const calcTotal = (items: CartItem[], promo: PromoResult | null, storedFee?: number) => {
   const sub = calcSubtotal(items);

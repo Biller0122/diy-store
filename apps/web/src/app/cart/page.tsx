@@ -10,7 +10,6 @@ import {
   getSupplierGroups,
   calcSubtotal,
   calcDiscount,
-  calcDeliveryFee,
   type Address,
 } from '@/lib/cart-store';
 import { useDeliveryFee } from '@/hooks/useDeliveryFee';
@@ -285,7 +284,7 @@ function OrderSummary({
 
 export default function CartPage() {
   const [hydrated, setHydrated] = useState(false);
-  const { items, removeItem, updateQty, updateMode, customerAddress, setCustomerAddress, updateDeliveryFee, deliveryFee, feeBreakdown, promo } = useCartStore();
+  const { items, removeItem, updateQty, customerAddress, setCustomerAddress, updateDeliveryFee, deliveryFee, feeBreakdown, promo } = useCartStore();
   const addresses = useCustomerAddressStore((state) => state.addresses);
   const router = useRouter();
 
@@ -304,7 +303,7 @@ export default function CartPage() {
     });
   }, [addresses, customerAddress, hydrated, setCustomerAddress]);
 
-  const deliveryItems = items.filter((item) => item.mode === 'delivery');
+  const deliveryItems = items;
   const groups = getSupplierGroups(items);
   const deliveryGroups = getSupplierGroups(deliveryItems);
   const sub = calcSubtotal(items);
@@ -418,14 +417,8 @@ export default function CartPage() {
 
                       {item.sku && <p className="text-xs text-foreground-muted">Код: {item.sku}</p>}
 
-                      {/* Delivery toggle */}
-                      <div className="flex overflow-hidden rounded-lg border border-[var(--glass-border)] w-fit text-xs">
-                        {(['delivery', 'pickup'] as const).map((m) => (
-                          <button key={m} onClick={() => updateMode(item.id, m)}
-                            className={`px-3 py-1 font-medium transition ${item.mode === m ? 'bg-brand text-white' : 'text-foreground-muted hover:bg-white/5'}`}>
-                            {m === 'delivery' ? '🚚 Хүргэлт' : '🏪 Авах'}
-                          </button>
-                        ))}
+                      <div className="w-fit rounded-lg border border-[var(--glass-border)] px-3 py-1 text-xs font-medium text-foreground-muted">
+                        🚚 Хүргэлт
                       </div>
 
                       <div className="flex items-center justify-between mt-0.5">

@@ -103,7 +103,7 @@ export const MOCK_ORDERS: AdminOrder[] = Array.from({ length: 24 }, (_, i) => ({
     },
   }],
   shippingAddress: { fullName: `Хэрэглэгч ${i+1}`, streetLine1: 'Нарны зам 5', city: 'Улаанбаатар', countryCode: 'MN' },
-  payments: [{ method: ['qpay','monpay','card'][i % 3], state: 'Settled', amount: (15000 + i * 3700) * 100 }],
+  payments: [{ method: 'qpay', state: 'Settled', amount: (15000 + i * 3700) * 100 }],
 }));
 
 export const MOCK_PRODUCTS: AdminProduct[] = [

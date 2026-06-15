@@ -2,10 +2,16 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.APP_EN
 
 module.exports = {
   expo: {
-    name: 'DIY Store',
+    name: 'SHOPTOOL',
     slug: 'diy-store-customer',
+    owner: 'odbayar0122',
+    extra: {
+      eas: {
+        projectId: '31690257-5a08-438d-bfb4-612f99074570',
+      },
+    },
     version: '1.0.0',
-    scheme: 'diy-store',
+    scheme: 'shoptool',
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
@@ -15,7 +21,7 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'mn.diy.customer',
+      bundleIdentifier: 'mn.shoptool.customer',
       buildNumber: '1',
       infoPlist: {
         NSLocationWhenInUseUsageDescription: 'Хүргэлтийн хаяг болон захиалгын явцыг газрын зураг дээр зөв харуулахын тулд таны байршлыг ашиглана.',
@@ -25,7 +31,7 @@ module.exports = {
       },
     },
     android: {
-      package: 'mn.diy.customer',
+      package: 'mn.shoptool.customer',
       versionCode: 1,
       adaptiveIcon: {
         foregroundImage: './assets/icon.png',

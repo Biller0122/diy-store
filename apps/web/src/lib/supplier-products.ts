@@ -239,7 +239,7 @@ export function dbSupplierToCard(supplier: DbSupplier): SupplierCard {
     rating: supplier.rating || 0,
     reviewCount: supplier.reviewCount || 0,
     productCount: supplier.productCount || 0,
-    deliveryTime: supplier.deliveryEnabled ? '30-60 мин' : 'Pickup',
+    deliveryTime: supplier.deliveryEnabled ? '30-60 мин' : 'Хүргэлт тохиролцоно',
     isOpen: true,
     categories: [],
     phone: supplier.phone,

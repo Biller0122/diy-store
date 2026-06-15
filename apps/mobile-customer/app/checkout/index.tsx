@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,10 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +25,9 @@ import {
   ACTIVE_ORDER_QUERY,
   SET_SHIPPING_ADDRESS_MUTATION,
   CREATE_DELIVERY_REQUEST_MUTATION,
+  createQpayInvoice,
+  checkQpayPayment,
+  type QpayInvoice,
 } from '@/lib/api';
 
 interface CreatedDeliveryRequest {
@@ -73,9 +79,188 @@ const DEFAULT_UB_COORDS = { lat: 47.9189, lng: 106.9176 };
 
 const PAYMENT_METHODS = [
   { id: 'cash', label: 'Бэлнээр', icon: 'cash-outline' as const, available: true },
-  { id: 'qpay', label: 'QPay', icon: 'qr-code-outline' as const, available: false },
+  { id: 'qpay', label: 'QPay', icon: 'qr-code-outline' as const, available: true },
   { id: 'card', label: 'Карт', icon: 'card-outline' as const, available: false },
 ];
+
+function qpayImageSource(qrImage: string) {
+  if (!qrImage) return null;
+  if (qrImage.startsWith('http') || qrImage.startsWith('data:image')) {
+    return { uri: qrImage };
+  }
+  return { uri: `data:image/png;base64,${qrImage}` };
+}
+
+interface QpayModalProps {
+  visible: boolean;
+  amount: number;
+  orderRef: string;
+  onClose: () => void;
+  onPaid: () => void;
+}
+
+function QpayModal({ visible, amount, orderRef, onClose, onPaid }: QpayModalProps) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const [invoice, setInvoice] = useState<QpayInvoice | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [paid, setPaid] = useState(false);
+  const [error, setError] = useState('');
+  const paidRef = useRef(false);
+  const imageSource = invoice ? qpayImageSource(invoice.qrImage) : null;
+
+  useEffect(() => {
+    if (!visible || !orderRef) return;
+    let active = true;
+    setInvoice(null);
+    setPaid(false);
+    paidRef.current = false;
+    setError('');
+    setLoading(true);
+    createQpayInvoice(Math.round(amount / 100), orderRef)
+      .then((next) => {
+        if (active) setInvoice(next);
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : 'QPay invoice үүсгэхэд алдаа гарлаа');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [amount, orderRef, visible]);
+
+  useEffect(() => {
+    if (!visible || !invoice?.invoiceId || paid) return;
+    const id = setInterval(async () => {
+      try {
+        const status = await checkQpayPayment(invoice.invoiceId);
+        if (status.paid && !paidRef.current) {
+          paidRef.current = true;
+          setPaid(true);
+          clearInterval(id);
+          onPaid();
+        }
+      } catch {
+        // Network or provider blips should not close the payment sheet.
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [invoice?.invoiceId, onPaid, paid, visible]);
+
+  const manualCheck = async () => {
+    if (!invoice?.invoiceId || checking) return;
+    setChecking(true);
+    setError('');
+    try {
+      const status = await checkQpayPayment(invoice.invoiceId);
+      if (status.paid && !paidRef.current) {
+        paidRef.current = true;
+        setPaid(true);
+        onPaid();
+      } else {
+        setError('Төлбөр хараахан бүртгэгдээгүй байна. Төлсний дараа дахин шалгана уу.');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'QPay төлбөр шалгахад алдаа гарлаа');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const openLink = async (url?: string | null) => {
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError('Банкны апп нээж чадсангүй. QR кодоор төлнө үү.');
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.qpaySheet}>
+          <View style={styles.qpayHeader}>
+            <View>
+              <Text style={styles.qpayTitle}>QPay төлбөр</Text>
+              <Text style={styles.qpaySubtitle}>{orderRef}</Text>
+            </View>
+            <TouchableOpacity style={styles.qpayClose} onPress={onClose} disabled={paid}>
+              <Ionicons name="close" size={20} color={C.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.qpayAmountBox}>
+            <Text style={styles.bottomLabel}>Төлөх дүн</Text>
+            <Text style={styles.qpayAmount}>{formatPrice(amount)}</Text>
+          </View>
+
+          {loading ? (
+            <View style={styles.qpayCenter}>
+              <ActivityIndicator color={C.primary} size="large" />
+              <Text style={styles.qpayHint}>QPay invoice үүсгэж байна...</Text>
+            </View>
+          ) : paid ? (
+            <View style={styles.qpayCenter}>
+              <Ionicons name="checkmark-circle" size={64} color={C.success} />
+              <Text style={styles.qpaySuccess}>Төлбөр амжилттай</Text>
+              <Text style={styles.qpayHint}>Захиалгыг үүсгэж байна...</Text>
+            </View>
+          ) : (
+            <>
+              {imageSource ? (
+                <View style={styles.qpayQrWrap}>
+                  <Image source={imageSource} style={styles.qpayQr} resizeMode="contain" />
+                </View>
+              ) : (
+                <View style={styles.qpayQrFallback}>
+                  <Ionicons name="qr-code-outline" size={56} color={C.primary} />
+                  <Text style={styles.qpayHint} selectable>{invoice?.qrText || 'QR мэдээлэл хүлээж байна'}</Text>
+                </View>
+              )}
+
+              <Text style={styles.qpayHint}>QPay эсвэл банкны апп-аар QR уншуулж төлнө үү.</Text>
+
+              {invoice?.urls?.length ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.qpayBanks}>
+                  <View style={styles.qpayBankRow}>
+                    {invoice.urls.map((bank, index) => (
+                      <TouchableOpacity
+                        key={`${bank.name ?? 'bank'}-${index}`}
+                        style={styles.qpayBankBtn}
+                        onPress={() => openLink(bank.link)}
+                      >
+                        {bank.logo ? <Image source={{ uri: bank.logo }} style={styles.qpayBankLogo} /> : <Ionicons name="business-outline" size={20} color={C.primary} />}
+                        <Text style={styles.qpayBankText} numberOfLines={1}>{bank.description || bank.name || 'Банк'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              ) : null}
+
+              {invoice?.shortUrl ? (
+                <TouchableOpacity style={styles.qpayLinkBtn} onPress={() => openLink(invoice.shortUrl)}>
+                  <Ionicons name="open-outline" size={16} color={C.primary} />
+                  <Text style={styles.qpayLinkText}>QPay холбоос нээх</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <TouchableOpacity style={styles.qpayCheckBtn} onPress={manualCheck} disabled={checking || !invoice}>
+                {checking ? <ActivityIndicator color="#fff" /> : <Text style={styles.qpayCheckText}>Төлбөр шалгах</Text>}
+              </TouchableOpacity>
+            </>
+          )}
+
+          {error ? <Text style={styles.qpayError}>{error}</Text> : null}
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 export default function CheckoutScreen() {
   const router = useRouter();
@@ -98,6 +283,8 @@ export default function CheckoutScreen() {
   const [dropoffCoords, setDropoffCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
+  const [qpayVisible, setQpayVisible] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState('');
 
   useEffect(() => {
     shopFetch<{ activeOrder: ActiveOrder | null }>(ACTIVE_ORDER_QUERY)
@@ -181,24 +368,24 @@ export default function CheckoutScreen() {
     return DEFAULT_UB_COORDS;
   };
 
-  const handlePlaceOrder = async () => {
+  const validateCheckout = () => {
     if (!customer) {
       Alert.alert('Нэвтэрнэ үү', 'Захиалахын тулд нэвтэрнэ үү');
-      return;
+      return false;
     }
     if ((!order || order.lines.length === 0) && supplierCart.length === 0) {
       Alert.alert('Сагс хоосон', 'Эхлээд бүтээгдэхүүн нэмнэ үү');
-      return;
+      return false;
     }
     if (!fullName.trim() || !phone.trim() || !streetDetail.trim()) {
       Alert.alert('Дутуу мэдээлэл', 'Нэр, утас, хаяг бүгдийг бөглөнө үү');
-      return;
+      return false;
     }
-    if (paymentMethod !== 'cash') {
-      Alert.alert('Төлбөрийн арга идэвхгүй', 'Одоогоор mobile checkout дээр зөвхөн бэлэн төлбөр ажиллаж байна.');
-      return;
-    }
+    return true;
+  };
 
+  const submitDeliveryOrder = useCallback(async (orderId: string) => {
+    if (!customer) return;
     setSubmitting(true);
     try {
       if (order) {
@@ -280,6 +467,41 @@ export default function CheckoutScreen() {
     } finally {
       setSubmitting(false);
     }
+  }, [
+    clearSupplierCart,
+    customer,
+    district,
+    dropoffAddress,
+    order,
+    paymentMethod,
+    phone,
+    resolveDropoffCoords,
+    fullName,
+    supplierCart,
+  ]);
+
+  const handleQpayPaid = useCallback(() => {
+    if (!pendingOrderId) return;
+    setQpayVisible(false);
+    void submitDeliveryOrder(pendingOrderId);
+  }, [pendingOrderId, submitDeliveryOrder]);
+
+  const handlePlaceOrder = async () => {
+    if (!validateCheckout()) return;
+
+    const orderId = order?.id ?? `MOB-${Date.now()}`;
+    if (paymentMethod === 'qpay') {
+      setPendingOrderId(orderId);
+      setQpayVisible(true);
+      return;
+    }
+
+    if (paymentMethod !== 'cash') {
+      Alert.alert('Төлбөрийн арга идэвхгүй', 'Одоогоор энэ төлбөрийн арга mobile checkout дээр идэвхгүй байна.');
+      return;
+    }
+
+    await submitDeliveryOrder(orderId);
   };
 
   if (!customer) {
@@ -521,6 +743,17 @@ export default function CheckoutScreen() {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <QpayModal
+        visible={qpayVisible}
+        amount={displayTotal}
+        orderRef={pendingOrderId}
+        onClose={() => {
+          setQpayVisible(false);
+          setPendingOrderId('');
+        }}
+        onPaid={handleQpayPaid}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -652,6 +885,104 @@ const makeStyles = (C: ThemeColors) => StyleSheet.create({
   paymentLabel: { color: C.textSub, fontSize: 12, fontWeight: '600' },
   paymentLabelActive: { color: C.primary },
   paymentUnavailable: { color: C.textTertiary, fontSize: 10, fontWeight: '600' },
+
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  qpaySheet: {
+    backgroundColor: C.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 18,
+    gap: 14,
+    maxHeight: '88%',
+  },
+  qpayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  qpayTitle: { color: C.text, fontSize: 20, fontWeight: '800' },
+  qpaySubtitle: { color: C.textTertiary, fontSize: 12, fontFamily: 'monospace', marginTop: 2 },
+  qpayClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: C.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  qpayAmountBox: {
+    borderRadius: 16,
+    backgroundColor: C.primaryGlow,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+  },
+  qpayAmount: { color: C.text, fontSize: 26, fontWeight: '900', fontFamily: 'monospace', marginTop: 2 },
+  qpayCenter: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 34 },
+  qpayQrWrap: {
+    alignSelf: 'center',
+    width: 230,
+    height: 230,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  qpayQr: { width: '100%', height: '100%' },
+  qpayQrFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    minHeight: 180,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+    padding: 16,
+  },
+  qpayHint: { color: C.textSub, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  qpaySuccess: { color: C.text, fontSize: 18, fontWeight: '800' },
+  qpayBanks: { marginHorizontal: -2 },
+  qpayBankRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 2 },
+  qpayBankBtn: {
+    width: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+    padding: 10,
+  },
+  qpayBankLogo: { width: 24, height: 24, borderRadius: 6 },
+  qpayBankText: { color: C.textSub, fontSize: 11, fontWeight: '600', maxWidth: 72 },
+  qpayLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+    paddingVertical: 11,
+  },
+  qpayLinkText: { color: C.primary, fontSize: 13, fontWeight: '700' },
+  qpayCheckBtn: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: C.primary,
+  },
+  qpayCheckText: { color: C.onPrimary, fontSize: 15, fontWeight: '800' },
+  qpayError: { color: C.danger, fontSize: 12, lineHeight: 18, textAlign: 'center' },
 
   primaryBtn: {
     backgroundColor: C.primary,

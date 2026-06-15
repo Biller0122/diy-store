@@ -2,16 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { AnimatePresence, m } from 'framer-motion';
 import { CheckCircle, Package, MapPin, Clock } from 'lucide-react';
-import { useCartStore, calcSubtotal, calcDiscount, calcDeliveryFee, getSupplierGroups } from '@/lib/cart-store';
+import { useCartStore, calcSubtotal, calcDiscount, getSupplierGroups } from '@/lib/cart-store';
 import { useOrderStore } from '@/lib/order-store';
 import { vendureShopFetch } from '@/lib/vendure';
 import { useAuthStore } from '@/lib/auth-store';
 import { useCustomerAddressStore, type CustomerAddress } from '@/lib/customer-address-store';
 import { QPayModal } from '@/components/payment/QPayModal';
-import { MonPayModal } from '@/components/payment/MonPayModal';
 import { trackBeginCheckout, trackAddPaymentInfo } from '@/lib/analytics/ga4';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -27,18 +25,9 @@ const UB_DISTRICTS = [
   'Баянзүрх','Сүхбаатар','Хан-Уул','Баянгол',
   'Чингэлтэй','Сонгинохайрхан','Налайх','Багануур','Багахангай',
 ];
-const IS_DEV = process.env.NODE_ENV !== 'production';
 
-const STORES = [
-  { id: '1', name: 'Баянзүрх салбар',  address: 'Баянзүрх дүүрэг, Нарны зам 5' },
-  { id: '2', name: 'Сүхбаатар салбар', address: 'Сүхбаатар дүүрэг, Бага тойруу 14' },
-  { id: '3', name: 'Хан-Уул салбар',   address: 'Хан-Уул дүүрэг, Зайсан 12' },
-  { id: '4', name: 'Баянгол салбар',   address: 'Баянгол дүүрэг, Чингисийн өргөн чөлөө 8' },
-  { id: '5', name: 'Чингэлтэй салбар', address: 'Чингэлтэй дүүрэг, Энхтайваны өргөн чөлөө 3' },
-];
-
-type DeliveryType  = 'delivery' | 'pickup';
-type PaymentMethod = 'qpay' | 'monpay' | 'card' | 'testpay';
+type DeliveryType  = 'delivery';
+type PaymentMethod = 'qpay';
 type DeliveryStatus = 'SEARCHING' | 'OFFERED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
 type DispatchStatusData = {
@@ -62,12 +51,6 @@ type PublishedDelivery = {
 
 function fmt(minor: number) {
   return `₮${Math.round(minor / 100).toLocaleString('mn-MN')}`;
-}
-
-function fallbackOrderNo() {
-  const year = new Date().getFullYear();
-  const seq = String(Math.floor(Math.random() * 99999) + 1).padStart(5, '0');
-  return `DIY-${year}-${seq}`;
 }
 
 function normalizeMongolianPhone(value: string) {
@@ -168,7 +151,7 @@ interface ContactData {
   name: string; phone: string; email: string;
   deliveryType: DeliveryType;
   province: string; district: string; khoroo: string; address: string; doorCode: string;
-  storeId: string; note: string;
+  note: string;
 }
 
 function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onSelectAddress }: {
@@ -186,11 +169,9 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
     if (data.name.trim().length < 2) e.name = 'Нэр 2-оос дээш тэмдэгттэй байх ёстой';
     const cleanPhone = normalizeMongolianPhone(data.phone);
     if (!/^[6789]\d{7}$/.test(cleanPhone)) e.phone = 'Утасны дугаар +976 угтвартай байж болно, үндсэн дугаар нь 8 оронтой 6/7/8/9-өөр эхлэх ёстой';
-    if (data.deliveryType === 'delivery') {
-      if (!data.province) e.province = 'Аймаг/хот сонгоно уу';
-      if (!data.district) e.district = 'Дүүрэг оруулна уу';
-      if (!data.address.trim()) e.address = 'Дэлгэрэнгүй хаяг оруулна уу';
-    }
+    if (!data.province) e.province = 'Аймаг/хот сонгоно уу';
+    if (!data.district) e.district = 'Дүүрэг оруулна уу';
+    if (!data.address.trim()) e.address = 'Дэлгэрэнгүй хаяг оруулна уу';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -219,16 +200,8 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
 
       <section>
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground-muted">Хүргэлтийн мэдээлэл</h2>
-        <div className="mb-4 flex overflow-hidden rounded-xl border border-[var(--glass-border)]">
-          {([['delivery','🚚 Хүргэлт'], ['pickup','🏪 Салбараас авах']] as const).map(([val, label]) => (
-            <button key={val} onClick={() => onChange({ deliveryType: val })}
-              className={`flex-1 py-2.5 text-sm font-semibold transition ${data.deliveryType === val ? 'bg-brand text-white' : 'bg-card text-foreground-muted hover:bg-dark'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
 
-        {data.deliveryType === 'delivery' && addresses && addresses.length > 0 && (
+        {addresses && addresses.length > 0 && (
           <div className="mb-4">
             <label className="mb-1 block text-xs font-semibold text-foreground-muted">Хадгалсан хаяг</label>
             <select
@@ -253,63 +226,43 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
           </div>
         )}
 
-        {data.deliveryType === 'delivery' ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Аймаг / Хот" required error={errors.province}>
-              <select className={inputCls} value={data.province}
-                onChange={(e) => onChange({ province: e.target.value, district: '' })}>
-                <option value="">Сонгох...</option>
-                {PROVINCES.map((p) => <option key={p}>{p}</option>)}
-              </select>
-            </Field>
-            <Field label="Дүүрэг / Сум" required error={errors.district}>
-              {districts.length > 0 ? (
-              <select data-testid="district-select" className={inputCls} value={data.district}
-                  onChange={(e) => onChange({ district: e.target.value })}>
-                  <option value="">Сонгох...</option>
-                  {districts.map((d) => <option key={d}>{d} дүүрэг</option>)}
-                </select>
-              ) : (
-                <input data-testid="district-select" className={inputCls} placeholder="Сум/дүүрэг" value={data.district}
-                  onChange={(e) => onChange({ district: e.target.value })} />
-              )}
-            </Field>
-            <Field label="Хороо / Баг">
-              <input data-testid="input-khoroo" className={inputCls} placeholder="1-р хороо" value={data.khoroo}
-                onChange={(e) => onChange({ khoroo: e.target.value })} />
-            </Field>
-            <Field label="Дэлгэрэнгүй хаяг" required error={errors.address}>
-              <input data-testid="input-address" className={inputCls} placeholder="Байр, давхар, тоот" value={data.address}
-                onChange={(e) => onChange({ address: e.target.value })} />
-            </Field>
-            <Field label="Хаалганы код">
-              <input className={inputCls} placeholder="#1234" value={data.doorCode}
-                onChange={(e) => onChange({ doorCode: e.target.value })} />
-            </Field>
-            <Field label="Тэмдэглэл">
-              <input className={inputCls} placeholder="3-р давхар, хэн нэгэнд..." value={data.note}
-                onChange={(e) => onChange({ note: e.target.value })} />
-            </Field>
-          </div>
-        ) : (
-          <Field label="Салбар сонгох">
-            <div className="space-y-2">
-              {STORES.map((s) => (
-                <label key={s.id}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                    data.storeId === s.id ? 'border-brand/50 bg-brand/5' : 'border-[var(--glass-border)] hover:border-brand/30'
-                  }`}>
-                  <input type="radio" name="store" value={s.id} checked={data.storeId === s.id}
-                    onChange={() => onChange({ storeId: s.id })} className="mt-0.5 accent-brand" />
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{s.name}</p>
-                    <p className="text-xs text-foreground-muted">{s.address}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Аймаг / Хот" required error={errors.province}>
+            <select className={inputCls} value={data.province}
+              onChange={(e) => onChange({ province: e.target.value, district: '' })}>
+              <option value="">Сонгох...</option>
+              {PROVINCES.map((p) => <option key={p}>{p}</option>)}
+            </select>
           </Field>
-        )}
+          <Field label="Дүүрэг / Сум" required error={errors.district}>
+            {districts.length > 0 ? (
+            <select data-testid="district-select" className={inputCls} value={data.district}
+                onChange={(e) => onChange({ district: e.target.value })}>
+                <option value="">Сонгох...</option>
+                {districts.map((d) => <option key={d}>{d} дүүрэг</option>)}
+              </select>
+            ) : (
+              <input data-testid="district-select" className={inputCls} placeholder="Сум/дүүрэг" value={data.district}
+                onChange={(e) => onChange({ district: e.target.value })} />
+            )}
+          </Field>
+          <Field label="Хороо / Баг">
+            <input data-testid="input-khoroo" className={inputCls} placeholder="1-р хороо" value={data.khoroo}
+              onChange={(e) => onChange({ khoroo: e.target.value })} />
+          </Field>
+          <Field label="Дэлгэрэнгүй хаяг" required error={errors.address}>
+            <input data-testid="input-address" className={inputCls} placeholder="Байр, давхар, тоот" value={data.address}
+              onChange={(e) => onChange({ address: e.target.value })} />
+          </Field>
+          <Field label="Хаалганы код">
+            <input className={inputCls} placeholder="#1234" value={data.doorCode}
+              onChange={(e) => onChange({ doorCode: e.target.value })} />
+          </Field>
+          <Field label="Тэмдэглэл">
+            <input className={inputCls} placeholder="3-р давхар, хэн нэгэнд..." value={data.note}
+              onChange={(e) => onChange({ note: e.target.value })} />
+          </Field>
+        </div>
       </section>
 
       <button data-testid="checkout-next" onClick={() => { if (validate()) onNext(); }}
@@ -331,12 +284,7 @@ interface PaymentData {
 
 const METHOD_INFO: { id: PaymentMethod; icon: string; label: string; desc: string; color: string }[] = [
   { id: 'qpay',   icon: '📱', label: 'QPay',   desc: 'QR кодоор төлнө',      color: 'border-brand/40 bg-brand/5' },
-  { id: 'monpay', icon: '💳', label: 'MonPay', desc: 'MonPay апп-аар төлнө', color: 'border-sky-500/40 bg-sky-500/5' },
-  { id: 'card',   icon: '🏦', label: 'Карт',   desc: 'Дебит / Кредит карт',  color: 'border-purple-500/40 bg-purple-500/5' },
-  { id: 'testpay', icon: '✅', label: 'Тест төлбөр', desc: 'Шууд төлөгдсөн болгоно', color: 'border-success/40 bg-success/5' },
 ];
-
-const visiblePaymentMethods = () => METHOD_INFO.filter((method) => IS_DEV || (method.id !== 'testpay' && method.id !== 'card'));
 
 function StepPayment({ data, total, submitting, onChange, onBack, onNext }: {
   data: PaymentData; total: number; submitting: boolean; onChange: (d: Partial<PaymentData>) => void; onBack: () => void; onNext: () => void;
@@ -357,8 +305,8 @@ function StepPayment({ data, total, submitting, onChange, onBack, onNext }: {
     <div className="space-y-6">
       <section>
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground-muted">Төлбөрийн арга</h2>
-        <div className="grid gap-3 sm:grid-cols-4">
-          {visiblePaymentMethods().map((m) => (
+        <div className="grid gap-3 sm:grid-cols-1">
+          {METHOD_INFO.map((m) => (
             <button data-testid={`payment-${m.id}`} key={m.id} onClick={() => onChange({ method: m.id })} disabled={submitting}
               className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition ${
                 data.method === m.id ? m.color : 'border-[var(--glass-border)] hover:border-[var(--glass-border)]'
@@ -376,9 +324,6 @@ function StepPayment({ data, total, submitting, onChange, onBack, onNext }: {
           <span className="text-xl">{METHOD_INFO.find((m) => m.id === data.method)?.icon}</span>
           <div className="text-sm text-foreground-muted">
             {data.method === 'qpay'   && <><span className="text-foreground font-semibold">QPay</span> — Дараа QR код харагдана. Банкны аппаа бэлдээрэй.</>}
-            {data.method === 'monpay' && <><span className="text-foreground font-semibold">MonPay</span> — Дараа QR код харагдана. MonPay апп-аа бэлдээрэй.</>}
-            {IS_DEV && data.method === 'card'   && <><span className="text-foreground font-semibold">Карт</span> — Дараагийн хуудсанд картын мэдээлэл оруулна уу.</>}
-            {IS_DEV && data.method === 'testpay' && <><span className="text-foreground font-semibold">Тест төлбөр</span> — Дармагц төлбөр төлөгдсөн гэж үзээд захиалга үүсгэнэ.</>}
           </div>
         </div>
       )}
@@ -528,7 +473,7 @@ function StepConfirmation({ orderNo, trackingToken, estimatedMinutes, deliveryAd
         <div className="rounded-xl bg-surface border border-[var(--glass-border)] p-3 flex flex-col items-center gap-1.5">
           <MapPin size={18} className="text-brand" />
           <p className="text-xs text-foreground-muted">Хүргэх хаяг</p>
-          <p className="text-xs font-semibold text-foreground line-clamp-2">{deliveryAddress ?? 'Салбараас авах'}</p>
+          <p className="text-xs font-semibold text-foreground line-clamp-2">{deliveryAddress ?? 'Хүргэлтийн хаяг'}</p>
         </div>
       </div>
 
@@ -580,13 +525,12 @@ const CONTACT_INIT: ContactData = {
   name: '', phone: '', email: '',
   deliveryType: 'delivery',
   province: 'Улаанбаатар', district: '', khoroo: '', address: '', doorCode: '',
-  storeId: STORES[0].id, note: '',
+  note: '',
 };
 
-const PAYMENT_INIT: PaymentData = { method: null, vatRequired: false, companyName: '', registerNo: '' };
+const PAYMENT_INIT: PaymentData = { method: 'qpay', vatRequired: false, companyName: '', registerNo: '' };
 
 export default function CheckoutPage() {
-  const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [contact, setContact] = useState<ContactData>(CONTACT_INIT);
@@ -594,7 +538,6 @@ export default function CheckoutPage() {
   const [orderNo, setOrderNo] = useState('');
   const [trackingToken, setTrackingToken] = useState('');
   const [showQPay, setShowQPay] = useState(false);
-  const [showMonPay, setShowMonPay] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [showSaveAddressPrompt, setShowSaveAddressPrompt] = useState(false);
   const [addressSaved, setAddressSaved] = useState(false);
@@ -638,8 +581,7 @@ export default function CheckoutPage() {
   }, [addresses, customer, customerAddress, hydrated]);
 
   const sub      = calcSubtotal(items);
-  const hasDelivery = items.some((i) => i.mode === 'delivery');
-  const delivery = hasDelivery ? deliveryFee : 0;
+  const delivery = items.length > 0 ? deliveryFee : 0;
   const discount = calcDiscount(sub, promo);
   const total    = sub + delivery - discount;
 
@@ -684,11 +626,9 @@ export default function CheckoutPage() {
         price: item.price,
         image: item.image ?? '',
       })),
-      deliveryAddress: contact.deliveryType === 'delivery'
-        ? `${contact.district}, ${contact.address}`
-        : undefined,
+      deliveryAddress: `${contact.district}, ${contact.address}`,
       trackingToken: token,
-      paymentMethod: payment.method ?? 'qpay',
+      paymentMethod: 'qpay',
     });
   }
 
@@ -730,10 +670,8 @@ export default function CheckoutPage() {
           price: item.price,
         })),
         orderTotal: total,
-        paymentMethod: payment.method ?? 'qpay',
-        dropoffAddress: contact.deliveryType === 'delivery'
-          ? `${contact.province}, ${contact.district}, ${contact.address}`
-          : STORES.find((store) => store.id === contact.storeId)?.address ?? 'Салбараас авах',
+        paymentMethod: 'qpay',
+        dropoffAddress: `${contact.province}, ${contact.district}, ${contact.address}`,
         dropoffLat: 47.9189,
         dropoffLng: 106.9176,
       });
@@ -799,42 +737,10 @@ export default function CheckoutPage() {
     if (!lockSubmitting()) return;
     const sessionId = createSessionId();
 
-    const methodLabel = payment.method === 'qpay' ? 'QPay' : payment.method === 'monpay' ? 'MonPay' : payment.method === 'testpay' ? 'TestPay' : 'Card';
-    trackAddPaymentInfo((methodLabel === 'TestPay' ? 'Card' : methodLabel) as 'QPay' | 'MonPay' | 'Card');
-
-    if (payment.method === 'qpay') {
-      setShowQPay(true);
-      // Store sessionId for later use
-      setOrderNo(sessionId);
-      setTrackingToken('');
-    } else if (payment.method === 'monpay') {
-      setShowMonPay(true);
-      setOrderNo(sessionId);
-      setTrackingToken('');
-    } else if (payment.method === 'card') {
-      if (!IS_DEV) {
-        setPaymentError('Картын тест төлбөр production орчинд идэвхгүй.');
-        unlockSubmitting();
-        return;
-      }
-      setOrderNo(sessionId);
-      setTrackingToken('');
-      const fallback = fallbackOrderNo();
-      createOrder(fallback);
-      clearCart();
-      router.push(`/checkout/mock-psp?session=MOCK-CARD-${sessionId}&order=${fallback}&amount=${Math.round(total / 100)}`);
-    } else if (payment.method === 'testpay') {
-      if (!IS_DEV) {
-        setPaymentError('Тест төлбөр production орчинд идэвхгүй.');
-        unlockSubmitting();
-        return;
-      }
-      setOrderNo(sessionId);
-      setTrackingToken('');
-      handlePaymentSuccess(sessionId);
-    } else {
-      unlockSubmitting();
-    }
+    trackAddPaymentInfo('QPay');
+    setShowQPay(true);
+    setOrderNo(sessionId);
+    setTrackingToken('');
   }
 
   function handlePaymentSuccess(forcedSessionId?: string) {
@@ -844,11 +750,9 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setPaymentError('');
     const sessionId = forcedSessionId || orderNo || createSessionId();
-    const savedDeliveryType = contact.deliveryType;
     const savedAddress = contact.address;
     const savedAddressId = selectedAddressId;
     setShowQPay(false);
-    setShowMonPay(false);
 
     // Publish delivery request and navigate to tracking with real order number
     publishDeliveryRequestOnce(sessionId).then(({ orderNumber, trackingToken }) => {
@@ -858,7 +762,7 @@ export default function CheckoutPage() {
       setTrackingToken(trackingToken);
       setStep(3);
       window.scrollTo(0, 0);
-      if (savedDeliveryType === 'delivery' && savedAddress.trim() && !savedAddressId && customer) {
+      if (savedAddress.trim() && !savedAddressId && customer) {
         setShowSaveAddressPrompt(true);
       }
     }).catch((err) => {
@@ -968,11 +872,7 @@ export default function CheckoutPage() {
                     orderNo={orderNo}
                     trackingToken={trackingToken}
                     estimatedMinutes={estimatedMinutes}
-                    deliveryAddress={
-                      contact.deliveryType === 'delivery'
-                        ? `${contact.district}, ${contact.address}`
-                        : undefined
-                    }
+                    deliveryAddress={`${contact.district}, ${contact.address}`}
                   />
                 </m.div>
               )}
@@ -984,9 +884,6 @@ export default function CheckoutPage() {
       <AnimatePresence>
         {showQPay && (
           <QPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => { setShowQPay(false); unlockSubmitting(); }} />
-        )}
-        {showMonPay && (
-          <MonPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => { setShowMonPay(false); unlockSubmitting(); }} />
         )}
       </AnimatePresence>
     </>

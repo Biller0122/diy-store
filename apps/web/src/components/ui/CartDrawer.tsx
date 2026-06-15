@@ -1,7 +1,7 @@
 'use client';
 
 import { m, AnimatePresence } from 'framer-motion';
-import { X, ShoppingBag, Plus, Minus, Trash2, CreditCard, QrCode } from 'lucide-react';
+import { X, ShoppingBag, Plus, Minus, Trash2, QrCode } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCartStore, calcSubtotal, calcDeliveryFee, calcDiscount } from '@/lib/cart-store';
@@ -100,9 +100,7 @@ export function CartDrawer() {
                         >
                           {item.name}
                         </Link>
-                        <p className="text-xs text-foreground-muted mt-0.5">
-                          {item.mode === 'pickup' ? '🏪 Салбараас' : '🚚 Хүргэлт'}
-                        </p>
+                        <p className="text-xs text-foreground-muted mt-0.5">🚚 Хүргэлт</p>
                         <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-1">
                             <button
@@ -183,12 +181,9 @@ export function CartDrawer() {
                 </div>
 
                 {/* Quick pay */}
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2">
                   <button className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-colors text-xs font-semibold text-foreground">
                     <QrCode size={14} className="text-brand" /> QPay
-                  </button>
-                  <button className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-colors text-xs font-semibold text-foreground">
-                    <CreditCard size={14} className="text-amber" /> MonPay
                   </button>
                 </div>
               </div>

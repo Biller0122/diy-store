@@ -20,6 +20,7 @@ interface ProductVariant {
   id: string;
   name: string;
   priceWithTax: number;
+  priceIsMinorUnit?: boolean;
   currencyCode: string;
   stockLevel: string;
   options: { name: string; code: string }[];
@@ -46,8 +47,16 @@ interface Product {
   } | null;
 }
 
-function formatPrice(price: number) {
-  return '₮' + Math.round(price / 100).toLocaleString('mn-MN');
+function formatVariantPrice(variant: ProductVariant | undefined, quantity = 1) {
+  if (!variant) return '₮0';
+  const total = variant.priceWithTax * quantity;
+  const value = variant.priceIsMinorUnit === false ? Math.round(total) : Math.round(total / 100);
+  return '₮' + value.toLocaleString('mn-MN');
+}
+
+function variantPriceForSupplierCart(variant: ProductVariant | undefined) {
+  if (!variant) return 0;
+  return variant.priceIsMinorUnit === false ? Math.round(variant.priceWithTax) : Math.round(variant.priceWithTax / 100);
 }
 
 export default function ProductDetailScreen() {
@@ -100,7 +109,8 @@ export default function ProductDetailScreen() {
           variants: [{
             id: supplierProduct.id,
             name: supplierProduct.name,
-            priceWithTax: supplierProduct.price * 100,
+            priceWithTax: supplierProduct.price ?? 0,
+            priceIsMinorUnit: false,
             currencyCode: 'MNT',
             stockLevel: supplierProduct.enabled && supplierProduct.stock > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK',
             options: [],
@@ -129,7 +139,7 @@ export default function ProductDetailScreen() {
         name: product.name,
         slug: product.slug,
         image: product.featuredAsset?.preview,
-        price: Math.round(price),
+        price: variantPriceForSupplierCart(variant),
         qty: quantity,
         supplierId: supplier?.id ?? 'unknown',
         supplierName: supplier?.businessName ?? 'Нийлүүлэгч',
@@ -218,7 +228,6 @@ export default function ProductDetailScreen() {
   }
 
   const variant = product.variants[selectedVariant] ?? product.variants[0];
-  const price = variant?.priceWithTax ?? 0;
   const isInStock = variant?.stockLevel !== 'OUT_OF_STOCK';
 
   return (
@@ -248,7 +257,7 @@ export default function ProductDetailScreen() {
           <Text style={styles.slugText}>SKU: {slug}</Text>
 
           <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatPrice(price * quantity)}</Text>
+            <Text style={styles.price}>{formatVariantPrice(variant, quantity)}</Text>
             <View style={[styles.stockBadge, { backgroundColor: isInStock ? 'rgba(0,212,170,0.12)' : 'rgba(255,68,68,0.12)' }]}>
               <View style={[styles.stockDot, { backgroundColor: isInStock ? C.success : '#FF4444' }]} />
               <Text style={[styles.stockText, { color: isInStock ? C.success : '#FF4444' }]}>
@@ -318,7 +327,7 @@ export default function ProductDetailScreen() {
         <View style={styles.stickyInner}>
           <View>
             <Text style={styles.stickyLabel}>Нийт дүн</Text>
-            <Text style={styles.stickyPrice}>{formatPrice(price * quantity)}</Text>
+            <Text style={styles.stickyPrice}>{formatVariantPrice(variant, quantity)}</Text>
           </View>
           <TouchableOpacity
             style={[styles.addToCartBtn, (!isInStock || adding) && styles.addToCartBtnDisabled]}

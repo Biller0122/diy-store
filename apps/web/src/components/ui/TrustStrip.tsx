@@ -27,8 +27,8 @@ const ITEMS = [
   },
   {
     icon: MapPin,
-    title: 'Pickup боломжтой',
-    desc: '5 салбараас авах',
+    title: 'Хот дотор хүргэлт',
+    desc: 'Хаяг руу шууд хүргэнэ',
     color: 'text-amber',
     bg: 'bg-amber/10',
   },

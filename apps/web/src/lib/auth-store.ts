@@ -315,6 +315,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchActiveCustomer: async () => {
+        const storedToken = get().token;
+        if (storedToken) {
+          setVendureAuthToken(storedToken);
+        }
+
         try {
           const data = await vendureShopFetch<{ activeCustomer: ActiveCustomer | null }>(
             ACTIVE_CUSTOMER_QUERY,
@@ -341,6 +346,11 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'diy-store-auth',
       partialize: (state) => ({ customer: state.customer, token: state.token }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.token) {
+          setVendureAuthToken(state.token);
+        }
+      },
     },
   ),
 );

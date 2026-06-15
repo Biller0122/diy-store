@@ -12,7 +12,6 @@ test.describe('Checkout', () => {
     await fillFirstVisible(page, ['[data-testid="input-address"]', 'textarea', 'input[name="address"]'], 'Тест байр 42');
     await clickIfVisible(page, '[data-testid="checkout-next"], button:has-text("Үргэлжлүүлэх"), button:has-text("Дараах")');
     await clickIfVisible(page, '[data-testid="payment-qpay"], button:has-text("QPay")');
-    await clickIfVisible(page, '[data-testid="payment-monpay"], button:has-text("MonPay")');
     await expectAnyVisible(page, ['button', 'a[href]']);
   });
 });

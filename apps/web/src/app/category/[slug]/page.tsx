@@ -140,7 +140,6 @@ async function searchProducts(slug: string, sp: SearchParams) {
     ...(minMNT !== undefined && maxMNT !== undefined
       ? { priceRangeWithTax: { min: minMNT, max: maxMNT } }
       : {}),
-    ...(sp.availability?.includes('pickup') ? { inStock: true } : {}),
   };
 
   try {

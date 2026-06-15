@@ -249,7 +249,6 @@ export default function AdminSupplierDetailPage({ params }: { params: Promise<{ 
             ['Банк',            supplier.bankName || '—'],
             ['Данс',            supplier.bankAccount || '—'],
             ['Данс эзэмшигч',   supplier.bankAccountName || '—'],
-            ['Pickup',          supplier.pickupEnabled ? 'Тийм' : 'Үгүй'],
             ['Хүргэлт',         supplier.deliveryEnabled ? 'Тийм' : 'Үгүй'],
             ['Комисс',          `${supplier.commissionRate}%`],
             ['Бүртгэсэн огноо', new Date(supplier.createdAt).toLocaleString('mn-MN')],

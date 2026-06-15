@@ -648,6 +648,60 @@ export const CREATE_DELIVERY_REQUEST_MUTATION = `
   }
 `;
 
+export interface QpayInvoice {
+  invoiceId: string;
+  qrText: string;
+  qrImage: string;
+  shortUrl: string | null;
+  urls: Array<{ name: string | null; description: string | null; logo: string | null; link: string | null }>;
+}
+
+export interface QpayStatus {
+  paid: boolean;
+  count: number;
+  paidAmount: number;
+}
+
+export const CREATE_QPAY_INVOICE_MUTATION = `
+  mutation CreateQpayInvoice($amount: Int!, $orderRef: String!) {
+    createQpayInvoice(amount: $amount, orderRef: $orderRef) {
+      invoiceId
+      qrText
+      qrImage
+      shortUrl
+      urls {
+        name
+        description
+        logo
+        link
+      }
+    }
+  }
+`;
+
+export const CHECK_QPAY_PAYMENT_QUERY = `
+  query CheckQpayPayment($invoiceId: String!) {
+    checkQpayPayment(invoiceId: $invoiceId) {
+      paid
+      count
+      paidAmount
+    }
+  }
+`;
+
+export async function createQpayInvoice(amount: number, orderRef: string) {
+  const data = await shopFetch<{ createQpayInvoice: QpayInvoice }>(CREATE_QPAY_INVOICE_MUTATION, {
+    amount: Math.max(1, Math.round(amount)),
+    orderRef,
+  });
+  return data.createQpayInvoice;
+}
+
+export async function checkQpayPayment(invoiceId: string) {
+  const data = await shopFetch<{ checkQpayPayment: QpayStatus }>(CHECK_QPAY_PAYMENT_QUERY, { invoiceId });
+  return data.checkQpayPayment;
+}
+
 export const DELIVERY_REQUEST_QUERY = `
   query DeliveryRequest($orderId: String!, $token: String) {
     deliveryRequest(orderId: $orderId, token: $token) {

@@ -4,16 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/lib/cart-store';
 import { useWishlistStore } from '@/lib/wishlist-store';
 
-// ─── Static data ─────────────────────────────────────────────
-
-const STORES = [
-  { id: '1', name: 'Баянзүрх салбар', address: 'Баянзүрх дүүрэг, Нарны зам 5' },
-  { id: '2', name: 'Сүхбаатар салбар', address: 'Сүхбаатар дүүрэг, Бага тойруу 14' },
-  { id: '3', name: 'Хан-Уул салбар', address: 'Хан-Уул дүүрэг, Зайсан 12' },
-  { id: '4', name: 'Баянгол салбар', address: 'Баянгол дүүрэг, Чингисийн өргөн чөлөө 8' },
-  { id: '5', name: 'Чингэлтэй салбар', address: 'Чингэлтэй дүүрэг, Энхтайваны өргөн чөлөө 3' },
-];
-
 const DISTRICTS: { name: string; estimate: string }[] = [
   { name: 'Баянзүрх дүүрэг', estimate: '2–4 цагт' },
   { name: 'Сүхбаатар дүүрэг', estimate: '2–4 цагт' },
@@ -134,8 +124,6 @@ export default function BuyBox({
     }, {}),
   );
   const [qty, setQty] = useState(1);
-  const [mode, setMode] = useState<'pickup' | 'delivery'>('delivery');
-  const [storeId, setStoreId] = useState(STORES[0].id);
   const [district, setDistrict] = useState(DISTRICTS[0].name);
   const [addedToCart, setAddedToCart] = useState(false);
   const [showStickyBar, setShowStickyBar] = useState(false);
@@ -192,8 +180,8 @@ export default function BuyBox({
       price: activeVariant.priceWithTax,
       currencyCode: activeVariant.currencyCode || 'MNT',
       qty: safeQty,
-      mode,
-      storeId,
+      mode: 'delivery',
+      storeId: null,
       sku: activeVariant.sku,
       supplierId,
       supplierName,
@@ -268,74 +256,23 @@ export default function BuyBox({
           </div>
         ))}
 
-        {/* Pickup / Delivery toggle */}
+        {/* Delivery estimate */}
         <div>
-          <div className="flex overflow-hidden rounded-xl border border-[var(--glass-border)]">
-            {(['delivery', 'pickup'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`flex-1 py-2.5 text-sm font-semibold transition ${
-                  mode === m
-                    ? 'bg-brand text-white'
-                    : 'bg-card text-foreground-muted hover:bg-dark'
-                }`}
-              >
-                {m === 'delivery' ? '🚚 Хүргэлт' : '🏪 Дэлгүүрээс авах'}
-              </button>
-            ))}
+          <div className="space-y-2">
+            <select
+              value={district}
+              onChange={(e) => setDistrict(e.target.value)}
+              className="w-full rounded-xl border border-[var(--glass-border)] bg-card px-3 py-2 text-sm text-foreground-muted focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              {DISTRICTS.map((d) => (
+                <option key={d.name} value={d.name}>{d.name}</option>
+              ))}
+            </select>
+            <p className="text-sm text-foreground-muted">
+              📍 <span className="font-medium">{district}</span>-д{' '}
+              <span className="font-semibold text-success">{deliveryEstimate}</span> хүргэнэ
+            </p>
           </div>
-
-          {/* Delivery — district selector */}
-          {mode === 'delivery' && (
-            <div className="mt-3 space-y-2">
-              <select
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                className="w-full rounded-xl border border-[var(--glass-border)] bg-card px-3 py-2 text-sm text-foreground-muted focus:outline-none focus:ring-2 focus:ring-brand"
-              >
-                {DISTRICTS.map((d) => (
-                  <option key={d.name} value={d.name}>{d.name}</option>
-                ))}
-              </select>
-              <p className="text-sm text-foreground-muted">
-                📍 <span className="font-medium">{district}</span>-д{' '}
-                <span className="font-semibold text-success">{deliveryEstimate}</span> хүргэнэ
-              </p>
-            </div>
-          )}
-
-          {/* Pickup — store selector */}
-          {mode === 'pickup' && (
-            <div className="mt-3 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">Салбар сонгох</p>
-              <div className="space-y-2">
-                {STORES.map((store) => (
-                  <label
-                    key={store.id}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                      storeId === store.id
-                        ? 'border-amber-400 bg-brand/5'
-                        : 'border-[var(--glass-border)] hover:border-[var(--glass-border)]'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="store"
-                      value={store.id}
-                      checked={storeId === store.id}
-                      onChange={() => setStoreId(store.id)}
-                      className="mt-0.5 accent-amber-500"
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{store.name}</p>
-                      <p className="text-xs text-foreground-muted">{store.address}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Quantity */}

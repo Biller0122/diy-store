@@ -132,7 +132,7 @@ export function trackBeginCheckout(items: {
   });
 }
 
-export function trackAddPaymentInfo(paymentMethod: 'QPay' | 'MonPay' | 'Card') {
+export function trackAddPaymentInfo(paymentMethod: 'QPay') {
   gtag('add_payment_info', {
     currency: 'MNT',
     payment_type: paymentMethod,

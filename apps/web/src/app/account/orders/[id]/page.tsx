@@ -22,8 +22,6 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
 
 const PAYMENT_LABELS: Record<string, string> = {
   qpay: 'QPay',
-  monpay: 'MonPay',
-  card: 'Карт',
 };
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
