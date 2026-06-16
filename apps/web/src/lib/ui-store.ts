@@ -19,6 +19,7 @@ export interface Toast {
 interface UIState {
   cartOpen: boolean;
   searchOpen: boolean;
+  accountOpen: boolean;
   announcementDismissed: boolean;
   toasts: Toast[];
 
@@ -29,6 +30,9 @@ interface UIState {
   openSearch: () => void;
   closeSearch: () => void;
 
+  openAccount: () => void;
+  closeAccount: () => void;
+
   dismissAnnouncement: () => void;
 
   addToast: (toast: Omit<Toast, 'id'>) => void;
@@ -38,6 +42,7 @@ interface UIState {
 export const useUIStore = create<UIState>((set, get) => ({
   cartOpen: false,
   searchOpen: false,
+  accountOpen: false,
   announcementDismissed: false,
   toasts: [],
 
@@ -47,6 +52,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   openSearch: () => set({ searchOpen: true }),
   closeSearch: () => set({ searchOpen: false }),
+
+  openAccount: () => set({ accountOpen: true }),
+  closeAccount: () => set({ accountOpen: false }),
 
   dismissAnnouncement: () => set({ announcementDismissed: true }),
 

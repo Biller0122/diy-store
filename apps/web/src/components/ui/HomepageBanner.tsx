@@ -1,5 +1,8 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { BrandLogo } from '@/components/BrandLogo';
 
 export type HomepageBannerData = {
@@ -13,91 +16,128 @@ export type HomepageBannerData = {
   accentColor: string;
 };
 
+const AUTOPLAY_MS = 5000;
+
+function BannerImage({ banner }: { banner: HomepageBannerData }) {
+  if (banner.imageUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={banner.imageUrl} alt={banner.title} className="absolute inset-0 h-full w-full object-cover" />;
+  }
+  return (
+    <div
+      className="absolute inset-0 flex items-center justify-center"
+      style={{ background: `linear-gradient(135deg, ${banner.accentColor}, #0b0b14 75%)` }}
+    >
+      <div className="text-center">
+        <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-white/15 text-4xl">🛠️</div>
+        <BrandLogo imageClassName="mx-auto w-48" />
+      </div>
+    </div>
+  );
+}
+
 export function HomepageBanner({ banners }: { banners: HomepageBannerData[] }) {
-  if (banners.length === 0) return null;
-  const animated = banners.length > 1;
+  const [active, setActive] = useState(0);
+  const count = banners.length;
+
+  const next = useCallback(() => setActive((i) => (i + 1) % Math.max(1, count)), [count]);
+  const prev = useCallback(() => setActive((i) => (i - 1 + count) % Math.max(1, count)), [count]);
+
+  useEffect(() => {
+    if (count <= 1) return;
+    const timer = setInterval(next, AUTOPLAY_MS);
+    return () => clearInterval(timer);
+  }, [count, next, active]);
+
+  if (count === 0) return null;
+
+  const secondary = banners[(active + 1) % count];
 
   return (
-    <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6">
-      <div className="relative overflow-hidden rounded-[28px] border border-[var(--glass-border)] bg-card shadow-2xl shadow-black/30">
-        <div className="absolute inset-0 opacity-70">
+    <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
+      <div className="grid gap-4 lg:grid-cols-[1.9fr_1fr]">
+        {/* ── Main carousel ── */}
+        <div className="group relative h-[280px] overflow-hidden rounded-[24px] border border-[var(--glass-border)] bg-card shadow-2xl shadow-black/30 sm:h-[340px]">
           {banners.map((banner, index) => (
-            <div
+            <Link
               key={banner.id}
-              className={`absolute inset-0 ${animated ? 'animate-banner-fade' : 'opacity-100'}`}
-              style={{
-                animationDelay: animated ? `${index * 5}s` : undefined,
-                animationDuration: animated ? `${Math.max(1, banners.length) * 5}s` : undefined,
-                background: `radial-gradient(circle at ${25 + index * 18}% 30%, ${banner.accentColor}55, transparent 34%), linear-gradient(120deg, ${banner.accentColor}22, transparent 55%)`,
-              }}
-            />
-          ))}
-        </div>
-        <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10" />
-        <div className="absolute -bottom-20 left-1/3 h-44 w-44 rounded-full border border-white/10" />
-        <div className="relative grid min-h-[320px] items-center gap-8 p-6 sm:p-10 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="relative min-h-[230px]">
-            {banners.map((banner, index) => (
-              <div
-                key={banner.id}
-                className={`absolute inset-0 flex flex-col justify-center ${animated ? 'animate-banner-slide' : 'opacity-100'}`}
-                style={{
-                  animationDelay: animated ? `${index * 5}s` : undefined,
-                  animationDuration: animated ? `${Math.max(1, banners.length) * 5}s` : undefined,
-                }}
-              >
-                <div className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
-                  <Sparkles size={13} />
-                  {banner.eyebrow || 'Онцлох санал'}
-                </div>
-                <h2 className="max-w-2xl font-display text-3xl font-black leading-tight text-white sm:text-5xl">
+              href={banner.ctaHref || '#'}
+              className={`absolute inset-0 transition-opacity duration-700 ${index === active ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+              aria-hidden={index !== active}
+            >
+              <BannerImage banner={banner} />
+              {/* Readability overlay */}
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+              {/* Text */}
+              <div className="absolute inset-0 flex flex-col justify-center gap-3 p-6 sm:p-10">
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+                  <Sparkles size={12} /> {banner.eyebrow || 'Онцлох санал'}
+                </span>
+                <h2 className="max-w-xl font-display text-2xl font-black leading-tight text-white drop-shadow sm:text-4xl">
                   {banner.title}
                 </h2>
                 {banner.subtitle && (
-                  <p className="mt-4 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
-                    {banner.subtitle}
-                  </p>
+                  <p className="max-w-md text-sm text-white/85 sm:text-base">{banner.subtitle}</p>
                 )}
-                {banner.ctaHref && banner.ctaLabel && (
-                  <Link
-                    href={banner.ctaHref}
-                    className="mt-6 inline-flex w-fit items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-dark transition-transform hover:scale-105"
-                  >
+                {banner.ctaLabel && (
+                  <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/30">
                     {banner.ctaLabel}
-                    <ArrowRight size={15} />
-                  </Link>
+                  </span>
                 )}
               </div>
-            ))}
-          </div>
-          <div className="relative hidden min-h-[260px] lg:block">
-            {banners.map((banner, index) => (
-              <div
-                key={banner.id}
-                className={`absolute inset-0 ${animated ? 'animate-banner-card' : 'opacity-100'}`}
-                style={{
-                  animationDelay: animated ? `${index * 5}s` : undefined,
-                  animationDuration: animated ? `${Math.max(1, banners.length) * 5}s` : undefined,
-                }}
+            </Link>
+          ))}
+
+          {/* Arrows */}
+          {count > 1 && (
+            <>
+              <button
+                onClick={prev}
+                aria-label="Өмнөх"
+                className="absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-white opacity-0 shadow-lg transition-opacity hover:bg-brand-hover group-hover:opacity-100"
               >
-                <div className="relative h-full overflow-hidden rounded-3xl border border-white/15 bg-white/10 p-5 backdrop-blur-md">
-                  {banner.imageUrl ? (
-                    <img src={banner.imageUrl} alt="" className="h-full w-full rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center rounded-2xl bg-black/20">
-                      <div className="text-center">
-                        <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-3xl bg-white/15 text-5xl">
-                          🛠️
-                        </div>
-                        <BrandLogo imageClassName="mx-auto w-56" />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                onClick={next}
+                aria-label="Дараах"
+                className="absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-white opacity-0 shadow-lg transition-opacity hover:bg-brand-hover group-hover:opacity-100"
+              >
+                <ChevronRight size={20} />
+              </button>
+              {/* Dots */}
+              <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-1.5">
+                {banners.map((banner, index) => (
+                  <button
+                    key={banner.id}
+                    onClick={() => setActive(index)}
+                    aria-label={`Banner ${index + 1}`}
+                    className={`h-2 rounded-full transition-all ${index === active ? 'w-6 bg-white' : 'w-2 bg-white/50 hover:bg-white/80'}`}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </div>
+
+        {/* ── Secondary banner (peek of next) ── */}
+        {count > 1 && (
+          <Link
+            href={secondary.ctaHref || '#'}
+            className="relative hidden h-[340px] overflow-hidden rounded-[24px] border border-[var(--glass-border)] bg-card shadow-2xl shadow-black/30 lg:block"
+          >
+            <BannerImage banner={secondary} />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 p-5">
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+                {secondary.eyebrow || 'Дараагийн'}
+              </span>
+              <h3 className="mt-2 font-display text-lg font-black leading-tight text-white drop-shadow">
+                {secondary.title}
+              </h3>
+            </div>
+          </Link>
+        )}
       </div>
     </section>
   );

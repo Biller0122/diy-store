@@ -12,11 +12,77 @@ const EDIT_TIMEOUT_MS = Number(process.env.CLEANUP_EDIT_TIMEOUT_MS ?? 55000);
 const SIMPLE_EDIT_TIMEOUT_MS = Number(process.env.SIMPLE_EDIT_TIMEOUT_MS ?? 280000);
 const LOCAL_EDIT_SIZE = 900;
 
+type ImageAiProvider = 'auto' | 'gemini' | 'openai';
+
 type EditProductImageBody = {
   image?: string;
   outputSize?: number;
   mode?: 'simple' | 'ai';
+  /** Which AI to use for `mode: 'ai'`. 'auto' = built-in cleanup service. */
+  provider?: ImageAiProvider;
+  /** Free-text instruction for the chosen AI (e.g. "цагаан дэвсгэр дээр төвд байрлуул"). */
+  prompt?: string;
 };
+
+const DEFAULT_AI_PROMPT =
+  'Place this product on a clean pure-white studio background, centered and well-lit, '
+  + 'as a professional e-commerce catalog photo. Remove any background clutter or distractions. '
+  + 'Keep the product itself, its colours, text and proportions exactly unchanged.';
+
+function mimeFromDataUrl(value: string) {
+  if (value.startsWith('data:')) {
+    const semi = value.indexOf(';');
+    if (semi > 5) return value.slice(5, semi);
+  }
+  return 'image/jpeg';
+}
+
+/** Gemini image editing (gemini-2.5-flash-image) — image + prompt → edited image. */
+async function editWithGemini(image: string, prompt: string): Promise<EditedProductImage> {
+  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!key) throw new Error('GEMINI_API_KEY тохируулаагүй байна');
+  const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
+  const base64 = image.includes(',') && image.startsWith('data:') ? image.split(',', 2)[1] : image;
+  const res = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ inline_data: { mime_type: mimeFromDataUrl(image), data: base64 } }, { text: prompt }] }],
+      }),
+    },
+  );
+  const json = (await res.json()) as any;
+  if (!res.ok) throw new Error(json?.error?.message || `Gemini алдаа: ${res.status}`);
+  const parts = json?.candidates?.[0]?.content?.parts ?? [];
+  const out = parts.map((p: any) => p?.inline_data?.data || p?.inlineData?.data).find(Boolean);
+  if (!out) throw new Error('Gemini зураг буцаасангүй (контент бодлогоор хаасан байж магадгүй)');
+  return { image: `data:image/png;base64,${out}`, engine: 'gemini' };
+}
+
+/** OpenAI image editing (gpt-image-1 /images/edits) — image + prompt → edited image. */
+async function editWithOpenAI(image: string, prompt: string): Promise<EditedProductImage> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('OPENAI_API_KEY тохируулаагүй байна');
+  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+  const png = await sharp(imageBufferFromDataUrl(image)).png().toBuffer();
+  const form = new FormData();
+  form.append('model', model);
+  form.append('prompt', prompt);
+  form.append('size', '1024x1024');
+  form.append('image', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'image.png');
+  const res = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+  });
+  const json = (await res.json()) as any;
+  if (!res.ok) throw new Error(json?.error?.message || `OpenAI алдаа: ${res.status}`);
+  const b64 = json?.data?.[0]?.b64_json;
+  if (!b64) throw new Error('OpenAI зураг буцаасангүй');
+  return { image: `data:image/png;base64,${b64}`, engine: 'openai' };
+}
 
 type EditedProductImage = {
   image?: string;
@@ -293,6 +359,24 @@ export async function POST(request: Request) {
       console.error('[edit-product-image] simple ONNX failed', error);
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Энгийн зураг янзлахад алдаа гарлаа' },
+        { status: 502 },
+      );
+    }
+  }
+
+  // Prompt-based AI editing via an explicit provider (Gemini / OpenAI).
+  const provider = (body.provider ?? 'auto') as ImageAiProvider;
+  if (provider === 'gemini' || provider === 'openai') {
+    const prompt = (body.prompt ?? '').trim() || DEFAULT_AI_PROMPT;
+    try {
+      const edited = provider === 'gemini'
+        ? await editWithGemini(image, prompt)
+        : await editWithOpenAI(image, prompt);
+      return NextResponse.json(edited, { status: 200 });
+    } catch (error) {
+      console.error(`[edit-product-image] ${provider} failed`, error);
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : `${provider} зураг янзлахад алдаа гарлаа` },
         { status: 502 },
       );
     }

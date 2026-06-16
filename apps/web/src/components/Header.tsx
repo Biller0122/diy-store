@@ -17,7 +17,7 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { items } = useCartStore();
-  const { openSearch, openCart } = useUIStore();
+  const { openSearch, openCart, openAccount } = useUIStore();
   const { customer } = useAuthStore();
   const cartCount = items.reduce((a, i) => a + i.qty, 0);
   const customerHomeHref = getCustomerHomeHref();
@@ -90,20 +90,6 @@ export function Header() {
               <Search size={18} />
             </button>
 
-            {/* Account */}
-            <Link
-              href={customer ? '/account' : '/account/login'}
-              className="hidden sm:flex w-9 h-9 rounded-xl items-center justify-center text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
-            >
-              {customer ? (
-                <div className="w-6 h-6 rounded-full bg-brand flex items-center justify-center text-white text-xs font-bold">
-                  {customer.firstName?.[0] ?? 'U'}
-                </div>
-              ) : (
-                <User size={18} />
-              )}
-            </Link>
-
             {/* Cart */}
             <button
               data-testid="cart-icon"
@@ -124,6 +110,26 @@ export function Header() {
               <span className="hidden sm:block text-sm font-medium text-foreground">
                 Сагс
               </span>
+            </button>
+
+            {/* Account — opens the slide-out drawer */}
+            <button
+              onClick={openAccount}
+              aria-label="Профайл"
+              className="group relative hidden sm:flex items-center justify-center"
+            >
+              {customer ? (
+                <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand to-amber p-[2px] shadow-lg shadow-brand/25 transition-transform group-hover:scale-105">
+                  <span className="flex h-full w-full items-center justify-center rounded-full bg-surface text-xs font-extrabold text-foreground">
+                    {customer.firstName?.[0]?.toUpperCase() ?? 'U'}
+                  </span>
+                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success" />
+                </span>
+              ) : (
+                <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--glass-border)] bg-card text-foreground-muted shadow-sm transition-all group-hover:border-brand/50 group-hover:text-brand group-hover:shadow-brand/20">
+                  <User size={17} />
+                </span>
+              )}
             </button>
 
             {/* Mobile menu */}
@@ -153,7 +159,6 @@ export function Header() {
             {[
               { href: '/category', label: '📦 Ангилал' },
               { href: '/trade', label: '🏢 Trade данс' },
-              { href: '/account', label: '👤 Миний данс' },
             ].map(({ href, label }) => (
               <Link
                 key={href}
@@ -164,6 +169,12 @@ export function Header() {
                 {label}
               </Link>
             ))}
+            <button
+              onClick={() => { setMobileOpen(false); openAccount(); }}
+              className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-white/5 transition-colors"
+            >
+              👤 Миний данс
+            </button>
           </div>
         </m.div>
       )}

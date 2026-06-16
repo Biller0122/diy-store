@@ -3,10 +3,13 @@ import { ArrowRight, BookOpen, CheckCircle2, Clock, Flame, MapPin, Package, Sear
 import { vendureShopFetch, type VendureCollection } from '@/lib/vendure';
 import { TrustStrip } from '@/components/ui/TrustStrip';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
+import { LazyProductGrid } from '@/components/ui/LazyProductGrid';
 import { HomepageBanner, type HomepageBannerData } from '@/components/ui/HomepageBanner';
 import { ARTICLES } from './how-to/articles';
 import { dbProductToCard, dbSupplierToCard, getDbSupplierProductCount, getDbSupplierProducts, getDbSuppliers, supplierProductMatchesCategory, type DbSupplierProduct } from '@/lib/supplier-products';
 import { BrandLogo } from '@/components/BrandLogo';
+import { ScrollReveal } from '@/components/ScrollReveal';
+import { ScrollProgress } from '@/components/ScrollProgress';
 
 // ─── Data fetching ────────────────────────────────────────────
 
@@ -155,75 +158,57 @@ function SectionHeader({
 }
 
 function MarketplaceHero({ supplierCount, productCount }: { supplierCount: number; productCount: number }) {
-  return (
-    <section className="relative overflow-hidden px-4 pb-16 pt-10 sm:px-6 lg:pb-24 lg:pt-16">
-      <div className="absolute inset-0 gradient-mesh" />
-      <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-dark to-transparent" />
-      <div className="relative mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.92fr_1.08fr]">
-        <div className="max-w-2xl">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-4 py-2 text-xs font-bold text-brand">
-            <Sparkles size={13} /> Барилгын материалын ухаалаг шийдэл
-          </div>
-          <h1 className="font-display text-5xl font-black leading-[0.98] text-foreground sm:text-6xl lg:text-7xl">
-            Барилгын материалыг{' '}
-            <span className="text-brand">нэг платформоос.</span>
-          </h1>
-          <p className="mt-6 max-w-xl text-base leading-7 text-foreground-muted sm:text-lg">
-            Нийлүүлэгч, бүтээгдэхүүн, хүргэлтийг нэг дор холбосон shoptool.mn платформ. Бодит үнэ, шуурхай хүргэлт, найдвартай захиалга.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href="/search" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand px-6 py-4 text-sm font-black text-white shadow-xl shadow-brand/25 transition-transform hover:-translate-y-0.5">
-              <Search size={17} /> Материал хайх <ArrowRight size={16} />
-            </Link>
-            <Link href="/suppliers" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--glass-border)] bg-card px-6 py-4 text-sm font-black text-foreground shadow-sm transition-transform hover:-translate-y-0.5 hover:border-brand/40">
-              <Store size={17} /> Нийлүүлэгчид үзэх
-            </Link>
-          </div>
+  const stats = [
+    { icon: Package, value: productCount.toLocaleString('mn-MN'), label: 'Бүтээгдэхүүн' },
+    { icon: Store, value: supplierCount.toLocaleString('mn-MN'), label: 'Нийлүүлэгч' },
+    { icon: Clock, value: '30 мин', label: 'Дундаж хариу' },
+    { icon: Truck, value: '24ц', label: 'Хүргэлт' },
+  ];
+  const trust = ['Баталгаатай бүтээгдэхүүн', 'Өрсөлдөхүйц үнэ', 'Шуурхай хүргэлт'];
 
-          <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              { icon: Package, value: productCount.toLocaleString('mn-MN'), label: 'Бүтээгдэхүүн' },
-              { icon: Store, value: supplierCount.toLocaleString('mn-MN'), label: 'Нийлүүлэгч' },
-              { icon: Clock, value: '30 мин', label: 'Дундаж хариу' },
-              { icon: Truck, value: '24ц', label: 'Хүргэлт' },
-            ].map(({ icon: Icon, value, label }) => (
-              <div key={label} className="rounded-2xl border border-[var(--glass-border)] bg-card/85 p-4 shadow-[var(--card-shadow)] backdrop-blur">
-                <Icon size={22} className="mb-3 text-brand" />
-                <p className="font-mono text-2xl font-black text-brand">{value}</p>
-                <p className="mt-1 text-xs font-semibold text-foreground-muted">{label}</p>
-              </div>
-            ))}
-          </div>
+  return (
+    <section className="relative overflow-hidden px-4 py-12 sm:px-6 lg:py-16">
+      <div className="absolute inset-0 gradient-mesh" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-dark to-transparent" />
+
+      <div className="relative mx-auto flex max-w-4xl flex-col items-center text-center">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-4 py-2 text-xs font-bold text-brand">
+          <Sparkles size={13} /> Барилгын материалын ухаалаг шийдэл
+        </div>
+        <h1 className="font-display text-4xl font-black leading-[1.02] text-foreground sm:text-5xl lg:text-6xl">
+          Барилгын материалыг <span className="gradient-text">нэг платформоос.</span>
+        </h1>
+        <p className="mt-5 max-w-2xl text-base leading-7 text-foreground-muted sm:text-lg">
+          Нийлүүлэгч, бүтээгдэхүүн, хүргэлтийг нэг дор холбосон shoptool.mn платформ. Бодит үнэ, шуурхай хүргэлт, найдвартай захиалга.
+        </p>
+
+        {/* Trust chips */}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          {trust.map((label) => (
+            <span key={label} className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground-muted">
+              <CheckCircle2 size={14} className="text-brand" /> {label}
+            </span>
+          ))}
         </div>
 
-        <div className="relative min-h-[420px] lg:min-h-[560px]">
-          <div className="absolute inset-x-4 bottom-4 top-20 rounded-[44px] bg-brand shadow-[0_30px_120px_rgba(255,69,0,0.32)] lg:inset-x-10" />
-          <div className="absolute inset-0 rounded-[46px] bg-[radial-gradient(circle_at_70%_20%,rgba(255,255,255,0.38),transparent_28%),linear-gradient(145deg,rgba(255,255,255,0.18),rgba(0,0,0,0.12))]" />
-          <div className="absolute bottom-0 right-0 w-[88%] overflow-hidden rounded-[28px] border border-white/20 bg-neutral-900 shadow-2xl">
-            <div className="aspect-[1.28/1] bg-[linear-gradient(115deg,rgba(255,255,255,0.18)_0_1px,transparent_1px_72px),linear-gradient(25deg,#2c3035,#0b0f14_52%,#f97316_53%,#111827_54%)]">
-              <div className="grid h-full grid-cols-3 gap-px p-6">
-                {Array.from({ length: 9 }).map((_, index) => (
-                  <div key={index} className="rounded-sm border border-white/10 bg-white/10 shadow-inner" />
-                ))}
-              </div>
+        <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+          <Link href="/search" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand px-7 py-4 text-sm font-black text-white shadow-xl shadow-brand/25 transition-transform hover:-translate-y-0.5">
+            <Search size={17} /> Материал хайх <ArrowRight size={16} />
+          </Link>
+          <Link href="/suppliers" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--glass-border)] bg-card px-7 py-4 text-sm font-black text-foreground shadow-sm transition-transform hover:-translate-y-0.5 hover:border-brand/40">
+            <Store size={17} /> Нийлүүлэгчид үзэх
+          </Link>
+        </div>
+
+        {/* Stats strip */}
+        <div className="mt-10 grid w-full max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
+          {stats.map(({ icon: Icon, value, label }) => (
+            <div key={label} className="flex flex-col items-center rounded-2xl border border-[var(--glass-border)] bg-card/70 px-3 py-4 backdrop-blur">
+              <Icon size={20} className="mb-2 text-brand" />
+              <p className="font-mono text-xl font-black text-brand sm:text-2xl">{value}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-foreground-muted">{label}</p>
             </div>
-          </div>
-          <div className="absolute left-0 top-8 rounded-3xl border border-[var(--glass-border)] bg-card/90 p-4 shadow-[var(--card-shadow)] backdrop-blur">
-            <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/15 text-3xl">🧱</div>
-              <div>
-                <p className="text-sm font-black text-foreground">Тоосго, цемент</p>
-                <p className="text-xs text-foreground-muted">80+ бүтээгдэхүүн</p>
-              </div>
-            </div>
-          </div>
-          <div className="absolute bottom-10 left-4 max-w-sm rounded-3xl border border-white/15 bg-black/70 p-5 text-white shadow-2xl backdrop-blur">
-            {['Баталгаатай бүтээгдэхүүн', 'Өрсөлдөхүйц үнэ', 'Шуурхай хүргэлт'].map((label) => (
-              <div key={label} className="flex items-center gap-2 py-1 text-sm font-semibold">
-                <CheckCircle2 size={16} className="text-brand" /> {label}
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       </div>
     </section>
@@ -266,12 +251,37 @@ function getDbSupplierProductCountForCategory(products: DbSupplierProduct[], cat
   return products.filter((product) => product.enabled && supplierProductMatchesCategory(product, category, true)).length;
 }
 
+type CategorySection = { category: VendureCollection; total: number; items: ProductCardData[] };
+
+function CategoryProductsSections({ sections }: { sections: CategorySection[] }) {
+  if (sections.length === 0) return null;
+  return (
+    <>
+      {sections.map(({ category, total, items }, sectionIndex) => (
+        <section
+          key={category.id}
+          data-reveal
+          className={`py-8 max-w-7xl mx-auto px-4 sm:px-6 ${sectionIndex % 2 === 1 ? '' : ''}`}
+        >
+          <SectionHeader
+            icon={Package}
+            title={`${category.customFields?.icon ?? ''} ${category.name}`.trim()}
+            subtitle={`${total.toLocaleString('mn-MN')} бүтээгдэхүүн`}
+            href={`/category/${category.slug}`}
+          />
+          <LazyProductGrid products={items} initial={20} step={10} />
+        </section>
+      ))}
+    </>
+  );
+}
+
 function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplierToCard>[] }) {
   const featured = suppliers.slice(0, 4);
   return (
-    <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+    <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
       <SectionHeader icon={Store} title="Дэлгүүрүүд" subtitle="Найдвартай нийлүүлэгчдээс шууд захиалаарай" href="/suppliers" actionLabel="Бүгд" />
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="reveal-stagger grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {featured.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-2 lg:col-span-4">
             Backend дээр идэвхтэй нийлүүлэгч алга байна.
@@ -320,7 +330,7 @@ function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplie
 
 function HowItWorksSection() {
   return (
-    <section className="py-16 border-y border-[var(--glass-border)] bg-surface/40">
+    <section data-reveal className="py-16 border-y border-[var(--glass-border)] bg-surface/40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-10">
           <h2 className="font-display font-bold text-3xl text-foreground mb-2">Хэрхэн ажилладаг вэ?</h2>
@@ -429,21 +439,52 @@ export default async function HomePage() {
   const productCount = catalogProductCount + supplierProductCount;
   const displayCategories = collections;
   const displayProducts = products;
-  const newProducts = displayProducts.slice(0, 4);
+  const newProducts = displayProducts.slice(0, 12);
   const saleProducts = displayProducts.filter((product) => product.originalPrice && product.originalPrice > product.price).slice(0, 8);
   const articles = ARTICLES.slice(0, 3);
 
+  // Ангилал тус бүрд хамгийн ихдээ 100 бараа.
+  const PER_CATEGORY_LIMIT = 100;
+  const matchedProductIds = new Set<string>();
+  const categorySections: CategorySection[] = displayCategories
+    .map((category) => ({
+      category,
+      matched: supplierProducts.filter(
+        (product) => product.enabled && supplierProductMatchesCategory(product, category, true),
+      ),
+    }))
+    .filter((section) => section.matched.length > 0)
+    .sort((a, b) => b.matched.length - a.matched.length)
+    .map(({ category, matched }) => {
+      matched.forEach((product) => matchedProductIds.add(String(product.id)));
+      return {
+        category,
+        total: matched.length,
+        items: matched
+          .slice(0, PER_CATEGORY_LIMIT)
+          .map((product) => dbProductToCard(product, supplierById.get(product.supplierId))),
+      };
+    });
+
+  // Ямар ч ангилалд ороогүй бараануудыг "Бусад" хэсэгт харуулж, нэгийг ч нуухгүй.
+  const otherProducts = supplierProducts
+    .filter((product) => product.enabled && !matchedProductIds.has(String(product.id)))
+    .slice(0, PER_CATEGORY_LIMIT)
+    .map((product) => dbProductToCard(product, supplierById.get(product.supplierId)));
+
   return (
     <>
+      <ScrollProgress />
+      <ScrollReveal />
+      <HomepageBanner banners={banners} />
       <MarketplaceHero supplierCount={suppliersResult.total} productCount={productCount} />
       <CategoryRail collections={displayCategories} supplierProducts={supplierProducts} />
-      <HomepageBanner banners={banners} />
 
       {/* New products */}
-      <section id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
+      <section data-reveal id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <SectionHeader icon={Sparkles} title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" href="/products?mode=new" />
-          <div className="flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 sm:-mx-6 sm:px-6 snap-x snap-mandatory">
+          <div className="reveal-stagger flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 sm:-mx-6 sm:px-6 snap-x snap-mandatory">
             {newProducts.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted">
                 Backend дээр бараа бүртгэгдээгүй байна.
@@ -457,15 +498,31 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Products grouped by category */}
+      <CategoryProductsSections sections={categorySections} />
+
+      {/* Бусад бараа — ангилалд ороогүй бүтээгдэхүүн */}
+      {otherProducts.length > 0 && (
+        <section data-reveal className="py-8 max-w-7xl mx-auto px-4 sm:px-6">
+          <SectionHeader
+            icon={Package}
+            title="Бусад бараа"
+            subtitle={`${otherProducts.length.toLocaleString('mn-MN')} бүтээгдэхүүн`}
+            href="/products"
+          />
+          <LazyProductGrid products={otherProducts} initial={20} step={10} />
+        </section>
+      )}
+
       {/* Sale products grid */}
-      <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+      <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
         <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/products?mode=sale" />
         {saleProducts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--glass-border)] bg-card p-8 text-sm text-foreground-muted">
             Одоогоор хямдралтай бараа бүртгэгдээгүй байна.
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="reveal-stagger grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {saleProducts.map((product, i) => (
               <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
             ))}
@@ -482,7 +539,7 @@ export default async function HomePage() {
       <HowItWorksSection />
 
       {/* Trade banner */}
-      <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+      <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
         <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12">
           <div className="absolute inset-0 gradient-mesh opacity-80" />
           <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(255,69,0,0.2) 0%, transparent 60%)' }} />
@@ -524,9 +581,9 @@ export default async function HomePage() {
       </section>
 
       {/* How-to articles */}
-      <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+      <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
         <SectionHeader icon={BookOpen} title="DIY Заавар" subtitle="Мэргэжилтнээс суралц" href="/how-to" />
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="reveal-stagger grid sm:grid-cols-3 gap-4">
           {articles.map((article) => (
             <Link key={article.slug} href={`/how-to/${article.slug}`} className="group block rounded-2xl bg-card border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-all overflow-hidden">
               <div className="aspect-video bg-gradient-to-br from-surface to-card flex items-center justify-center text-6xl">{article.emoji}</div>

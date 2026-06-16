@@ -67,12 +67,22 @@ const INITIAL_FORM: FormState = {
 const AI_ANALYZE_TIMEOUT_MS = 35000;
 type EditedProductImage = { image: string; error?: string };
 type ImageEditMode = 'simple' | 'ai';
+type ImageAiProvider = 'gemini' | 'openai';
 
-async function editProductImage(image: string, mode: ImageEditMode): Promise<EditedProductImage> {
+const AI_PROVIDERS: { value: ImageAiProvider; label: string }[] = [
+  { value: 'gemini', label: 'Gemini (Google)' },
+  { value: 'openai', label: 'ChatGPT (OpenAI)' },
+];
+
+async function editProductImage(
+  image: string,
+  mode: ImageEditMode,
+  opts?: { provider?: ImageAiProvider; prompt?: string },
+): Promise<EditedProductImage> {
   const response = await fetch('/edit-product-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image, outputSize: 900, mode }),
+    body: JSON.stringify({ image, outputSize: 900, mode, provider: opts?.provider, prompt: opts?.prompt }),
   });
   const result = (await response.json()) as EditedProductImage;
   if (!response.ok || result.error) {
@@ -173,6 +183,8 @@ export default function NewSupplierProductPage() {
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [imageEditing, setImageEditing] = useState(false);
   const [imageEditMenuOpen, setImageEditMenuOpen] = useState(false);
+  const [aiProvider, setAiProvider] = useState<ImageAiProvider>('gemini');
+  const [aiPrompt, setAiPrompt] = useState('');
   const [saving, setSaving] = useState(false);
   const storageKey = useMemo(() => `diy-supplier-products:${supplier?.id ?? 'guest'}`, [supplier?.id]);
 
@@ -280,7 +292,11 @@ export default function NewSupplierProductPage() {
     }
   }
 
-  async function handleEditProductImage(mode: ImageEditMode, image = form.image) {
+  async function handleEditProductImage(
+    mode: ImageEditMode,
+    opts?: { provider?: ImageAiProvider; prompt?: string },
+    image = form.image,
+  ) {
     if (!image) {
       setErrors((prev) => ({ ...prev, image: 'Эхлээд зураг сонгоно уу' }));
       return;
@@ -288,9 +304,10 @@ export default function NewSupplierProductPage() {
 
     setImageEditMenuOpen(false);
     setImageEditing(true);
-    setAiStatus(mode === 'simple' ? 'Энгийн янзалж байна: BiRefNet + лого...' : 'AI-аар янзалж байна...');
+    const providerLabel = opts?.provider === 'openai' ? 'ChatGPT' : opts?.provider === 'gemini' ? 'Gemini' : 'AI';
+    setAiStatus(mode === 'simple' ? 'Энгийн янзалж байна: BiRefNet + лого...' : `${providerLabel}-аар янзалж байна...`);
     try {
-      const result = await editProductImage(image, mode);
+      const result = await editProductImage(image, mode, opts);
       if (!result.image) {
         throw new Error('AI зураг сервер зураг буцаасангүй');
       }
@@ -302,7 +319,7 @@ export default function NewSupplierProductPage() {
       setErrors((prev) => ({ ...prev, image: '' }));
       setAiStatus(mode === 'simple'
         ? 'Энгийн янзаллаа: гол объект цагаан дэвсгэр дээр, доод хэсэгт лого нэмэгдсэн.'
-        : 'AI-аар зураг янзлагдлаа: гол объект цагаан дэвсгэр дээр төвлөрсөн.');
+        : `${providerLabel}-аар зураг янзлагдлаа.`);
     } catch (err) {
       setAiStatus(
         err instanceof Error && err.name === 'AbortError'
@@ -540,21 +557,51 @@ export default function NewSupplierProductPage() {
                           <ChevronDown size={12} />
                         </button>
                         {imageEditMenuOpen && (
-                          <div className="absolute left-0 top-full z-20 mt-1 w-32 overflow-hidden rounded-lg border border-[var(--glass-border)] bg-card shadow-xl shadow-black/30">
+                          <div className="absolute left-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-card p-3 shadow-xl shadow-black/30 space-y-2.5">
                             <button
                               type="button"
                               onClick={() => handleEditProductImage('simple')}
-                              className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-foreground hover:bg-white/5"
+                              className="block w-full rounded-lg bg-white/5 px-3 py-2 text-left text-[11px] font-semibold text-foreground hover:bg-white/10"
                             >
-                              Энгийн
+                              ⚡ Энгийн (дэвсгэр цэвэрлээд лого нэмэх)
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleEditProductImage('ai')}
-                              className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-brand hover:bg-brand/10"
-                            >
-                              AI-аар
-                            </button>
+
+                            <div className="pt-1 border-t border-[var(--glass-border)]">
+                              <p className="mb-1.5 mt-1 text-[10px] font-bold uppercase tracking-wide text-foreground-muted">AI-аар янзлах</p>
+                              {/* Provider сонголт */}
+                              <div className="mb-2 flex gap-1.5">
+                                {AI_PROVIDERS.map((p) => (
+                                  <button
+                                    key={p.value}
+                                    type="button"
+                                    onClick={() => setAiProvider(p.value)}
+                                    className={`flex-1 rounded-lg border px-2 py-1.5 text-[10px] font-semibold transition-colors ${
+                                      aiProvider === p.value
+                                        ? 'border-brand bg-brand/10 text-brand'
+                                        : 'border-[var(--glass-border)] text-foreground-muted hover:text-foreground'
+                                    }`}
+                                  >
+                                    {p.label}
+                                  </button>
+                                ))}
+                              </div>
+                              {/* Prompt оруулах */}
+                              <textarea
+                                value={aiPrompt}
+                                onChange={(e) => setAiPrompt(e.target.value)}
+                                rows={2}
+                                placeholder="Жишээ: цэвэр цагаан дэвсгэр дээр төвд байрлуулж, гэрэлтүүлгийг сайжруул. (Хоосон бол стандартаар цэвэрлэнэ)"
+                                className="w-full resize-none rounded-lg border border-[var(--glass-border)] bg-surface px-2.5 py-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-brand"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleEditProductImage('ai', { provider: aiProvider, prompt: aiPrompt.trim() || undefined })}
+                                disabled={imageEditing}
+                                className="mt-2 w-full rounded-lg bg-brand px-3 py-2 text-[11px] font-bold text-white hover:bg-brand-hover disabled:opacity-60"
+                              >
+                                {imageEditing ? 'Янзалж байна...' : `${aiProvider === 'openai' ? 'ChatGPT' : 'Gemini'}-ээр янзлах ✨`}
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>

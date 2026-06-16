@@ -3,10 +3,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { setShopSessionToken } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { useTheme, useThemeMode } from '@/lib/theme';
+import { AnimatedSplash } from '@/components/AnimatedSplash';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,6 +22,7 @@ export default function RootLayout() {
   const token = useAppStore((state) => state.token);
   const C = useTheme();
   const mode = useThemeMode();
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
     setShopSessionToken(token);
@@ -43,6 +45,7 @@ export default function RootLayout() {
           <Stack.Screen name="track/[id]" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="search" options={{ animation: 'fade' }} />
         </Stack>
+        {!splashDone && <AnimatedSplash onFinish={() => setSplashDone(true)} />}
       </QueryClientProvider>
     </GestureHandlerRootView>
   );

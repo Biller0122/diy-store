@@ -151,6 +151,8 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
             <img
               src={product.image}
               alt={product.name}
+              loading="lazy"
+              decoding="async"
               onError={() => setImageFailed(true)}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />

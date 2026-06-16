@@ -75,6 +75,19 @@ const DELETE_SUPPLIER_PRODUCT_MUTATION = `
   }
 `;
 
+// Used to "heal" products that only exist in localStorage (server create had
+// failed at add-time, leaving a `local-…` id that updateSupplierProduct can't
+// find). Editing such a product re-creates it on the server instead.
+const CREATE_SUPPLIER_PRODUCT_MUTATION = `
+  mutation CreateSupplierProduct($input: SupplierProductInput!) {
+    createSupplierProduct(input: $input) {
+      id
+      name
+      slug
+    }
+  }
+`;
+
 const PRODUCT_CATEGORIES_QUERY = `
   query ProductCategories {
     collections(options: { take: 100, sort: { position: ASC } }) {
@@ -233,6 +246,40 @@ export default function SupplierProductsPage() {
     });
   }
 
+  function removeLocalProduct(slug: string) {
+    if (!supplierId) return;
+    try {
+      const key = `diy-supplier-products:${supplierId}`;
+      const arr = JSON.parse(localStorage.getItem(key) || '[]') as SupplierProduct[];
+      const next = arr.filter((p) => p.slug !== slug);
+      if (next.length) localStorage.setItem(key, JSON.stringify(next));
+      else localStorage.removeItem(key);
+    } catch {
+      // ignore local cleanup
+    }
+  }
+
+  async function createOnServer(product: SupplierProduct, input: {
+    name: string; price: number; stock: number; category: string; description: string; enabled: boolean;
+  }) {
+    if (!supplierId) throw new Error('Нэвтрэлтийн мэдээлэл олдсонгүй');
+    await vendureShopFetch(CREATE_SUPPLIER_PRODUCT_MUTATION, {
+      input: {
+        supplierId,
+        name: input.name,
+        slug: product.slug,
+        image: product.image || undefined,
+        price: input.price,
+        originalPrice: product.originalPrice,
+        stock: input.stock,
+        category: input.category,
+        description: input.description,
+        enabled: input.enabled,
+      },
+    });
+    removeLocalProduct(product.slug);
+  }
+
   async function saveEdit() {
     if (!editing) return;
     const nextError = !editForm.name.trim()
@@ -246,18 +293,32 @@ export default function SupplierProductsPage() {
     }
     setSavingId(editing.id);
     setEditError('');
+    const input = {
+      name: editForm.name.trim(),
+      price: parsePrice(editForm.price),
+      stock: Math.max(0, Number(editForm.stock) || 0),
+      category: editForm.category.trim(),
+      description: editForm.description.trim(),
+      enabled: editForm.enabled,
+    };
+    // Products that only live in localStorage (server create failed at add-time)
+    // have a `local-…` id the server can't update — create them instead.
+    const isLocalOnly = String(editing.id).startsWith('local-');
     try {
-      await vendureShopFetch(UPDATE_SUPPLIER_PRODUCT_MUTATION, {
-        id: editing.id,
-        input: {
-          name: editForm.name.trim(),
-          price: parsePrice(editForm.price),
-          stock: Math.max(0, Number(editForm.stock) || 0),
-          category: editForm.category.trim(),
-          description: editForm.description.trim(),
-          enabled: editForm.enabled,
-        },
-      });
+      if (isLocalOnly) {
+        await createOnServer(editing, input);
+      } else {
+        try {
+          await vendureShopFetch(UPDATE_SUPPLIER_PRODUCT_MUTATION, { id: editing.id, input });
+        } catch (err) {
+          // Stale/orphaned id — fall back to creating it fresh on the server.
+          if (/олдсонгүй|not found/i.test(err instanceof Error ? err.message : '')) {
+            await createOnServer(editing, input);
+          } else {
+            throw err;
+          }
+        }
+      }
       setEditing(null);
       await loadProducts();
     } catch (err) {

@@ -1,16 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import nodemailer from 'nodemailer';
-import { maskOtp } from '../utils/auth';
+import { isOtpMockMode, maskOtp } from '../utils/auth';
 
 type OtpEmailPurpose = 'login' | 'register' | 'password_reset';
+
+/**
+ * When SMTP isn't configured we must not silently pretend the code was sent.
+ * In mock mode the code is exposed/logged so skipping send is fine; in real
+ * mode a missing SMTP_HOST means the user can never receive the code, so we
+ * fail loudly instead of returning a misleading "code sent" success.
+ */
+function assertCanSend() {
+  if (process.env.SMTP_HOST) return true;
+  if (isOtpMockMode()) return false;
+  throw new Error('И-мэйл үйлчилгээ тохируулаагүй байна. Та дараа дахин оролдоно уу.');
+}
 
 @Injectable()
 export class EmailOtpService {
   async sendSupplierOtp(to: string, otp: string, purpose: OtpEmailPurpose) {
     const subject =
       purpose === 'register'
-        ? 'DIY Store нийлүүлэгчийн бүртгэл баталгаажуулах код'
-        : 'DIY Store нийлүүлэгчийн нэвтрэх код';
+        ? 'SHOPTOOL нийлүүлэгчийн бүртгэл баталгаажуулах код'
+        : 'SHOPTOOL нийлүүлэгчийн нэвтрэх код';
 
     const text = [
       'Сайн байна уу,',
@@ -20,7 +32,7 @@ export class EmailOtpService {
       '',
       'Хэрэв та энэ хүсэлтийг илгээгээгүй бол энэ имэйлийг үл тооно уу.',
       '',
-      'DIY Store',
+      'SHOPTOOL',
     ].join('\n');
 
     const html = `
@@ -30,11 +42,11 @@ export class EmailOtpService {
         <p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0">${otp}</p>
         <p>Код 5 минутын хугацаанд хүчинтэй.</p>
         <p style="color:#6b7280;font-size:13px">Хэрэв та энэ хүсэлтийг илгээгээгүй бол энэ имэйлийг үл тооно уу.</p>
-        <p>DIY Store</p>
+        <p>SHOPTOOL</p>
       </div>
     `;
 
-    if (!process.env.SMTP_HOST) {
+    if (!assertCanSend()) {
       console.log(`[Email OTP skipped: SMTP_HOST not set] ${to}: ${maskOtp(otp)}`);
       return;
     }
@@ -52,7 +64,7 @@ export class EmailOtpService {
     });
 
     const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.EMAIL_FROM || '"DIY Store" <noreply@diy-store.mn>',
+      from: process.env.SMTP_FROM || process.env.EMAIL_FROM || '"SHOPTOOL" <noreply@shoptool.mn>',
       to,
       subject,
       text,
@@ -64,8 +76,8 @@ export class EmailOtpService {
   async sendCustomerOtp(to: string, otp: string, purpose: 'login' | 'password_reset') {
     const subject =
       purpose === 'password_reset'
-        ? 'DIY Store нууц үг сэргээх код'
-        : 'DIY Store нэвтрэх баталгаажуулах код';
+        ? 'SHOPTOOL нууц үг сэргээх код'
+        : 'SHOPTOOL нэвтрэх баталгаажуулах код';
     return this.sendOtp(to, otp, subject);
   }
 
@@ -78,7 +90,7 @@ export class EmailOtpService {
       '',
       'Хэрэв та энэ хүсэлтийг илгээгээгүй бол энэ имэйлийг үл тооно уу.',
       '',
-      'DIY Store',
+      'SHOPTOOL',
     ].join('\n');
 
     const html = `
@@ -88,11 +100,11 @@ export class EmailOtpService {
         <p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0">${otp}</p>
         <p>Код 5 минутын хугацаанд хүчинтэй.</p>
         <p style="color:#6b7280;font-size:13px">Хэрэв та энэ хүсэлтийг илгээгээгүй бол энэ имэйлийг үл тооно уу.</p>
-        <p>DIY Store</p>
+        <p>SHOPTOOL</p>
       </div>
     `;
 
-    if (!process.env.SMTP_HOST) {
+    if (!assertCanSend()) {
       console.log(`[Email OTP skipped: SMTP_HOST not set] ${to}: ${maskOtp(otp)}`);
       return;
     }
@@ -110,7 +122,7 @@ export class EmailOtpService {
     });
 
     const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.EMAIL_FROM || '"DIY Store" <noreply@diy-store.mn>',
+      from: process.env.SMTP_FROM || process.env.EMAIL_FROM || '"SHOPTOOL" <noreply@shoptool.mn>',
       to,
       subject,
       text,

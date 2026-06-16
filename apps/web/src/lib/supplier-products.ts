@@ -215,13 +215,59 @@ function normalizeCategory(value?: string | null) {
     .trim();
 }
 
-export function supplierProductMatchesCategory(product: Pick<DbSupplierProduct, 'category'>, category: CategoryLike, includeChildren = false) {
+// Барааны нэр/ангилалаас түлхүүр үг уншиж, тохирох коллекцид автоматаар онооно.
+// Түлхүүр (key) нь коллекцийн нэр/slug дотор багтах ёстой токен; утга нь барааны
+// нэр/ангилалд хайх trigger үгс. Жишээ: "гагнуурын аппарат" → "багаж" коллекц.
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  багаж: [
+    'багаж', 'tool', 'өрөм', 'перфоратор', 'дрель', 'гагнуур', 'гагнуурын', 'аппарат',
+    'зүсэгч', 'зүсэх', 'хайч', 'шлифлэгч', 'grinder', 'өнгөлгөө', 'түлхүүр', 'болт',
+    'шураг', 'эрэг', 'диск', 'plasma', 'плазм', 'welder', 'welding', 'компрессор',
+    'генератор', 'болгон', 'хүнд ажилтны', 'cleaner',
+  ],
+  сантехник: [
+    'сантехник', 'ус ', 'хоолой', 'цорго', 'холигч', 'угаалтуур', 'суултуур', 'шүршүүр',
+    'ванн', 'клапан', 'насос', 'шламбур', 'смеситель',
+  ],
+  халаагуур: ['халаагуур', 'халаалт', 'радиатор', 'бойлер', 'зуух', 'дулаан', 'конвектор'],
+  цахилгаан: [
+    'цахилгаан', 'кабель', 'утас', 'розетк', 'залгуур', 'автомат', 'щит', 'led', 'чийдэн',
+    'лампа', 'выключатель', 'салаа', 'розетка',
+  ],
+  обой: ['обой', 'wallpaper', 'хуулга', 'наалт'],
+  будаг: ['будаг', 'paint', 'лак', 'эмульс', 'грунт', 'праймер', 'шпатл', 'шпакл'],
+  цемент: ['цемент', 'cement', 'бетон', 'зуурмаг', 'шохой', 'гипс', 'гипсэн', 'хольц'],
+  төмөр: ['төмөр', 'арматур', 'rebar', 'металл', 'профиль', 'хийц'],
+  мод: ['банз', 'хөрөө', 'фанер', 'osb', 'дүнз', 'тавц', 'модон'],
+  тоосго: ['тоосго', 'блок', 'керамзит'],
+  дээвэр: ['дээвэр', 'фасад', 'салхивч', 'ондулин', 'профнастил', 'шифер', 'хучилт'],
+  засал: ['засал', 'чимэглэл', 'декор', 'плинтус', 'карниз', 'хивс'],
+  шал: ['ламинат', 'паркет', 'линолеум', 'кафель', 'плитк'],
+};
+
+export function supplierProductMatchesCategory(
+  product: Pick<DbSupplierProduct, 'category' | 'name'>,
+  category: CategoryLike,
+  includeChildren = false,
+) {
   const productCategory = normalizeCategory(product.category);
-  if (!productCategory) return false;
+  const productText = normalizeCategory(`${product.category ?? ''} ${product.name ?? ''}`);
 
   const categories = includeChildren ? [category, ...(category.children ?? [])] : [category];
   const keys = categories.flatMap((item) => [normalizeCategory(item.slug), normalizeCategory(item.name)]).filter(Boolean);
-  return keys.some((key) => key === productCategory || key.includes(productCategory) || productCategory.includes(key));
+
+  // 1) Шууд тохирол — барааны хадгалсан ангилал коллекцийн нэр/slug-тай таарвал.
+  if (productCategory && keys.some((key) => key === productCategory || key.includes(productCategory) || productCategory.includes(key))) {
+    return true;
+  }
+
+  // 2) Түлхүүр үгийн тохирол — барааны нэр/ангилалаас тааруулна.
+  const categoryText = keys.join(' ');
+  for (const [token, triggers] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (!categoryText.includes(token)) continue;
+    if (triggers.some((trigger) => productText.includes(normalizeCategory(trigger)))) return true;
+  }
+  return false;
 }
 
 export function getSupplierProductCategoryCount(products: DbSupplierProduct[], category: CategoryLike, includeChildren = false) {
