@@ -45,7 +45,7 @@ env:
   WEB_CONTAINER_NAME: ${{ vars.WEB_CONTAINER_NAME || 'web' }}
   PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://shoptool.mn' }}
   NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL || '' }}
-  GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '' }}
+  GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '419448998311-li7lsj5voogcv58jpv8hbof34asqmnlj.apps.googleusercontent.com' }}
 
 jobs:
   detect-changes:
