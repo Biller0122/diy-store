@@ -122,7 +122,6 @@ const SUPPLIER_PRODUCTS_QUERY = `
         supplierId
         name
         slug
-        description
         category
         image
         price

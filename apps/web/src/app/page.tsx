@@ -6,7 +6,7 @@ import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { LazyProductGrid } from '@/components/ui/LazyProductGrid';
 import { HomepageBanner, type HomepageBannerData } from '@/components/ui/HomepageBanner';
 import { ARTICLES } from './how-to/articles';
-import { dbProductToCard, dbSupplierToCard, getDbSupplierProductCount, getDbSupplierProducts, getDbSuppliers, supplierProductMatchesCategory, type DbSupplierProduct } from '@/lib/supplier-products';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers, supplierProductMatchesCategory, type DbSupplierProduct } from '@/lib/supplier-products';
 import { BrandLogo } from '@/components/BrandLogo';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ScrollProgress } from '@/components/ScrollProgress';
@@ -425,11 +425,10 @@ function footerHref(label: string) {
 // ─── Page ─────────────────────────────────────────────────────
 
 export default async function HomePage() {
-  const [collections, catalogProducts, supplierProducts, supplierProductCount, suppliersResult, catalogProductCount, banners] = await Promise.all([
+  const [collections, catalogProducts, supplierProducts, suppliersResult, catalogProductCount, banners] = await Promise.all([
     getCollections(),
     getFeaturedProducts(),
     getDbSupplierProducts(),
-    getDbSupplierProductCount(),
     getDbSuppliers({ status: 'ACTIVE', take: 12 }),
     getCatalogProductCount(),
     getHomepageBanners(),
@@ -440,7 +439,9 @@ export default async function HomePage() {
     ...supplierProducts.map((product) => dbProductToCard(product, supplierById.get(product.supplierId))),
     ...catalogProducts,
   ];
-  const productCount = catalogProductCount + supplierProductCount;
+  // Барааны тоог аль хэдийн татсан жагсаалтаас тооцоолно — base64 зурагтай бүх барааг
+  // дахин татах (getDbSupplierProductCount) шаардлагагүй болгож, SSR-ийн дата хагасаар багасгав.
+  const productCount = catalogProductCount + supplierProducts.length;
   const displayCategories = collections;
   const displayProducts = products;
   const newProducts = displayProducts.slice(0, 12);
