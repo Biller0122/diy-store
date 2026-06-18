@@ -2,7 +2,22 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { clearVendureAdminAuthToken, vendureAdminFetch } from './vendure';
+import { clearVendureAdminAuthToken, clearVendureAuthToken, vendureAdminFetch } from './vendure';
+
+// Админаар нэвтрэхэд хэрэглэгчийн (customer) session-ийг цэвэрлэнэ — нэг хэрэглэгч + нэг
+// админ зэрэг идэвхтэй харагдахаас сэргийлнэ. Дугуй import үүсгэхгүйн тулд auth store-г
+// шууд биш, localStorage/cookie-г цэвэрлэх замаар салгана.
+function clearCustomerSession() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem('diy-store-auth');
+    document.cookie = 'diy-auth=; path=/; max-age=0';
+    void fetch('/api/account/session', { method: 'DELETE' });
+    clearVendureAuthToken();
+  } catch {
+    // ignore
+  }
+}
 
 export interface AdminUser {
   id: string;
@@ -74,6 +89,7 @@ export const useAdminStore = create<AdminState>()(
               role: 'Admin',
             };
             await createAdminSession(username, password);
+            clearCustomerSession();
             set({ admin, isLoading: false });
             return true;
           }
@@ -84,6 +100,7 @@ export const useAdminStore = create<AdminState>()(
           if (process.env.NODE_ENV === 'development' && (username === 'superadmin' || username === 'admin')) {
             const mockAdmin: AdminUser = { id: 'admin-1', identifier: username, firstName: 'Систем', lastName: 'Админ', role: 'SuperAdmin' };
             await createAdminSession(username, password);
+            clearCustomerSession();
             set({ admin: mockAdmin, isLoading: false });
             return true;
           }

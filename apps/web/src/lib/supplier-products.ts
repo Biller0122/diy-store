@@ -140,7 +140,7 @@ export async function getDbSupplierBySlug(slug: string) {
     const data = await vendureShopFetch<{ supplierBySlug: DbSupplier | null }>(
       SUPPLIER_BY_SLUG_QUERY,
       { slug },
-      { revalidate: 0 },
+      { revalidate: 120 },
     );
     return data.supplierBySlug;
   } catch {
@@ -153,7 +153,7 @@ export async function getDbSupplierById(id: string) {
     const data = await vendureShopFetch<{ supplier: DbSupplier | null }>(
       SUPPLIER_BY_ID_QUERY,
       { id },
-      { revalidate: 0 },
+      { revalidate: 120 },
     );
     return data.supplier;
   } catch {
@@ -166,7 +166,7 @@ export async function getDbSuppliers(options: { status?: string; take?: number; 
     const data = await vendureShopFetch<{ suppliers: { items: DbSupplier[]; total: number } }>(
       SUPPLIERS_QUERY,
       { status: options.status, take: options.take ?? 24, skip: options.skip ?? 0 },
-      { revalidate: 0 },
+      { revalidate: 120 },
     );
     return data.suppliers;
   } catch {
@@ -179,7 +179,7 @@ export async function getDbSupplierProducts(supplierId?: string) {
     const data = await vendureShopFetch<{ supplierProducts: { items: DbSupplierProduct[]; total: number } }>(
       SUPPLIER_PRODUCTS_QUERY,
       { supplierId },
-      { revalidate: 0 },
+      { revalidate: 120 },
     );
     return data.supplierProducts.items;
   } catch {
@@ -192,7 +192,7 @@ export async function getDbSupplierProductCount(supplierId?: string) {
     const data = await vendureShopFetch<{ supplierProducts: { total: number } }>(
       SUPPLIER_PRODUCTS_QUERY,
       { supplierId },
-      { revalidate: 0 },
+      { revalidate: 120 },
     );
     return data.supplierProducts.total ?? 0;
   } catch {

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, KeyRound, Mail, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Mail, ShieldCheck, Store } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { BrandLogo } from '@/components/BrandLogo';
 
@@ -413,6 +413,14 @@ function LoginForm() {
             </div>
           )}
         </div>
+
+        {/* Нийлүүлэгчээр нэвтрэх */}
+        <Link
+          href="/supplier/login"
+          className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-[var(--glass-border)] bg-card py-3 text-sm font-bold text-foreground transition-colors hover:border-brand/40 hover:text-brand"
+        >
+          <Store size={16} className="text-brand" /> Нийлүүлэгчээр нэвтрэх
+        </Link>
 
         <p className="mt-6 text-center text-xs text-foreground-muted">
           <Link href="/" className="transition-colors hover:text-brand">

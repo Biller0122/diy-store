@@ -237,12 +237,8 @@ async function fetchResults(term: string): Promise<SearchResult[]> {
     const categoryNames = new Map(categories.collections.items.map((category) => [category.slug, category.name]));
     return data.supplierProducts.items
       .filter((item) => item.enabled && item.stock > 0)
-      .filter((item) => matchesSearch(term, [
-        item.name,
-        item.slug,
-        item.category,
-        categoryNames.get(item.category ?? ''),
-      ]))
+      // Зөвхөн барааны нэр/slug-аар хайна (төрөл/ангилалаар биш)
+      .filter((item) => matchesSearch(term, [item.name, item.slug]))
       .slice(0, 6)
       .map((item) => ({
         id: `supplier-${item.id}`,

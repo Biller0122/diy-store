@@ -6,12 +6,13 @@ import { useRouter, usePathname } from 'next/navigation';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Package, ShoppingCart, DollarSign,
-  Star, Settings, LogOut, Menu, X, ChevronRight, Bell,
+  Star, Settings, LogOut, Menu, X, ChevronRight,
 } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { Providers } from '@/components/providers';
 import { getCustomerHomeHref } from '@/lib/portal-links';
 import { BrandLogo } from '@/components/BrandLogo';
+import { SupplierNotifications } from '@/components/supplier/SupplierNotifications';
 
 const NAV = [
   { href: '/supplier',          icon: LayoutDashboard, label: 'Хяналтын самбар' },
@@ -177,10 +178,7 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
               </button>
               <h1 className="text-sm font-semibold text-foreground">{pageTitle}</h1>
               <div className="ml-auto flex items-center gap-2">
-                <button className="relative p-2 rounded-xl hover:bg-white/5 text-foreground-muted">
-                  <Bell size={16} />
-                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand" />
-                </button>
+                <SupplierNotifications />
                 <div className="w-7 h-7 rounded-full bg-brand/20 flex items-center justify-center">
                   <span className="text-[11px] font-bold text-brand">{supplier?.ownerName?.[0] ?? 'S'}</span>
                 </div>

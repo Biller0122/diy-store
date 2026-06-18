@@ -11,6 +11,10 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ScrollProgress } from '@/components/ScrollProgress';
 
+// ISR: нүүр хуудсыг 120 секунд тутамд дахин үүсгэж кэшлэнэ — backend-ээс
+// хүсэлт бүрт дахин татахгүй тул эхний ачаалал хурдан.
+export const revalidate = 120;
+
 // ─── Data fetching ────────────────────────────────────────────
 
 function localPortalBase(port: number) {
@@ -103,7 +107,7 @@ async function getFeaturedProducts(): Promise<ProductCardData[]> {
 
 async function getCatalogProductCount() {
   try {
-    const data = await vendureShopFetch<{ search: { totalItems: number } }>(FEATURED_QUERY, undefined, { revalidate: 0 });
+    const data = await vendureShopFetch<{ search: { totalItems: number } }>(FEATURED_QUERY, undefined, { revalidate: 120 });
     return data.search?.totalItems ?? 0;
   } catch {
     return 0;
@@ -115,7 +119,7 @@ async function getHomepageBanners(): Promise<HomepageBannerData[]> {
     const data = await vendureShopFetch<{ homepageBanners: HomepageBannerData[] }>(
       HOMEPAGE_BANNERS_QUERY,
       undefined,
-      { revalidate: 0 },
+      { revalidate: 120 },
     );
     return data.homepageBanners ?? [];
   } catch {

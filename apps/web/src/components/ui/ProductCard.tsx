@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Heart, Star, Zap } from 'lucide-react';
+import { ShoppingCart, Heart, Star, Zap, Store } from 'lucide-react';
 import Link from 'next/link';
 import { useCartStore } from '@/lib/cart-store';
 import { useWishlistStore } from '@/lib/wishlist-store';
@@ -212,6 +212,14 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
           <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug group-hover:text-brand transition-colors">
             {product.name}
           </h3>
+
+          {/* Store name */}
+          {product.supplierName && (
+            <p className="flex items-center gap-1 text-[11px] text-foreground-muted truncate">
+              <Store size={11} className="shrink-0 text-brand" />
+              <span className="truncate">{product.supplierName}</span>
+            </p>
+          )}
 
           {/* Stars */}
           {(product.rating !== undefined) && (

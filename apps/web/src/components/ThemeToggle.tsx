@@ -16,7 +16,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
   useEffect(() => setMounted(true), []);
 
-  const activeTheme = mounted ? theme ?? 'dark' : 'dark';
+  const activeTheme = mounted ? theme ?? 'light' : 'light';
 
   return (
     <div className={cn(

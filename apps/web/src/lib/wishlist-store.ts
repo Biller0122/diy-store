@@ -16,16 +16,20 @@ export interface WishlistItem {
 
 interface WishlistState {
   items: WishlistItem[];
+  ownerId: string | null;
   addItem: (item: WishlistItem) => void;
   removeItem: (variantId: string) => void;
   hasItem: (variantId: string) => boolean;
   clear: () => void;
+  /** Reset the wishlist when the logged-in user changes. */
+  syncOwner: (id: string | null) => void;
 }
 
 export const useWishlistStore = create<WishlistState>()(
   persist(
     (set, get) => ({
       items: [],
+      ownerId: null,
 
       addItem: (item) => {
         if (!get().hasItem(item.variantId)) {
@@ -40,6 +44,8 @@ export const useWishlistStore = create<WishlistState>()(
       hasItem: (variantId) => get().items.some((i) => i.variantId === variantId),
 
       clear: () => set({ items: [] }),
+
+      syncOwner: (id) => set((s) => (s.ownerId === id ? {} : { ownerId: id, items: [] })),
     }),
     { name: 'diy-store-wishlist' },
   ),

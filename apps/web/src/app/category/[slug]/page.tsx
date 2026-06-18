@@ -70,6 +70,7 @@ type SearchParams = {
   facets?: string;
   availability?: string;
   promo?: string;
+  q?: string;
 };
 
 type Props = {
@@ -135,6 +136,7 @@ async function searchProducts(slug: string, sp: SearchParams) {
     groupByProduct: true,
     take: PAGE_SIZE,
     skip: (page - 1) * PAGE_SIZE,
+    ...(sp.q ? { term: sp.q } : {}),
     ...(sortInput ? { sort: sortInput } : {}),
     ...(facetValueIds.length ? { facetValueIds } : {}),
     ...(minMNT !== undefined && maxMNT !== undefined
@@ -186,8 +188,19 @@ export default async function CategoryPage({ params, searchParams }: Props) {
       totalItems: (category.productVariants?.totalItems ?? 0) + getSupplierProductCategoryCount(supplierProducts, category),
     },
   }));
+  const nameQuery = (sp.q ?? '').trim().toLowerCase();
+  const minMNT = sp.minPrice ? parseInt(sp.minPrice) * 100 : undefined;
+  const maxMNT = sp.maxPrice ? parseInt(sp.maxPrice) * 100 : undefined;
+  const wantInStock = sp.availability === 'in-stock' || sp.availability === 'true';
+  const wantPromo = sp.promo === 'true' || sp.promo === '1';
   const supplierCategoryProducts = supplierProducts
     .filter((product) => product.enabled && collection && supplierById.has(product.supplierId) && supplierProductMatchesCategory(product, collection, true))
+    // Ангилал доторх нэрээр хайх + шүүлтүүр (үнэ, нөөц, хямдрал)
+    .filter((product) => !nameQuery || product.name.toLowerCase().includes(nameQuery))
+    .filter((product) => minMNT === undefined || product.price >= minMNT)
+    .filter((product) => maxMNT === undefined || product.price <= maxMNT)
+    .filter((product) => !wantInStock || product.stock > 0)
+    .filter((product) => !wantPromo || (product.originalPrice != null && product.originalPrice > product.price))
     .map((product) => dbProductToCard(product, supplierById.get(product.supplierId)));
 
   const totalItems = (searchResult?.totalItems ?? 0) + supplierCategoryProducts.length;
@@ -242,6 +255,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         currentPage={currentPage}
         totalPages={totalPages}
         subcategories={subcategories}
+        searchQuery={sp.q ?? ''}
       >
         {products.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--glass-border)] py-24 text-center">

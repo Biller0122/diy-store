@@ -2,7 +2,9 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { clearVendureAuthToken, setVendureAuthToken, vendureShopFetch } from './vendure';
+import { clearVendureAdminAuthToken, clearVendureAuthToken, setVendureAuthToken, vendureShopFetch } from './vendure';
+import { useOrderStore } from './order-store';
+import { useWishlistStore } from './wishlist-store';
 
 export interface ActiveCustomer {
   id: string;
@@ -154,14 +156,31 @@ const RESET_PASSWORD_WITH_OTP_MUTATION = `
   }
 `;
 
-function createMockCustomer(email: string): ActiveCustomer {
-  return {
-    id: 'customer-dev-1',
-    firstName: 'Туршилтын',
-    lastName: 'Хэрэглэгч',
-    emailAddress: email,
-    phoneNumber: '99112233',
-  };
+// Хэрэглэгч нэвтрэхэд админ session-ийг цэвэрлэнэ (нэг хэрэглэгч + нэг админ зэрэг
+// идэвхтэй байхгүй). Дугуй import үүсгэхгүйн тулд admin store-г шууд биш, localStorage/
+// cookie-г цэвэрлэх замаар салгана.
+function clearAdminSession() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem('diy-admin-auth');
+    document.cookie = 'diy-admin=; path=/; max-age=0';
+    void fetch('/api/admin/session', { method: 'DELETE' });
+    clearVendureAdminAuthToken();
+  } catch {
+    // ignore
+  }
+}
+
+// Нэвтэрсэн хэрэглэгчид холбож, өмнөх хэрэглэгчийн локал дата (захиалга, хадгалсан)-г
+// цэвэрлэнэ — шинэ хэрэглэгч хэзээ ч өөр хүний "dummy" мэдээллийг харахгүй.
+function onCustomerAuthenticated(customer: ActiveCustomer) {
+  clearAdminSession();
+  try {
+    useOrderStore.getState().syncOwner(customer.id);
+    useWishlistStore.getState().syncOwner(customer.id);
+  } catch {
+    // ignore
+  }
 }
 
 function isNetworkError(error: unknown) {
@@ -180,6 +199,7 @@ async function applyCustomerAuth(result: { success?: boolean; message?: string; 
   setVendureAuthToken(result.token);
   set({ customer: result.customer, token: result.token, isLoading: false, error: null });
   await createCustomerSession();
+  onCustomerAuthenticated(result.customer);
   return true;
 }
 
@@ -208,6 +228,7 @@ export const useAuthStore = create<AuthState>()(
             if (result.token) setVendureAuthToken(result.token);
             set({ customer: result.customer, token: result.token ?? null, isLoading: false, error: null });
             await createCustomerSession();
+            onCustomerAuthenticated(result.customer);
             return true;
           } else {
             const errorCode = (result as any).errorCode as string | undefined;
@@ -312,6 +333,12 @@ export const useAuthStore = create<AuthState>()(
         set({ customer: null, token: null, isLoading: false });
         clearVendureAuthToken();
         clearCustomerSession();
+        try {
+          useOrderStore.getState().syncOwner(null);
+          useWishlistStore.getState().syncOwner(null);
+        } catch {
+          // ignore
+        }
       },
 
       fetchActiveCustomer: async () => {
@@ -327,9 +354,15 @@ export const useAuthStore = create<AuthState>()(
           if (data.activeCustomer) {
             set({ customer: data.activeCustomer });
             await createCustomerSession();
+            onCustomerAuthenticated(data.activeCustomer);
           } else {
-            set({ customer: null });
-            clearCustomerSession();
+            // Сервер session байхгүй ч локалд хадгалсан хэрэглэгч байвал гаргахгүй —
+            // хэрэглэгч өөрөө "Гарах" дартал session хадгалагдана.
+            const stored = get().customer;
+            if (!stored) {
+              set({ customer: null });
+              clearCustomerSession();
+            }
           }
         } catch (err) {
           if (process.env.NODE_ENV === 'development' && isNetworkError(err)) {
