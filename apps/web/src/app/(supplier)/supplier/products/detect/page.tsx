@@ -19,6 +19,7 @@ type Detected = {
   thumb: string;
   selected: boolean;
   price: string;
+  stock: string;
   enabled: boolean;
   studioImage?: string; // AI-аар үүсгэсэн студио зураг (хадгалахаас өмнө)
   generationSeconds?: number;
@@ -116,8 +117,6 @@ export default function DetectProductsPage() {
   const [detecting, setDetecting] = useState(false);
   const [items, setItems] = useState<Detected[]>([]);
   const [error, setError] = useState('');
-  const [price, setPrice] = useState('');
-  const [stock, setStock] = useState('1');
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
@@ -170,6 +169,7 @@ export default function DetectProductsPage() {
         thumb: cropRegion(img, p.box_2d, 0.08),
         selected: p.confidence >= 70,
         price: '',
+        stock: '',
         enabled: true,
         status: 'idle',
       }));
@@ -184,10 +184,6 @@ export default function DetectProductsPage() {
 
   function update(id: string, patch: Partial<Detected>) {
     setItems((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-  }
-
-  function priceFor(item: Detected) {
-    return parsePrice(item.price) > 0 ? parsePrice(item.price) : parsePrice(price);
   }
 
   // Алхам 1: сонгосон бараа бүрийг тухайн төрлийн prompt-оор студио зураг болгож
@@ -230,8 +226,12 @@ export default function DetectProductsPage() {
     if (!supplier?.id) { setError('Нэвтрэлт олдсонгүй'); return; }
     const targets = items.filter((i) => i.selected && i.studioImage);
     if (targets.length === 0) { setError('Эхлээд зураг үүсгэнэ үү'); return; }
-    const noPrice = targets.filter((i) => priceFor(i) <= 0);
-    if (noPrice.length > 0) { setError(`${noPrice.length} барааны үнэ дутуу байна (карт дээр эсвэл "бүгдэд" талбарт оруулна уу)`); return; }
+    const missingNames = targets.filter((i) => !i.label.trim());
+    if (missingNames.length > 0) { setError(`${missingNames.length} барааны нэр дутуу байна`); return; }
+    const noPrice = targets.filter((i) => parsePrice(i.price) <= 0);
+    if (noPrice.length > 0) { setError(`${noPrice.length} барааны үнэ дутуу байна`); return; }
+    const noStock = targets.filter((i) => i.stock.trim() === '' || !Number.isFinite(Number(i.stock)) || Number(i.stock) < 0);
+    if (noStock.length > 0) { setError(`${noStock.length} барааны үлдэгдэл дутуу эсвэл буруу байна`); return; }
     setSaving(true); setError(''); setSavedCount(0);
     let ok = 0;
     for (const item of targets) {
@@ -243,8 +243,8 @@ export default function DetectProductsPage() {
             name: item.label.trim(),
             slug: `${makeProductSlug(item.label)}-${Date.now()}-${ok}`,
             image: item.studioImage,
-            price: priceFor(item),
-            stock: Math.max(0, Number(stock) || 0),
+            price: parsePrice(item.price),
+            stock: Math.max(0, Math.round(Number(item.stock))),
             category: item.category,
             description: '',
             enabled: item.enabled,
@@ -302,21 +302,20 @@ export default function DetectProductsPage() {
       {/* Detected list */}
       {items.length > 0 && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-[var(--glass-border)] bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--glass-border)] bg-card p-4">
             <div>
               <p className="text-sm font-bold text-foreground">{items.length} бараа танигдлаа · {selectedCount} сонгосон</p>
-              <p className="text-xs text-foreground-muted">Сонгох/хасах, нэр/ангиллыг засаж болно</p>
+              <p className="text-xs text-foreground-muted">
+                {generatedCount > 0
+                  ? 'Үүссэн бараа бүрийн нэр, төрөл, үнэ, үлдэгдлийг шалгаад нэмнэ'
+                  : 'Сонгох/хасах, нэр/төрлийг засаад зураг үүсгэнэ'}
+              </p>
             </div>
-            <div className="flex gap-3">
-              <label className="space-y-1">
-                <span className="text-[11px] text-foreground-muted">Үнэ (бүгдэд анхдагч)</span>
-                <input value={price} inputMode="numeric" onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ''))} placeholder="59900" className="w-32 rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
-              </label>
-              <label className="space-y-1">
-                <span className="text-[11px] text-foreground-muted">Нөөц</span>
-                <input value={stock} inputMode="numeric" onChange={(e) => setStock(e.target.value.replace(/[^\d]/g, ''))} className="w-20 rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
-              </label>
-            </div>
+            {generatedCount > 0 && (
+              <span className="rounded-full bg-success/15 px-3 py-1 text-xs font-bold text-success">
+                {generatedCount} зураг бэлэн
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -332,30 +331,49 @@ export default function DetectProductsPage() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.thumb} alt={item.label} className="h-28 w-full rounded-xl bg-surface object-contain" />
                 <input value={item.label} onChange={(e) => update(item.id, { label: e.target.value })} className="mt-2 w-full rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-brand" />
-                <div className="mt-1 flex items-center gap-1">
-                  <select value={STUDIO_CATEGORY_KEYS.includes(item.category) ? item.category : 'бусад'} onChange={(e) => update(item.id, { category: e.target.value })} className="flex-1 rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1 text-[11px] text-foreground outline-none">
-                    {STUDIO_CATEGORY_KEYS.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <span className="text-[10px] text-foreground-muted">{item.confidence}%</span>
+                <div className="mt-1 flex items-end gap-1">
+                  <label className="flex-1 space-y-0.5">
+                    {item.studioImage && <span className="text-[9px] text-foreground-muted">Төрөл *</span>}
+                    <select value={STUDIO_CATEGORY_KEYS.includes(item.category) ? item.category : 'бусад'} onChange={(e) => update(item.id, { category: e.target.value })} className="w-full rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1 text-[11px] text-foreground outline-none">
+                      {STUDIO_CATEGORY_KEYS.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </label>
+                  <span className="pb-1 text-[10px] text-foreground-muted">{item.confidence}%</span>
                 </div>
-                {/* Үнэ + харагдах эсэх */}
-                <div className="mt-1 flex items-center gap-1">
-                  <input
-                    value={item.price}
-                    inputMode="numeric"
-                    onChange={(e) => update(item.id, { price: e.target.value.replace(/[^\d]/g, '') })}
-                    placeholder={price ? `${price} (бүгдэд)` : 'Үнэ ₮'}
-                    className="flex-1 rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-brand"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => update(item.id, { enabled: !item.enabled })}
-                    title={item.enabled ? 'Идэвхтэй' : 'Нуусан'}
-                    className={`rounded-lg px-2 py-1 text-[10px] font-bold ${item.enabled ? 'bg-success/15 text-success' : 'bg-foreground-muted/15 text-foreground-muted'}`}
-                  >
-                    {item.enabled ? 'Идэвхтэй' : 'Нуусан'}
-                  </button>
-                </div>
+                {item.studioImage && (
+                  <div className="mt-2 space-y-1.5 rounded-xl border border-success/20 bg-success/5 p-2">
+                    <p className="text-[10px] font-bold text-success">Барааны мэдээлэл</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <label className="space-y-0.5">
+                        <span className="text-[9px] text-foreground-muted">Үнэ ₮ *</span>
+                        <input
+                          value={item.price}
+                          inputMode="numeric"
+                          onChange={(e) => update(item.id, { price: e.target.value.replace(/[^\d]/g, '') })}
+                          placeholder="59900"
+                          className="w-full rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-brand"
+                        />
+                      </label>
+                      <label className="space-y-0.5">
+                        <span className="text-[9px] text-foreground-muted">Үлдэгдэл *</span>
+                        <input
+                          value={item.stock}
+                          inputMode="numeric"
+                          onChange={(e) => update(item.id, { stock: e.target.value.replace(/[^\d]/g, '') })}
+                          placeholder="1"
+                          className="w-full rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-brand"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => update(item.id, { enabled: !item.enabled })}
+                      className={`w-full rounded-lg px-2 py-1 text-[10px] font-bold ${item.enabled ? 'bg-success/15 text-success' : 'bg-foreground-muted/15 text-foreground-muted'}`}
+                    >
+                      {item.enabled ? 'Дэлгүүрт харагдана' : 'Нуусан байдлаар нэмнэ'}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -370,9 +388,9 @@ export default function DetectProductsPage() {
 
           {/* Алхам 2: хянаад дэлгүүрт нэмэх (зураг үүссэний дараа) */}
           {generatedCount > 0 && (
-            <button onClick={() => void saveAll()} disabled={saving || generating} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-success/40 bg-success/10 px-5 py-3.5 text-sm font-bold text-success hover:bg-success/15 disabled:opacity-60">
+            <button onClick={() => void saveAll()} disabled={saving || generating} className="sticky bottom-4 z-20 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-success px-5 py-4 text-sm font-bold text-white shadow-xl shadow-success/20 hover:brightness-95 disabled:opacity-60">
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              {saving ? `Дэлгүүрт нэмж байна... (${savedCount}/${generatedCount})` : `✓ Хянасан — ${generatedCount} барааг дэлгүүрт нэмэх`}
+              {saving ? `Үндсэн системд бүртгэж байна... (${savedCount}/${generatedCount})` : `${generatedCount} бараа нэмэх`}
             </button>
           )}
         </div>
