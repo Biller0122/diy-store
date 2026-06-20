@@ -8,7 +8,7 @@ BACKGROUND: clean seamless pure-white (#FFFFFF) studio background.
 LIGHTING: soft even studio lighting with a subtle natural contact shadow under the product.
 FRAMING: center the product, fill ~85% of the frame, perfectly upright, sharp focus, square 1:1.
 PRESENTATION: ${presentation}.
-CLEANUP: remove all background clutter, hands, props, price tags and watermarks.
+CLEANUP: remove all background clutter, other products, hands, props, price tags and watermarks.
 KEEP: do not alter the product — keep its exact shape, colour, material, proportions, labels and printed text. Do not add any text, logo or graphics.
 OUTPUT: photorealistic, high resolution.`;
 }
@@ -31,12 +31,14 @@ const PRESENTATION: Record<string, { product: string; presentation: string }> = 
   бусад: { product: 'this product', presentation: 'a clean 3/4 hero angle that best shows the product’s overall form and key details' },
 };
 
-/** Барааны ангилал (+ нэр)-аас тохирох студио prompt угсарна. */
-export function buildStudioPrompt(category?: string | null, label?: string | null): string {
+/**
+ * Барааны ангилалаас тохирох студио prompt угсарна. Барааны НЭРИЙГ зориуд
+ * оруулахгүй — учир нь image модель нэрийг зураг дээр текст болгож бичдэг.
+ */
+export function buildStudioPrompt(category?: string | null): string {
   const key = (category ?? '').toLowerCase().trim();
   const entry = PRESENTATION[key] ?? PRESENTATION['бусад'];
-  const product = label ? `${label} (${entry.product})` : entry.product;
-  return base(product, entry.presentation);
+  return base(entry.product, entry.presentation);
 }
 
 export const STUDIO_CATEGORY_KEYS = Object.keys(PRESENTATION);

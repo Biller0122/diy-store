@@ -223,6 +223,13 @@ services:
       NEXT_PUBLIC_SITE_URL: https://${MERCHANT_DOMAIN:-localhost}
       NEXT_PUBLIC_SOCKET_URL: https://${MERCHANT_DOMAIN:-localhost}
       NEXT_PUBLIC_APP_PORTAL: merchant
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_DETECT_MODEL: ${GEMINI_DETECT_MODEL:-gemini-3.1-flash-lite}
+      GEMINI_DETECT_TIMEOUT_MS: ${GEMINI_DETECT_TIMEOUT_MS:-120000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-2}
+      OPENAI_EDIT_TIMEOUT_MS: ${OPENAI_EDIT_TIMEOUT_MS:-180000}
       NODE_OPTIONS: --max-old-space-size=1024
     depends_on:
       - server

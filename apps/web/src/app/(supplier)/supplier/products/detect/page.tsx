@@ -18,7 +18,11 @@ type Detected = {
   confidence: number;
   thumb: string;
   selected: boolean;
-  status: 'idle' | 'working' | 'done' | 'error';
+  price: string;
+  enabled: boolean;
+  studioImage?: string; // AI-аар үүсгэсэн студио зураг (хадгалахаас өмнө)
+  generationSeconds?: number;
+  status: 'idle' | 'generating' | 'generated' | 'saving' | 'saved' | 'error';
   error?: string;
 };
 
@@ -52,6 +56,15 @@ function resizeImage(file: File, maxSize = 1400, quality = 0.85): Promise<string
   });
 }
 
+function readOriginalImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Эх зураг уншихад алдаа гарлаа'));
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.readAsDataURL(file);
+  });
+}
+
 function cropRegion(img: HTMLImageElement, box: [number, number, number, number], padPct = 0.08): string {
   const [ymin, xmin, ymax, xmax] = box;
   const W = img.naturalWidth, H = img.naturalHeight;
@@ -60,22 +73,38 @@ function cropRegion(img: HTMLImageElement, box: [number, number, number, number]
   const padX = w * padPct, padY = h * padPct;
   x = Math.max(0, x - padX); y = Math.max(0, y - padY);
   w = Math.min(W - x, w + 2 * padX); h = Math.min(H - y, h + 2 * padY);
+  // Keep enough pixels for a useful preview and for the image-edit model.
+  // Detection uses a resized copy, but crops always come from the original.
+  const longEdge = Math.max(w, h);
+  const outputLongEdge = Math.min(1800, Math.max(900, longEdge));
+  const scale = outputLongEdge / Math.max(1, longEdge);
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(w)); canvas.height = Math.max(1, Math.round(h));
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
   const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', 0.9);
+  return canvas.toDataURL('image/jpeg', 0.96);
 }
 
-async function studioEdit(image: string, category: string, label: string): Promise<string> {
+async function studioEdit(image: string, category: string): Promise<{ image: string; seconds?: number }> {
   const res = await fetch('/edit-product-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image, outputSize: 900, mode: 'studio', prompt: buildStudioPrompt(category, label) }),
+    // This flow must always be a real OpenAI image edit. `mode: studio` may
+    // silently fall back to another engine, so use the provider explicitly.
+    body: JSON.stringify({
+      image,
+      outputSize: 900,
+      mode: 'ai',
+      provider: 'openai',
+      prompt: buildStudioPrompt(category),
+    }),
   });
-  const json = (await res.json()) as { image?: string; error?: string };
+  const json = (await res.json()) as { image?: string; error?: string; seconds?: number };
   if (!res.ok || json.error || !json.image) throw new Error(json.error || 'Студио зураг үүсгэхэд алдаа');
-  return json.image;
+  return { image: json.image, seconds: json.seconds };
 }
 
 export default function DetectProductsPage() {
@@ -89,19 +118,28 @@ export default function DetectProductsPage() {
   const [error, setError] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('1');
+  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
 
   const selectedCount = items.filter((i) => i.selected).length;
+  const generatedCount = items.filter((i) => i.selected && i.studioImage).length;
 
   async function onUpload(file: File) {
     setError(''); setItems([]); setSavedCount(0);
     try {
-      const data = await resizeImage(file);
-      setOriginal(data);
-      const img = new Image();
-      img.onload = () => { imgRef.current = img; };
-      img.src = data;
+      const [detectionImage, sourceImage] = await Promise.all([
+        resizeImage(file),
+        readOriginalImage(file),
+      ]);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const source = new Image();
+        source.onerror = () => reject(new Error('Эх зургийн формат буруу байна'));
+        source.onload = () => resolve(source);
+        source.src = sourceImage;
+      });
+      imgRef.current = img;
+      setOriginal(detectionImage);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Зураг алдаа');
     }
@@ -131,6 +169,8 @@ export default function DetectProductsPage() {
         confidence: p.confidence,
         thumb: cropRegion(img, p.box_2d, 0.08),
         selected: p.confidence >= 70,
+        price: '',
+        enabled: true,
         status: 'idle',
       }));
       setItems(detected);
@@ -146,40 +186,79 @@ export default function DetectProductsPage() {
     setItems((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
-  async function generateAndSave() {
-    if (!supplier?.id) { setError('Нэвтрэлт олдсонгүй'); return; }
-    if (parsePrice(price) <= 0) { setError('Үнэ оруулна уу'); return; }
+  function priceFor(item: Detected) {
+    return parsePrice(item.price) > 0 ? parsePrice(item.price) : parsePrice(price);
+  }
+
+  // Алхам 1: сонгосон бараа бүрийг тухайн төрлийн prompt-оор студио зураг болгож
+  // ҮҮСГЭНЭ (хадгалахгүй) — жагсаалт дээр харагдаж, эзэн хянана.
+  async function generateImages() {
     const targets = items.filter((i) => i.selected);
     if (targets.length === 0) { setError('Дор хаяж нэг бараа сонгоно уу'); return; }
+    setGenerating(true); setError('');
+    const failures: string[] = [];
+    // Run up to three image edits together. Larger selections continue in
+    // batches of three to avoid sudden API rate-limit spikes.
+    for (let start = 0; start < targets.length; start += 3) {
+      const batch = targets.slice(start, start + 3);
+      await Promise.all(batch.map(async (item) => {
+        update(item.id, { status: 'generating', error: undefined, generationSeconds: undefined });
+        try {
+          // Give OpenAI the selected product and a little surrounding context,
+          // matching the successful single-product edit workflow.
+          const crop = cropRegion(imgRef.current!, item.box_2d, 0.12);
+          const studio = await studioEdit(crop, item.category);
+          update(item.id, {
+            studioImage: studio.image,
+            thumb: studio.image,
+            status: 'generated',
+            generationSeconds: studio.seconds,
+          });
+        } catch (e) {
+          const message = e instanceof Error ? e.message : 'Зураг үүсгэх алдаа';
+          failures.push(`${item.label}: ${message}`);
+          update(item.id, { status: 'error', error: message });
+        }
+      }));
+    }
+    if (failures.length > 0) setError(failures.join('\n'));
+    setGenerating(false);
+  }
+
+  // Алхам 2: үүсгэсэн зурагтай бараануудыг дэлгүүрт НЭМНЭ.
+  async function saveAll() {
+    if (!supplier?.id) { setError('Нэвтрэлт олдсонгүй'); return; }
+    const targets = items.filter((i) => i.selected && i.studioImage);
+    if (targets.length === 0) { setError('Эхлээд зураг үүсгэнэ үү'); return; }
+    const noPrice = targets.filter((i) => priceFor(i) <= 0);
+    if (noPrice.length > 0) { setError(`${noPrice.length} барааны үнэ дутуу байна (карт дээр эсвэл "бүгдэд" талбарт оруулна уу)`); return; }
     setSaving(true); setError(''); setSavedCount(0);
     let ok = 0;
     for (const item of targets) {
-      update(item.id, { status: 'working' });
+      update(item.id, { status: 'saving' });
       try {
-        const crop = cropRegion(imgRef.current!, item.box_2d, 0.08);
-        const studio = await studioEdit(crop, item.category, item.label);
         await vendureShopFetch(CREATE_SUPPLIER_PRODUCT_MUTATION, {
           input: {
             supplierId: supplier.id,
             name: item.label.trim(),
             slug: `${makeProductSlug(item.label)}-${Date.now()}-${ok}`,
-            image: studio,
-            price: parsePrice(price),
+            image: item.studioImage,
+            price: priceFor(item),
             stock: Math.max(0, Number(stock) || 0),
             category: item.category,
             description: '',
-            enabled: true,
+            enabled: item.enabled,
           },
         });
-        update(item.id, { status: 'done' });
+        update(item.id, { status: 'saved' });
         ok += 1;
         setSavedCount(ok);
       } catch (e) {
-        update(item.id, { status: 'error', error: e instanceof Error ? e.message : 'Алдаа' });
+        update(item.id, { status: 'error', error: e instanceof Error ? e.message : 'Хадгалах алдаа' });
       }
     }
     setSaving(false);
-    if (ok > 0) setTimeout(() => router.push('/supplier/products'), 1200);
+    if (ok > 0) setTimeout(() => router.push('/supplier/products'), 1400);
   }
 
   return (
@@ -230,8 +309,8 @@ export default function DetectProductsPage() {
             </div>
             <div className="flex gap-3">
               <label className="space-y-1">
-                <span className="text-[11px] text-foreground-muted">Үнэ (бүгдэд) *</span>
-                <input value={price} inputMode="numeric" onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ''))} placeholder="59900" className="w-28 rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                <span className="text-[11px] text-foreground-muted">Үнэ (бүгдэд анхдагч)</span>
+                <input value={price} inputMode="numeric" onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ''))} placeholder="59900" className="w-32 rounded-xl border border-[var(--glass-border)] bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand" />
               </label>
               <label className="space-y-1">
                 <span className="text-[11px] text-foreground-muted">Нөөц</span>
@@ -246,9 +325,10 @@ export default function DetectProductsPage() {
                 <button onClick={() => update(item.id, { selected: !item.selected })} className="absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border bg-card" style={{ borderColor: item.selected ? 'var(--brand,#FF6A1A)' : 'rgba(150,150,150,0.5)' }}>
                   {item.selected && <Check size={13} className="text-brand" />}
                 </button>
-                {item.status === 'done' && <span className="absolute right-3 top-3 z-10 rounded-md bg-success/90 px-1.5 py-0.5 text-[9px] font-bold text-white">Хадгалсан</span>}
-                {item.status === 'working' && <span className="absolute right-3 top-3 z-10"><Loader2 size={14} className="animate-spin text-brand" /></span>}
-                {item.status === 'error' && <span className="absolute right-3 top-3 z-10 rounded-md bg-error/90 px-1.5 py-0.5 text-[9px] font-bold text-white">Алдаа</span>}
+                {item.status === 'saved' && <span className="absolute right-3 top-3 z-10 rounded-md bg-success/90 px-1.5 py-0.5 text-[9px] font-bold text-white">Хадгалсан</span>}
+                {item.status === 'generated' && <span className="absolute right-3 top-3 z-10 rounded-md bg-brand/90 px-1.5 py-0.5 text-[9px] font-bold text-white">✨ Зураг бэлэн{item.generationSeconds ? ` · ${item.generationSeconds}с` : ''}</span>}
+                {(item.status === 'generating' || item.status === 'saving') && <span className="absolute right-3 top-3 z-10"><Loader2 size={14} className="animate-spin text-brand" /></span>}
+                {item.status === 'error' && <span className="absolute right-3 top-3 z-10 rounded-md bg-error/90 px-1.5 py-0.5 text-[9px] font-bold text-white" title={item.error}>Алдаа</span>}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.thumb} alt={item.label} className="h-28 w-full rounded-xl bg-surface object-contain" />
                 <input value={item.label} onChange={(e) => update(item.id, { label: e.target.value })} className="mt-2 w-full rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-brand" />
@@ -258,14 +338,43 @@ export default function DetectProductsPage() {
                   </select>
                   <span className="text-[10px] text-foreground-muted">{item.confidence}%</span>
                 </div>
+                {/* Үнэ + харагдах эсэх */}
+                <div className="mt-1 flex items-center gap-1">
+                  <input
+                    value={item.price}
+                    inputMode="numeric"
+                    onChange={(e) => update(item.id, { price: e.target.value.replace(/[^\d]/g, '') })}
+                    placeholder={price ? `${price} (бүгдэд)` : 'Үнэ ₮'}
+                    className="flex-1 rounded-lg border border-[var(--glass-border)] bg-surface px-2 py-1 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-brand"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => update(item.id, { enabled: !item.enabled })}
+                    title={item.enabled ? 'Идэвхтэй' : 'Нуусан'}
+                    className={`rounded-lg px-2 py-1 text-[10px] font-bold ${item.enabled ? 'bg-success/15 text-success' : 'bg-foreground-muted/15 text-foreground-muted'}`}
+                  >
+                    {item.enabled ? 'Идэвхтэй' : 'Нуусан'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
 
-          <button onClick={() => void generateAndSave()} disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-brand/20 hover:bg-brand-hover disabled:opacity-60">
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            {saving ? `Боловсруулж байна... (${savedCount}/${selectedCount})` : `✨ ${selectedCount} барааг студио болгож хадгалах`}
+          {error && <div className="whitespace-pre-line rounded-xl border border-error/20 bg-error/10 px-3 py-2 text-sm text-error">{error}</div>}
+
+          {/* Алхам 1: зураг үүсгэх */}
+          <button onClick={() => void generateImages()} disabled={generating || saving || selectedCount === 0} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-brand/20 hover:bg-brand-hover disabled:opacity-60">
+            {generating ? <Loader2 size={16} className="animate-spin" /> : <span>✨</span>}
+            {generating ? 'Студио зураг үүсгэж байна...' : `✨ ${selectedCount} барааны зураг үүсгэх`}
           </button>
+
+          {/* Алхам 2: хянаад дэлгүүрт нэмэх (зураг үүссэний дараа) */}
+          {generatedCount > 0 && (
+            <button onClick={() => void saveAll()} disabled={saving || generating} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-success/40 bg-success/10 px-5 py-3.5 text-sm font-bold text-success hover:bg-success/15 disabled:opacity-60">
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              {saving ? `Дэлгүүрт нэмж байна... (${savedCount}/${generatedCount})` : `✓ Хянасан — ${generatedCount} барааг дэлгүүрт нэмэх`}
+            </button>
+          )}
         </div>
       )}
     </div>

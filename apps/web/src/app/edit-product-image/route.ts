@@ -9,6 +9,7 @@ export const maxDuration = 300;
 
 const CLEANUP_SERVICE_URL = process.env.CLEANUP_SERVICE_URL || 'http://localhost:8500';
 const EDIT_TIMEOUT_MS = Number(process.env.CLEANUP_EDIT_TIMEOUT_MS ?? 55000);
+const OPENAI_EDIT_TIMEOUT_MS = Number(process.env.OPENAI_EDIT_TIMEOUT_MS ?? 180000);
 const SIMPLE_EDIT_TIMEOUT_MS = Number(process.env.SIMPLE_EDIT_TIMEOUT_MS ?? 280000);
 const LOCAL_EDIT_SIZE = 900;
 
@@ -42,7 +43,7 @@ function mimeFromDataUrl(value: string) {
 async function editWithGemini(image: string, prompt: string): Promise<EditedProductImage> {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY тохируулаагүй байна');
-  const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
+  const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
   const base64 = image.includes(',') && image.startsWith('data:') ? image.split(',', 2)[1] : image;
   const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
@@ -51,6 +52,7 @@ async function editWithGemini(image: string, prompt: string): Promise<EditedProd
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ inline_data: { mime_type: mimeFromDataUrl(image), data: base64 } }, { text: prompt }] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
       }),
     },
   );
@@ -62,27 +64,33 @@ async function editWithGemini(image: string, prompt: string): Promise<EditedProd
   return { image: `data:image/png;base64,${out}`, engine: 'gemini' };
 }
 
-/** OpenAI image editing (gpt-image-1 /images/edits) — image + prompt → edited image. */
+/** OpenAI image editing (gpt-image-2 /images/edits) — image + prompt → edited image. */
 async function editWithOpenAI(image: string, prompt: string): Promise<EditedProductImage> {
+  const startedAt = Date.now();
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error('OPENAI_API_KEY тохируулаагүй байна');
-  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
   const png = await sharp(imageBufferFromDataUrl(image)).png().toBuffer();
   const form = new FormData();
   form.append('model', model);
   form.append('prompt', prompt);
   form.append('size', '1024x1024');
+  form.append('quality', 'low');
   form.append('image', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'image.png');
   const res = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}` },
     body: form,
-  });
+  }, OPENAI_EDIT_TIMEOUT_MS);
   const json = (await res.json()) as any;
   if (!res.ok) throw new Error(json?.error?.message || `OpenAI алдаа: ${res.status}`);
   const b64 = json?.data?.[0]?.b64_json;
   if (!b64) throw new Error('OpenAI зураг буцаасангүй');
-  return { image: `data:image/png;base64,${b64}`, engine: 'openai' };
+  return {
+    image: `data:image/png;base64,${b64}`,
+    engine: 'openai',
+    seconds: Math.round((Date.now() - startedAt) / 100) / 10,
+  };
 }
 
 type EditedProductImage = {
@@ -92,14 +100,14 @@ type EditedProductImage = {
   seconds?: number;
 };
 
-async function fetchWithTimeout(url: string, init: RequestInit) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = EDIT_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), EDIT_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Зураг янзлах хугацаа хэтэрлээ. Cleanup service ажиллаж байгаа эсэхийг шалгана уу.');
+      throw new Error('AI зураг янзлах хугацаа хэтэрлээ');
     }
     throw error;
   } finally {

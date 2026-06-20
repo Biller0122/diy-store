@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 180;
+
+const DETECT_TIMEOUT_MS = Number(process.env.GEMINI_DETECT_TIMEOUT_MS ?? 120000);
 
 type DetectBody = { image?: string };
 
@@ -18,7 +20,7 @@ Return ONLY a JSON array. Each item must have:
 - "category": one of [багаж, цахилгаан, сантехник, будаг, цемент, обой, кафель, ламинат, тоосго, төмөр, мод, гэрэл, дээвэр, дулаалга, бусад]
 - "box_2d": [ymin, xmin, ymax, xmax] normalized to 0-1000
 - "confidence": 0-100
-Group items that clearly form one product (e.g. a drill in its case = one). Do not include people, floor, walls or background. Return at most 40 items.`;
+Group items that clearly form one product (e.g. a drill in its case = one). Do not include people, floor, walls or background. Return at most 25 items.`;
 
 export async function POST(request: Request) {
   let body: DetectBody;
@@ -38,10 +40,10 @@ export async function POST(request: Request) {
 
   const base64 = image.includes(',') && image.startsWith('data:') ? image.split(',', 2)[1] : image;
   const mime = image.startsWith('data:') ? image.slice(5, image.indexOf(';')) : 'image/jpeg';
-  const model = process.env.GEMINI_DETECT_MODEL || 'gemini-2.5-flash';
+  const model = process.env.GEMINI_DETECT_MODEL || 'gemini-3.1-flash-lite';
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
+  const timeout = setTimeout(() => controller.abort(), DETECT_TIMEOUT_MS);
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
@@ -83,7 +85,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ products }, { status: 200 });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error && error.name === 'AbortError' ? 'Таних хугацаа хэтэрлээ' : error instanceof Error ? error.message : 'Бараа таних алдаа' },
+      {
+        error: error instanceof Error && error.name === 'AbortError'
+          ? `Таних хугацаа ${Math.round(DETECT_TIMEOUT_MS / 1000)} секундээс хэтэрлээ`
+          : error instanceof Error ? error.message : 'Бараа таних алдаа',
+      },
       { status: 502 },
     );
   } finally {
