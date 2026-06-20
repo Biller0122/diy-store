@@ -211,6 +211,8 @@ function growMask(mask: Uint8Array, width: number, height: number, radius: numbe
 
 async function makeLogoOverlay(maxWidth: number, maxHeight: number) {
   const logoPath = [
+    path.join(process.cwd(), 'apps/web/public/shoptool-watermark.png'),
+    path.join(process.cwd(), 'public/shoptool-watermark.png'),
     path.join(process.cwd(), 'apps/web/public/logo_black.png'),
     path.join(process.cwd(), 'public/logo_black.png'),
     path.join(process.cwd(), 'logo_black.png'),
@@ -339,6 +341,40 @@ async function editLocallyWithLogo(image: string, outputSize = LOCAL_EDIT_SIZE) 
   return { image: dataUrlFromJpeg(jpeg) };
 }
 
+/**
+ * Бүх студио зурагт нэг стандарт төрх өгнө: цэвэр цагаан квадрат дэвсгэр дээр
+ * барааг төвлөрүүлж, доод хэсэгт SHOPTOOL watermark-ийг нэгэн жигд байрлуулна.
+ * AI (Gemini/OpenAI)-ийн гаргасан студио зурагт хэрэглэнэ.
+ */
+async function applyStandardBranding(imageInput: string, outputSize = LOCAL_EDIT_SIZE): Promise<string> {
+  const size = Math.max(600, Math.min(1400, Math.round(outputSize || LOCAL_EDIT_SIZE)));
+  const product = await sharp(imageBufferFromDataUrl(imageInput))
+    .rotate()
+    .resize({ width: Math.round(size * 0.84), height: Math.round(size * 0.74), fit: 'inside', withoutEnlargement: false })
+    .toBuffer();
+  const meta = await sharp(product).metadata();
+  const pw = meta.width ?? size;
+  const ph = meta.height ?? size;
+  const logo = await makeLogoOverlay(Math.round(size * 0.42), Math.round(size * 0.13));
+  const canvas = sharp({ create: { width: size, height: size, channels: 3, background: '#ffffff' } });
+  const jpeg = await canvas
+    .composite([
+      {
+        input: product,
+        left: Math.round((size - pw) / 2),
+        top: Math.max(Math.round(size * 0.045), Math.round((size - Math.round(size * 0.13) - ph) / 2)),
+      },
+      {
+        input: logo.buffer,
+        left: Math.round((size - logo.width) / 2),
+        top: size - logo.height - Math.round(size * 0.05),
+      },
+    ])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+  return dataUrlFromJpeg(jpeg);
+}
+
 export async function POST(request: Request) {
   let body: EditProductImageBody;
   try {
@@ -371,10 +407,14 @@ export async function POST(request: Request) {
     const prompt = (body.prompt ?? '').trim() || DEFAULT_AI_PROMPT;
     try {
       if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) {
-        return NextResponse.json(await editWithGemini(image, prompt), { status: 200 });
+        const ai = await editWithGemini(image, prompt);
+        const branded = await applyStandardBranding(ai.image ?? image, body.outputSize ?? LOCAL_EDIT_SIZE);
+        return NextResponse.json({ ...ai, image: branded }, { status: 200 });
       }
       if (process.env.OPENAI_API_KEY) {
-        return NextResponse.json(await editWithOpenAI(image, prompt), { status: 200 });
+        const ai = await editWithOpenAI(image, prompt);
+        const branded = await applyStandardBranding(ai.image ?? image, body.outputSize ?? LOCAL_EDIT_SIZE);
+        return NextResponse.json({ ...ai, image: branded }, { status: 200 });
       }
     } catch (error) {
       console.error('[edit-product-image] studio AI failed, falling back to local', error);
