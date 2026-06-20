@@ -66,7 +66,7 @@ const INITIAL_FORM: FormState = {
 
 const AI_ANALYZE_TIMEOUT_MS = 35000;
 type EditedProductImage = { image: string; error?: string };
-type ImageEditMode = 'simple' | 'ai';
+type ImageEditMode = 'simple' | 'ai' | 'studio';
 type ImageAiProvider = 'gemini' | 'openai';
 
 const AI_PROVIDERS: { value: ImageAiProvider; label: string }[] = [
@@ -242,7 +242,10 @@ export default function NewSupplierProductPage() {
         imageName: file.name,
       }));
       setErrors((prev) => ({ ...prev, image: '' }));
-      void analyzeSelectedImage(image);
+      // 1) AI шинжилгээ (нэр/ангилал/тайлбар) — эх зургаар таних
+      await analyzeSelectedImage(image);
+      // 2) Зургийг автоматаар СТУДИО чанарт оруулж барааны зураг болгох
+      await handleEditProductImage('studio', undefined, image);
     } catch (err) {
       setErrors((prev) => ({
         ...prev,
@@ -305,7 +308,11 @@ export default function NewSupplierProductPage() {
     setImageEditMenuOpen(false);
     setImageEditing(true);
     const providerLabel = opts?.provider === 'openai' ? 'ChatGPT' : opts?.provider === 'gemini' ? 'Gemini' : 'AI';
-    setAiStatus(mode === 'simple' ? 'Энгийн янзалж байна: BiRefNet + лого...' : `${providerLabel}-аар янзалж байна...`);
+    setAiStatus(
+      mode === 'studio' ? '✨ Студио зураг болгож байна...'
+        : mode === 'simple' ? 'Энгийн янзалж байна: BiRefNet + лого...'
+          : `${providerLabel}-аар янзалж байна...`,
+    );
     try {
       const result = await editProductImage(image, mode, opts);
       if (!result.image) {
@@ -317,9 +324,11 @@ export default function NewSupplierProductPage() {
         imageName: prev.imageName ? `edited-${prev.imageName}` : 'AI янзалсан зураг',
       }));
       setErrors((prev) => ({ ...prev, image: '' }));
-      setAiStatus(mode === 'simple'
-        ? 'Энгийн янзаллаа: гол объект цагаан дэвсгэр дээр, доод хэсэгт лого нэмэгдсэн.'
-        : `${providerLabel}-аар зураг янзлагдлаа.`);
+      setAiStatus(
+        mode === 'studio' ? '✨ Студио зураг бэлэн боллоо.'
+          : mode === 'simple' ? 'Энгийн янзаллаа: гол объект цагаан дэвсгэр дээр, доод хэсэгт лого нэмэгдсэн.'
+            : `${providerLabel}-аар зураг янзлагдлаа.`,
+      );
     } catch (err) {
       setAiStatus(
         err instanceof Error && err.name === 'AbortError'
@@ -558,6 +567,13 @@ export default function NewSupplierProductPage() {
                         </button>
                         {imageEditMenuOpen && (
                           <div className="absolute left-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-card p-3 shadow-xl shadow-black/30 space-y-2.5">
+                            <button
+                              type="button"
+                              onClick={() => handleEditProductImage('studio')}
+                              className="block w-full rounded-lg bg-brand/10 px-3 py-2 text-left text-[11px] font-bold text-brand hover:bg-brand/15"
+                            >
+                              ✨ Студио зураг болгох (автомат)
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleEditProductImage('simple')}

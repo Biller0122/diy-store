@@ -17,7 +17,8 @@ type ImageAiProvider = 'auto' | 'gemini' | 'openai';
 type EditProductImageBody = {
   image?: string;
   outputSize?: number;
-  mode?: 'simple' | 'ai';
+  /** 'studio' = автомат, хамгийн сайн боломжит engine-ээр студио зураг үүсгэх. */
+  mode?: 'simple' | 'ai' | 'studio';
   /** Which AI to use for `mode: 'ai'`. 'auto' = built-in cleanup service. */
   provider?: ImageAiProvider;
   /** Free-text instruction for the chosen AI (e.g. "цагаан дэвсгэр дээр төвд байрлуул"). */
@@ -359,6 +360,31 @@ export async function POST(request: Request) {
       console.error('[edit-product-image] simple ONNX failed', error);
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Энгийн зураг янзлахад алдаа гарлаа' },
+        { status: 502 },
+      );
+    }
+  }
+
+  // Студио (авто): хамгийн сайн боломжит engine. AI түлхүүр байвал AI-аар жинхэнэ
+  // студио render; эс бөгөөс Node sharp-аар дэвсгэр цэвэрлэж цагаан дэвсгэрт төвлөрүүлнэ.
+  if ((body.mode ?? '') === 'studio') {
+    const prompt = (body.prompt ?? '').trim() || DEFAULT_AI_PROMPT;
+    try {
+      if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) {
+        return NextResponse.json(await editWithGemini(image, prompt), { status: 200 });
+      }
+      if (process.env.OPENAI_API_KEY) {
+        return NextResponse.json(await editWithOpenAI(image, prompt), { status: 200 });
+      }
+    } catch (error) {
+      console.error('[edit-product-image] studio AI failed, falling back to local', error);
+    }
+    try {
+      const local = await editLocallyWithLogo(image, body.outputSize ?? LOCAL_EDIT_SIZE);
+      return NextResponse.json(local, { status: 200 });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Студио зураг үүсгэхэд алдаа гарлаа' },
         { status: 502 },
       );
     }
