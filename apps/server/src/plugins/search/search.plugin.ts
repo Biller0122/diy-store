@@ -8,6 +8,7 @@ import {
 } from '@vendure/core';
 import gql from 'graphql-tag';
 import { EmbeddingService } from './embedding.service';
+import { ProjectKitService } from './project-kit.service';
 import { SearchResolver } from './search.resolver';
 
 type VariantLike = {
@@ -97,8 +98,37 @@ const SEARCH_SCHEMA_EXTENSION = gql`
     message: String!
   }
 
+  type ProjectKitItem {
+    id: ID!
+    variantId: ID
+    name: String!
+    slug: String!
+    category: String
+    image: String
+    price: Int!
+    source: String!
+    supplierId: String
+    reason: String!
+    qtyHint: String!
+    required: Boolean!
+  }
+
+  type ProjectKitGroup {
+    title: String!
+    items: [ProjectKitItem!]!
+  }
+
+  type ProjectKitResult {
+    query: String!
+    jobUnderstood: String!
+    groups: [ProjectKitGroup!]!
+    notes: String!
+    fromCache: Boolean!
+  }
+
   extend type Query {
     semanticSearch(query: String!, take: Int): SemanticSearchResult!
+    projectKit(query: String!, take: Int): ProjectKitResult!
   }
 
   extend type Mutation {
@@ -108,7 +138,7 @@ const SEARCH_SCHEMA_EXTENSION = gql`
 
 @VendurePlugin({
   imports: [PluginCommonModule],
-  providers: [EmbeddingService, SearchEventListener, SearchResolver],
+  providers: [EmbeddingService, ProjectKitService, SearchEventListener, SearchResolver],
   shopApiExtensions: {
     schema: SEARCH_SCHEMA_EXTENSION,
     resolvers: [SearchResolver],

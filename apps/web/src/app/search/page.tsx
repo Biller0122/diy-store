@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { m, AnimatePresence } from 'framer-motion';
-import { Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Wrench } from 'lucide-react';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { trackSearch, trackViewItemList } from '@/lib/analytics/ga4';
 import { vendureShopFetch } from '@/lib/vendure';
@@ -115,6 +115,76 @@ function matchesSearch(query: string, values: Array<string | null | undefined>) 
   if (!normalized) return true;
   if (haystack.includes(normalized)) return true;
   return variants.some((variant) => haystack.includes(variant));
+}
+
+// ─── Ажлын багц (projectKit) ──────────────────────────────────
+
+const JOB_MARKERS = [
+  'засах', 'солих', 'хийх', 'тавих', 'будах', 'наах', 'угсрах', 'суулгах', 'яаж', 'яах',
+  'нэвчээд', 'нэвчиж', 'хэрэгтэй', 'шинэчлэх', 'битүүмжлэх', 'тэгшлэх', 'хучих', 'өрөмдөх',
+  'бэлдэх', 'гоёх', 'чимэглэх',
+];
+
+function isJobLike(text: string) {
+  const s = text.trim().toLowerCase();
+  if (!s) return false;
+  if (JOB_MARKERS.some((m) => s.includes(m))) return true;
+  return s.split(/\s+/).filter(Boolean).length >= 3;
+}
+
+type ProjectKitItem = {
+  id: string;
+  variantId: string | null;
+  name: string;
+  slug: string;
+  category: string | null;
+  image: string | null;
+  price: number;
+  source: 'catalog' | 'supplier';
+  supplierId: string | null;
+  reason: string;
+  qtyHint: string;
+  required: boolean;
+};
+type ProjectKitGroup = { title: string; items: ProjectKitItem[] };
+type ProjectKitResult = {
+  query: string;
+  jobUnderstood: string;
+  notes: string;
+  fromCache: boolean;
+  groups: ProjectKitGroup[];
+};
+
+// Каталог бараа minor unit (×100) тул хуваана; нийлүүлэгчийнх шууд.
+function formatKitPrice(item: ProjectKitItem) {
+  const value = item.source === 'catalog' ? item.price / 100 : item.price;
+  return `${Math.round(value).toLocaleString('mn-MN')}₮`;
+}
+
+const PROJECT_KIT_QUERY = `
+  query ProjectKit($query: String!, $take: Int) {
+    projectKit(query: $query, take: $take) {
+      query
+      jobUnderstood
+      notes
+      fromCache
+      groups {
+        title
+        items {
+          id variantId name slug category image price source supplierId reason qtyHint required
+        }
+      }
+    }
+  }
+`;
+
+async function fetchProjectKit(query: string): Promise<ProjectKitResult> {
+  const data = await vendureShopFetch<{ projectKit: ProjectKitResult }>(
+    PROJECT_KIT_QUERY,
+    { query, take: 24 },
+    { revalidate: 0 },
+  );
+  return data.projectKit;
 }
 
 const SUPPLIER_PRODUCTS_QUERY = `
@@ -417,6 +487,8 @@ function SearchContent() {
   const [backendCategories, setBackendCategories] = useState<ProductCategory[]>([]);
   const [loading, setLoading]     = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [kit, setKit] = useState<ProjectKitResult | null>(null);
+  const [kitLoading, setKitLoading] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState('');
   const [activeBrand, setActiveBrand]       = useState('');
@@ -489,6 +561,7 @@ function SearchContent() {
 
   useEffect(() => {
     setLocalQ(query);
+    setKit(null);
   }, [query]);
 
   function handleSearch(e: React.FormEvent) {
@@ -510,6 +583,22 @@ function SearchContent() {
     setInStockOnly(false);
     setPriceMin('');
     setPriceMax('');
+  }
+
+  async function runKit(q: string) {
+    const value = q.trim();
+    if (!value) return;
+    setKitLoading(true);
+    setKit(null);
+    try {
+      const result = await fetchProjectKit(value);
+      setKit(result);
+    } catch (err) {
+      console.error('[search] projectKit failed', err);
+      setKit(null);
+    } finally {
+      setKitLoading(false);
+    }
   }
 
   return (
@@ -673,6 +762,25 @@ function SearchContent() {
                   </div>
                 </section>
 
+                {isJobLike(query) && (
+                  <button
+                    type="button"
+                    onClick={() => runKit(query)}
+                    className="flex w-full items-center gap-3 rounded-2xl border border-brand/30 bg-brand/5 p-4 text-left transition-colors hover:bg-brand/10"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card">
+                      <Wrench className="h-5 w-5 text-brand" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-brand">Ажлын багц гаргах</span>
+                      <span className="block text-xs text-foreground-muted">
+                        Энэ ажилд хэрэгтэй бүх материалыг бүлэглэж харуулна
+                      </span>
+                    </span>
+                    <ChevronDown className="h-4 w-4 -rotate-90 text-brand" />
+                  </button>
+                )}
+
                 {groupedHits.map(([category, items], groupIndex) => (
                   <section key={category} className="space-y-3">
                     <div className="flex items-end justify-between gap-3">
@@ -734,6 +842,83 @@ function SearchContent() {
           </div>
         </div>
       </div>
+
+      {(kit || kitLoading) && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-dark">
+          <div className="flex items-center gap-2 border-b border-[var(--glass-border)] bg-card px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setKit(null)}
+              className="rounded-lg p-1.5 hover:bg-white/5"
+              aria-label="Хаах"
+            >
+              <X className="h-5 w-5 text-foreground" />
+            </button>
+            <h2 className="text-base font-bold text-foreground">Ажлын багц</h2>
+          </div>
+
+          {kitLoading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand/30 border-t-brand" />
+                <p className="text-sm text-foreground-muted">Багц гаргаж байна...</p>
+              </div>
+            </div>
+          ) : kit ? (
+            <div className="flex-1 overflow-y-auto px-4 py-5">
+              <div className="mx-auto max-w-2xl space-y-5">
+                <div className="rounded-2xl border border-[var(--glass-border)] bg-card p-4">
+                  <p className="text-base font-bold text-foreground">{kit.jobUnderstood || kit.query}</p>
+                  {kit.fromCache && <p className="mt-1 text-xs text-foreground-muted">⚡ хадгалсан багц</p>}
+                </div>
+
+                {kit.groups.map((group) => (
+                  <div key={group.title} className="space-y-2">
+                    <h3 className="text-sm font-bold text-foreground">{group.title}</h3>
+                    {group.items.map((it) => (
+                      <Link
+                        key={`${it.source}-${it.id}`}
+                        href={`/product/${it.slug}`}
+                        onClick={() => setKit(null)}
+                        className="flex items-center gap-3 rounded-xl border border-[var(--glass-border)] bg-card p-2.5 transition-colors hover:border-brand/30"
+                      >
+                        {it.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={it.image} alt={it.name} className="h-14 w-14 shrink-0 rounded-lg bg-surface object-cover" />
+                        ) : (
+                          <div className="h-14 w-14 shrink-0 rounded-lg bg-surface" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-sm font-semibold text-foreground">{it.name}</p>
+                          {it.reason && <p className="mt-0.5 line-clamp-2 text-xs text-foreground-muted">{it.reason}</p>}
+                          <div className="mt-1 flex items-center gap-2">
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                it.required ? 'bg-brand/15 text-brand' : 'bg-surface text-foreground-muted'
+                              }`}
+                            >
+                              {it.required ? 'Заавал' : 'Нэмэлт'}
+                            </span>
+                            {it.qtyHint && <span className="text-xs text-foreground-muted">{it.qtyHint}</span>}
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-sm font-bold text-foreground">{formatKitPrice(it)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                ))}
+
+                {kit.notes && (
+                  <div className="rounded-2xl border border-[var(--glass-border)] bg-card p-4">
+                    <p className="text-sm leading-6 text-foreground-muted">💡 {kit.notes}</p>
+                  </div>
+                )}
+                <div className="h-6" />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

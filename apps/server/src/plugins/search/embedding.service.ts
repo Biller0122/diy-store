@@ -21,6 +21,7 @@ type ProductForEmbedding = {
   description: string;
   category: string;
   brand?: string;
+  useCases?: string;
 };
 
 type ProductRow = {
@@ -85,7 +86,7 @@ export class EmbeddingService {
 
   async indexProduct(product: ProductForEmbedding): Promise<void> {
     try {
-      const text = this.productText(product);
+      const text = await this.embeddingTextFor(product);
       const embedding = await this.createEmbedding(text, 'document');
 
       await this.connection.rawConnection.query(
@@ -117,7 +118,8 @@ export class EmbeddingService {
       const product = rows[0] ? this.toProductForEmbedding(rows[0]) : null;
       if (!product) return;
 
-      const embedding = await this.createEmbedding(this.productText(product), 'document');
+      const text = await this.embeddingTextFor(product);
+      const embedding = await this.createEmbedding(text, 'document');
       await this.connection.rawConnection.query(
         'UPDATE supplier_product SET embedding = $1::vector WHERE id = $2',
         [this.toVectorLiteral(embedding), product.id],
@@ -602,7 +604,56 @@ export class EmbeddingService {
   }
 
   private productText(product: ProductForEmbedding): string {
-    return `${product.name} ${product.description} ${product.category} ${product.brand ?? ''}`.trim();
+    return `${product.name} ${product.description} ${product.category} ${product.brand ?? ''} ${product.useCases ?? ''}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Embedding хийх текстийг бэлдэнэ. `EMBEDDING_ENRICH_USAGE=1` үед барааны
+   * "хэрэглээний түлхүүр үг"-ийг Claude-аар үүсгэж нэмнэ — ингэснээр "нэвчилт
+   * засах" гэх мэт ажлын утгаар хайхад илүү сайн олддог болно.
+   */
+  private async embeddingTextFor(product: ProductForEmbedding): Promise<string> {
+    const useCases = await this.maybeUseCases(product);
+    return this.productText({ ...product, useCases });
+  }
+
+  private async maybeUseCases(product: ProductForEmbedding): Promise<string> {
+    if (!/^(1|true)$/i.test(process.env.EMBEDDING_ENRICH_USAGE || '')) return '';
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return '';
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: process.env.CLAUDE_QUERY_MODEL || 'claude-haiku-4-5-20251001',
+          max_tokens: 80,
+          system:
+            'Чи DIY барааны хэрэглээ/зориулалтыг товч монгол түлхүүр үгээр гаргадаг. ' +
+            'Зөвхөн 5-8 түлхүүр үг/хэллэг, таслалаар тусгаарлаж буцаа. Тайлбар бичихгүй.',
+          messages: [
+            {
+              role: 'user',
+              content: `Бараа: ${product.name}. ${product.description}`.slice(0, 600),
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) return '';
+      const data = (await response.json()) as ClaudeMessageResponse;
+      const text = data.content?.find((part) => part.type === 'text' && part.text)?.text ?? '';
+      return text.replace(/\s+/g, ' ').trim().slice(0, 300);
+    } catch {
+      return '';
+    }
   }
 
   private toVectorLiteral(embedding: number[]): string {

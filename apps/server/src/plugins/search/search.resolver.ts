@@ -1,15 +1,29 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
 import { EmbeddingService } from './embedding.service';
+import { ProjectKitService } from './project-kit.service';
 
 @Resolver()
 export class SearchResolver {
-  constructor(private readonly embeddingService: EmbeddingService) {}
+  constructor(
+    private readonly embeddingService: EmbeddingService,
+    private readonly projectKitService: ProjectKitService,
+  ) {}
 
   @Query()
   @Allow(Permission.Public)
   async semanticSearch(@Args('query') query: string, @Args('take') take = 20) {
     return this.embeddingService.semanticSearch(query, take);
+  }
+
+  /**
+   * "Ажил → барааны багц" зөвлөх. Хэрэглэгчийн ажлын зорилгод хэрэгтэй барааг
+   * утга төрлөөр бүлэглэж, тоо хэмжээ+заавал/нэмэлтийг ялгаж буцаана.
+   */
+  @Query()
+  @Allow(Permission.Public)
+  async projectKit(@Args('query') query: string, @Args('take') take = 24) {
+    return this.projectKitService.projectKit(query, take);
   }
 
   /**
