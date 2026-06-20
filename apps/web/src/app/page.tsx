@@ -607,3 +607,5 @@ export default async function HomePage() {
     </>
   );
 }
+
+// redeploy: rebuild to fix chunk mismatch (consistent build)
