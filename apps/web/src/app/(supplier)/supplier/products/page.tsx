@@ -369,9 +369,14 @@ export default function SupplierProductsPage() {
           <h2 className="text-xl font-bold text-foreground">Миний бараа</h2>
           <p className="text-sm text-foreground-muted mt-0.5">{loading ? 'Синк хийж байна...' : `${allProducts.length} нийт бараа`}</p>
         </div>
-        <Link href="/supplier/products/new" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/20">
-          <Plus size={16} /> Бараа нэмэх
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/supplier/products/detect" className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-brand/40 bg-brand/10 text-brand font-semibold text-sm hover:bg-brand/15 transition-colors">
+            🔍 Зургаас олон бараа
+          </Link>
+          <Link href="/supplier/products/new" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/20">
+            <Plus size={16} /> Бараа нэмэх
+          </Link>
+        </div>
       </div>
 
       {syncError && (
