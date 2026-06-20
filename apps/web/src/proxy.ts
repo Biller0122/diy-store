@@ -81,13 +81,10 @@ export function proxy(request: NextRequest) {
   }
 
   // ─── Customer account ──────────────────────────────────────────────────
-  // Roles are fully independent: having a supplier/driver session does NOT
-  // grant access to /account and vice versa.
-  if (pathname.startsWith('/account') && pathname !== '/account/login') {
-    if (!request.cookies.get('diy-auth')?.value) {
-      return redirectTo(request, '/account/login');
-    }
-  }
+  // Нэвтрэлтийн guard-ийг client талд (localStorage persist) хийнэ — серверийн
+  // cookie түр алга болсон ч нэвтэрсэн хэрэглэгчийг алдаатай гаргахгүй. Бодит
+  // хамгаалалт нь API token (Authorization header) хэвээр. account layout доtorх
+  // client guard нэвтрээгүй үед /account/login руу чиглүүлнэ.
 
   // ─── Supplier portal ──────────────────────────────────────────────────
   const SUPPLIER_PROTECTED = [

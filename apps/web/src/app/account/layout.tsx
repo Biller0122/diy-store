@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
 
@@ -11,10 +12,34 @@ const NAV = [
   { href: '/account/wishlist', label: 'Хадгалсан бараа', icon: '❤️' },
 ];
 
+function hasPersistedCustomer(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem('diy-store-auth');
+    return raw ? Boolean(JSON.parse(raw)?.state?.customer) : false;
+  } catch {
+    return false;
+  }
+}
+
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { customer, logout } = useAuthStore();
+  const { customer, logout, fetchActiveCustomer } = useAuthStore();
+  const [hydrated, setHydrated] = useState(false);
+
+  // Нэвтрэлтийн guard энд (client талд) — middleware-ийн cookie шалгалтын оронд.
+  useEffect(() => {
+    setHydrated(true);
+    void fetchActiveCustomer(); // session cookie-г сэргээх + баталгаажуулах
+  }, [fetchActiveCustomer]);
+
+  useEffect(() => {
+    if (!hydrated || pathname === '/account/login') return;
+    if (!customer && !hasPersistedCustomer()) {
+      router.replace('/account/login');
+    }
+  }, [hydrated, customer, pathname, router]);
 
   // Login page renders its own full-page layout
   if (pathname === '/account/login') return <>{children}</>;

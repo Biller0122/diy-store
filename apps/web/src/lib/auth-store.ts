@@ -357,9 +357,12 @@ export const useAuthStore = create<AuthState>()(
             onCustomerAuthenticated(data.activeCustomer);
           } else {
             // Сервер session байхгүй ч локалд хадгалсан хэрэглэгч байвал гаргахгүй —
-            // хэрэглэгч өөрөө "Гарах" дартал session хадгалагдана.
+            // хэрэглэгч өөрөө "Гарах" дартал session хадгалагдана. Cookie-г дахин
+            // сэргээж middleware /account руу оруулах боломжтой байлгана.
             const stored = get().customer;
-            if (!stored) {
+            if (stored) {
+              await createCustomerSession();
+            } else {
               set({ customer: null });
               clearCustomerSession();
             }
