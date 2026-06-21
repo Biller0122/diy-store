@@ -15,6 +15,21 @@ const RUNTIME_COLUMNS: RuntimeColumn[] = [
     definition: 'integer NOT NULL DEFAULT 0',
   },
   {
+    table: 'supplier',
+    name: 'coverImage',
+    definition: 'character varying',
+  },
+  {
+    table: 'supplier',
+    name: 'youtubeUrl',
+    definition: 'character varying',
+  },
+  {
+    table: 'supplier',
+    name: 'posterUrls',
+    definition: 'text',
+  },
+  {
     table: 'driver',
     name: 'otpAttempts',
     definition: 'integer NOT NULL DEFAULT 0',

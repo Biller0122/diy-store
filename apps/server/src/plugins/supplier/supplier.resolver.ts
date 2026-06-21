@@ -1,5 +1,5 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, Order, Permission, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Allow, AssetService, Ctx, ID, Order, Permission, RequestContext, TransactionalConnection } from '@vendure/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Supplier, SupplierStatus } from './supplier.entity';
@@ -7,6 +7,13 @@ import { SupplierProduct } from './supplier-product.entity';
 import { RegisterSupplierInput, SupplierProductInput, SupplierService, VerifySupplierOtpInput } from './supplier.service';
 import { exposeOtp, requirePlatformRole } from '../../utils/auth';
 import { DeliveryRequest } from '../delivery/delivery-request.entity';
+import { Readable } from 'stream';
+
+type SupplierProfileImageInput = {
+  filename: string;
+  mimeType: string;
+  dataUrl: string;
+};
 
 @Resolver()
 export class SupplierResolver {
@@ -19,6 +26,7 @@ export class SupplierResolver {
     private readonly deliveryRepo: Repository<DeliveryRequest>,
     private readonly supplierService: SupplierService,
     private readonly connection: TransactionalConnection,
+    private readonly assetService: AssetService,
   ) {}
 
   @Query()
@@ -146,6 +154,28 @@ export class SupplierResolver {
     @Args('input') input: Partial<Supplier>,
   ) {
     this.requireAdminOrSupplier(ctx, String(id));
+    const workingHoursInput = (input as unknown as {
+      workingHours?: {
+        weekdaysStart?: string;
+        weekdaysEnd?: string;
+        saturdayStart?: string;
+        saturdayEnd?: string;
+        sundayClosed?: boolean;
+        sundayStart?: string;
+        sundayEnd?: string;
+      };
+    }).workingHours;
+    if (workingHoursInput) {
+      input.workingHours = {
+        weekdays: { start: workingHoursInput.weekdaysStart ?? '09:00', end: workingHoursInput.weekdaysEnd ?? '18:00' },
+        saturday: { start: workingHoursInput.saturdayStart ?? '10:00', end: workingHoursInput.saturdayEnd ?? '17:00' },
+        sunday: {
+          closed: workingHoursInput.sundayClosed ?? true,
+          ...(workingHoursInput.sundayStart ? { start: workingHoursInput.sundayStart } : {}),
+          ...(workingHoursInput.sundayEnd ? { end: workingHoursInput.sundayEnd } : {}),
+        },
+      };
+    }
     if (ctx.apiType !== 'admin') {
       delete (input as Partial<Supplier> & { status?: SupplierStatus }).status;
       delete (input as Partial<Supplier> & { commissionRate?: number }).commissionRate;
@@ -153,6 +183,31 @@ export class SupplierResolver {
     }
     await this.supplierRepo.update(String(id), input);
     return this.supplierService.getSupplierById(String(id));
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  async uploadSupplierProfileImage(
+    @Ctx() ctx: RequestContext,
+    @Args('supplierId') supplierId: ID,
+    @Args('input') input: SupplierProfileImageInput,
+  ) {
+    this.requireAdminOrSupplier(ctx, String(supplierId));
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(input.mimeType)) {
+      throw new Error('Зөвхөн PNG, JPG, WEBP зураг оруулна уу');
+    }
+
+    const encoded = input.dataUrl.includes(',') ? input.dataUrl.split(',').pop() : input.dataUrl;
+    if (!encoded) throw new Error('Зургийн дата хоосон байна');
+    const buffer = Buffer.from(encoded, 'base64');
+    if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
+      throw new Error('Зургийн хэмжээ 5MB-аас бага байна');
+    }
+
+    const safeFilename = input.filename.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase() || 'supplier-image.jpg';
+    const asset = await this.assetService.createFromFileStream(Readable.from(buffer), safeFilename, ctx);
+    if ('errorCode' in asset) throw new Error(asset.message);
+    return asset.preview || asset.source;
   }
 
   @Mutation()

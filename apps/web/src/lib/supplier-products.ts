@@ -6,6 +6,9 @@ export type DbSupplier = {
   businessName: string;
   slug: string;
   logo?: string | null;
+  coverImage?: string | null;
+  youtubeUrl?: string | null;
+  posterUrls?: string[] | null;
   description?: string | null;
   ownerName: string;
   phone: string;
@@ -43,6 +46,9 @@ const SUPPLIER_BY_SLUG_QUERY = `
       businessName
       slug
       logo
+      coverImage
+      youtubeUrl
+      posterUrls
       description
       ownerName
       phone
@@ -68,6 +74,9 @@ const SUPPLIER_BY_ID_QUERY = `
       businessName
       slug
       logo
+      coverImage
+      youtubeUrl
+      posterUrls
       description
       ownerName
       phone
@@ -94,6 +103,9 @@ const SUPPLIERS_QUERY = `
         businessName
         slug
         logo
+        coverImage
+        youtubeUrl
+        posterUrls
         description
         ownerName
         phone

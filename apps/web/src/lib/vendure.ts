@@ -24,6 +24,16 @@ function getVendureAuthToken() {
   return window.localStorage.getItem(AUTH_TOKEN_KEY);
 }
 
+async function vendureHttpError(res: Response, label: string) {
+  try {
+    const body = await res.json() as { errors?: Array<{ message?: string }>; message?: string };
+    const detail = body.errors?.[0]?.message || body.message;
+    return new Error(detail ? `${label}: ${detail}` : `${label}: ${res.status}`);
+  } catch {
+    return new Error(`${label}: ${res.status}`);
+  }
+}
+
 export function setVendureAuthToken(token: string | null) {
   if (typeof window === 'undefined') return;
   if (token) {
@@ -67,7 +77,7 @@ export async function vendureShopFetch<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`Vendure API error: ${res.status}`);
+    throw await vendureHttpError(res, 'Vendure API error');
   }
 
   const nextToken = res.headers.get('vendure-auth-token');
@@ -102,7 +112,7 @@ export async function vendureAdminFetch<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`Vendure Admin API error: ${res.status}`);
+    throw await vendureHttpError(res, 'Vendure Admin API error');
   }
 
   const nextToken = res.headers.get('vendure-auth-token');

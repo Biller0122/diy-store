@@ -86,7 +86,7 @@ export function generateProductMetadata(product: {
   const title = `${product.name}${product.brand ? ` — ${product.brand}` : ''}`;
   const description = product.description
     ? product.description.slice(0, 155)
-    : `${product.name} — shoptool.mn дэлгүүрт авах боломжтой. Шуурхай хүргэлт, баталгаат бараа.`;
+    : `${product.name} — shoptool.mn дэлгүүрт авах боломжтой. Нийлүүлэгчийн бодит мэдээлэлтэй бараа.`;
   const image = product.imageUrl
     ? `${BASE_URL}/api/og?type=product&name=${encodeURIComponent(product.name)}&price=${product.price ?? 0}&image=${encodeURIComponent(product.imageUrl)}`
     : DEFAULT_OG;

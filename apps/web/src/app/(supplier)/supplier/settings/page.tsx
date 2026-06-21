@@ -3,23 +3,71 @@
 import { useState } from 'react';
 import { Save, Store, CreditCard, Clock, MapPin } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
+import { vendureShopFetch } from '@/lib/vendure';
+
+const UPDATE_SUPPLIER = `
+  mutation UpdateSupplierSettings($id: ID!, $input: UpdateSupplierInput!) {
+    updateSupplier(id: $id, input: $input) {
+      id businessName slug logo coverImage youtubeUrl posterUrls description ownerName phone email
+      address district bankAccount bankName workingHours {
+        weekdays { start end }
+        saturday { start end }
+        sunday { closed start end }
+      }
+      status commissionRate rating reviewCount productCount
+    }
+  }
+`;
 
 export default function SupplierSettingsPage() {
-  const { supplier } = useSupplierStore();
+  const { supplier, setSupplier } = useSupplierStore();
 
   const [businessName, setBusinessName] = useState(supplier?.businessName ?? '');
   const [phone, setPhone] = useState(supplier?.phone ?? '');
-  const [email, setEmail] = useState(supplier?.email ?? '');
-  const [description, setDescription] = useState('');
-  const [address, setAddress] = useState('Баянзүрх дүүрэг, 5-р хороо, Барилгачдын гудамж 15');
-  const [bankAccount, setBankAccount] = useState('');
-  const [bankName, setBankName] = useState('Хаан банк');
+  const email = supplier?.email ?? '';
+  const [description, setDescription] = useState(supplier?.description ?? '');
+  const [address, setAddress] = useState(supplier?.address ?? '');
+  const [bankAccount, setBankAccount] = useState(supplier?.bankAccount ?? '');
+  const [bankName, setBankName] = useState(supplier?.bankName ?? 'Хаан банк');
+  const [weekdaysStart, setWeekdaysStart] = useState(supplier?.workingHours?.weekdays?.start ?? '09:00');
+  const [weekdaysEnd, setWeekdaysEnd] = useState(supplier?.workingHours?.weekdays?.end ?? '18:00');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  function handleSave(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    if (!supplier?.id) return;
+    setSaving(true);
+    setSaved(false);
+    setError('');
+    try {
+      const data = await vendureShopFetch<{ updateSupplier: NonNullable<typeof supplier> }>(UPDATE_SUPPLIER, {
+        id: supplier.id,
+        input: {
+          businessName: businessName.trim(),
+          description: description.trim(),
+          phone: phone.trim(),
+          address: address.trim(),
+          bankAccount: bankAccount.trim(),
+          bankName,
+          workingHours: {
+            weekdaysStart,
+            weekdaysEnd,
+            saturdayStart: supplier.workingHours?.saturday?.start ?? '10:00',
+            saturdayEnd: supplier.workingHours?.saturday?.end ?? '17:00',
+            sundayClosed: supplier.workingHours?.sunday?.closed ?? true,
+          },
+        },
+      });
+      setSupplier(data.updateSupplier);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Тохиргоо хадгалахад алдаа гарлаа');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -30,6 +78,7 @@ export default function SupplierSettingsPage() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-5">
+        {error && <div className="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>}
         {/* Business info */}
         <div className="bg-card border border-[var(--glass-border)] rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -52,7 +101,7 @@ export default function SupplierSettingsPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-foreground-muted mb-1.5 uppercase tracking-wider">Имэйл</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-[var(--glass-border)] text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand" />
+                <input type="email" value={email} readOnly title="Имэйл солихын тулд админтай холбогдоно уу" className="w-full px-3.5 py-2.5 rounded-xl bg-surface/60 border border-[var(--glass-border)] text-sm text-foreground-muted cursor-not-allowed" />
               </div>
             </div>
           </div>
@@ -79,11 +128,11 @@ export default function SupplierSettingsPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-foreground-muted mb-1.5 uppercase tracking-wider">Нээх цаг</label>
-              <input type="time" defaultValue="09:00" className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-[var(--glass-border)] text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input type="time" value={weekdaysStart} onChange={(event) => setWeekdaysStart(event.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-[var(--glass-border)] text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-foreground-muted mb-1.5 uppercase tracking-wider">Хаах цаг</label>
-              <input type="time" defaultValue="18:00" className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-[var(--glass-border)] text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input type="time" value={weekdaysEnd} onChange={(event) => setWeekdaysEnd(event.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-[var(--glass-border)] text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
         </div>
@@ -115,10 +164,11 @@ export default function SupplierSettingsPage() {
 
         <button
           type="submit"
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all ${saved ? 'bg-success text-white' : 'bg-brand text-white hover:bg-brand-hover shadow-lg shadow-brand/30'}`}
+          disabled={saving}
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60 ${saved ? 'bg-success text-white' : 'bg-brand text-white hover:bg-brand-hover shadow-lg shadow-brand/30'}`}
         >
           <Save size={16} />
-          {saved ? 'Хадгалагдлаа!' : 'Хадгалах'}
+          {saving ? 'Хадгалж байна...' : saved ? 'Хадгалагдлаа!' : 'Хадгалах'}
         </button>
       </form>
     </div>

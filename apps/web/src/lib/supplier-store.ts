@@ -11,6 +11,18 @@ export interface SupplierUser {
   businessName: string;
   slug: string;
   logo?: string;
+  coverImage?: string;
+  youtubeUrl?: string;
+  posterUrls?: string[];
+  description?: string;
+  address?: string;
+  bankAccount?: string;
+  bankName?: string;
+  workingHours?: {
+    weekdays?: { start?: string; end?: string };
+    saturday?: { start?: string; end?: string };
+    sunday?: { closed: boolean; start?: string; end?: string };
+  };
   ownerName: string;
   phone: string;
   email: string;
@@ -67,6 +79,14 @@ const SUPPLIER_QUERY = `
       businessName
       slug
       logo
+      coverImage
+      youtubeUrl
+      posterUrls
+      description
+      address
+      bankAccount
+      bankName
+      workingHours { weekdays { start end } saturday { start end } sunday { closed start end } }
       ownerName
       phone
       email

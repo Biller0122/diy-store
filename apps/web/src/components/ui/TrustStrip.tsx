@@ -1,23 +1,9 @@
 'use client';
 
 import { m } from 'framer-motion';
-import { Truck, BadgePercent, RotateCcw, MapPin } from 'lucide-react';
+import { RotateCcw, MapPin } from 'lucide-react';
 
 const ITEMS = [
-  {
-    icon: Truck,
-    title: 'Хурдан хүргэлт',
-    desc: 'УБ дотор 2–4 цагт',
-    color: 'text-brand',
-    bg: 'bg-brand/10',
-  },
-  {
-    icon: BadgePercent,
-    title: 'Үнэ тааруулалт',
-    desc: 'Хамгийн хямд баталгаа',
-    color: 'text-success',
-    bg: 'bg-success/10',
-  },
   {
     icon: RotateCcw,
     title: '14 хоног буцаалт',
@@ -38,7 +24,7 @@ export function TrustStrip() {
   return (
     <section className="py-8 border-y border-[var(--glass-border)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:pb-0">
+        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0">
           {ITEMS.map(({ icon: Icon, title, desc, color, bg }, i) => (
             <m.div
               key={title}

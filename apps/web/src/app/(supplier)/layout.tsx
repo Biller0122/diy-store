@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Package, ShoppingCart, DollarSign,
-  Star, Settings, LogOut, Menu, X, ChevronRight,
+  Star, Settings, LogOut, Menu, X, ChevronRight, Store,
 } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { Providers } from '@/components/providers';
@@ -16,6 +16,7 @@ import { SupplierNotifications } from '@/components/supplier/SupplierNotificatio
 
 const NAV = [
   { href: '/supplier',          icon: LayoutDashboard, label: 'Хяналтын самбар' },
+  { href: '/supplier/store-profile', icon: Store,       label: 'Дэлгүүрийн профайл' },
   { href: '/supplier/products', icon: Package,         label: 'Миний бараа' },
   { href: '/supplier/orders',   icon: ShoppingCart,    label: 'Захиалгууд' },
   { href: '/supplier/revenue',  icon: DollarSign,      label: 'Орлого' },

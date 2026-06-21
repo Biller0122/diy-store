@@ -4,18 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/lib/cart-store';
 import { useWishlistStore } from '@/lib/wishlist-store';
 
-const DISTRICTS: { name: string; estimate: string }[] = [
-  { name: 'Баянзүрх дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Сүхбаатар дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Хан-Уул дүүрэг', estimate: '3–5 цагт' },
-  { name: 'Баянгол дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Чингэлтэй дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Сонгинохайрхан дүүрэг', estimate: '4–6 цагт' },
-  { name: 'Налайх дүүрэг', estimate: '6–8 цагт' },
-  { name: 'Багануур дүүрэг', estimate: '1–2 өдөрт' },
-  { name: 'Багахангай дүүрэг', estimate: '1–2 өдөрт' },
-];
-
 // ─── Types ───────────────────────────────────────────────────
 
 export interface ProductOption {
@@ -124,7 +112,6 @@ export default function BuyBox({
     }, {}),
   );
   const [qty, setQty] = useState(1);
-  const [district, setDistrict] = useState(DISTRICTS[0].name);
   const [addedToCart, setAddedToCart] = useState(false);
   const [showStickyBar, setShowStickyBar] = useState(false);
   const addItem = useCartStore((s) => s.addItem);
@@ -157,9 +144,6 @@ export default function BuyBox({
   const wishlisted = hasItem(activeVariant?.id ?? variants[0]?.id ?? '');
 
   const price = activeVariant?.priceWithTax ?? variants[0]?.priceWithTax ?? 0;
-
-  const deliveryEstimate =
-    DISTRICTS.find((d) => d.name === district)?.estimate ?? '2–4 цагт';
 
   useEffect(() => {
     if (maxQty !== undefined && qty > Math.max(1, maxQty)) {
@@ -216,14 +200,8 @@ export default function BuyBox({
           {/* Strike-through shown when a sale price exists; stubbed for now */}
         </div>
 
-        {/* Promo + warranty badges */}
+        {/* Inventory */}
         <div className="flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-error/10 px-3 py-1 text-xs font-medium text-red-600">
-            🏷️ Хямдрал
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-info/10 px-3 py-1 text-xs font-medium text-info">
-            🛡️ 12 сарын баталгаа
-          </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
             Үлдэгдэл {remainingStock ?? 'байгаа'}
           </span>
@@ -255,25 +233,6 @@ export default function BuyBox({
             </div>
           </div>
         ))}
-
-        {/* Delivery estimate */}
-        <div>
-          <div className="space-y-2">
-            <select
-              value={district}
-              onChange={(e) => setDistrict(e.target.value)}
-              className="w-full rounded-xl border border-[var(--glass-border)] bg-card px-3 py-2 text-sm text-foreground-muted focus:outline-none focus:ring-2 focus:ring-brand"
-            >
-              {DISTRICTS.map((d) => (
-                <option key={d.name} value={d.name}>{d.name}</option>
-              ))}
-            </select>
-            <p className="text-sm text-foreground-muted">
-              📍 <span className="font-medium">{district}</span>-д{' '}
-              <span className="font-semibold text-success">{deliveryEstimate}</span> хүргэнэ
-            </p>
-          </div>
-        </div>
 
         {/* Quantity */}
         <div className="flex items-center gap-4">

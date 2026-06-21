@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Star, MapPin, Truck, Phone, ArrowLeft, Package } from 'lucide-react';
+import Image from 'next/image';
+import { Star, MapPin, Truck, Phone, ArrowLeft, Package, CirclePlay, Images } from 'lucide-react';
 import { ProductCard } from '@/components/ui/ProductCard';
 import { dbProductToCard, dbSupplierToCard, getDbSupplierBySlug, getDbSupplierProducts } from '@/lib/supplier-products';
 
@@ -23,6 +24,7 @@ export default async function SupplierStorePage({ params }: Props) {
 
   const dbProducts = dbSupplier ? await getDbSupplierProducts(dbSupplier.id) : [];
   const products = dbProducts.map((product) => dbProductToCard(product, supplier));
+  const youtubeId = getYoutubeId(dbSupplier?.youtubeUrl ?? '');
 
   return (
     <div className="min-h-screen bg-dark pb-24 lg:pb-8">
@@ -39,17 +41,20 @@ export default async function SupplierStorePage({ params }: Props) {
 
       {/* Supplier header */}
       <div className="relative overflow-hidden">
-        <div className="h-40 bg-gradient-to-br from-brand/20 via-surface to-card" />
+        <div className="relative h-48 bg-gradient-to-br from-brand/20 via-surface to-card sm:h-56">
+          {dbSupplier?.coverImage && <Image src={dbSupplier.coverImage} alt={`${supplier.businessName} cover`} fill priority className="object-cover" />}
+          {dbSupplier?.coverImage && <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/20 to-transparent" />}
+        </div>
         <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at 30% 50%, rgba(255,69,0,0.6) 0%, transparent 70%)' }} />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="relative -mt-12 flex flex-col sm:flex-row sm:items-end gap-4 pb-6">
+          <div className="relative flex flex-col gap-4 pb-6 sm:flex-row sm:items-start">
             {/* Logo */}
-            <div className="w-24 h-24 rounded-2xl bg-card border-4 border-dark flex items-center justify-center text-5xl shadow-xl shrink-0">
-              🏪
+            <div className="relative -mt-12 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-dark bg-card text-3xl font-black text-brand shadow-xl">
+              {dbSupplier?.logo ? <Image src={dbSupplier.logo} alt={supplier.businessName} fill className="object-cover" /> : supplier.businessName.slice(0, 1)}
             </div>
 
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1 pt-1 sm:pt-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <h1 className="font-display font-bold text-2xl text-foreground leading-tight">
@@ -97,6 +102,44 @@ export default async function SupplierStorePage({ params }: Props) {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-10">
+        {(youtubeId || dbSupplier?.posterUrls?.length) && (
+          <div className="mb-10 grid gap-6 lg:grid-cols-2">
+            {youtubeId && (
+              <section>
+                <div className="mb-3 flex items-center gap-2">
+                  <CirclePlay size={19} className="text-brand" />
+                  <h2 className="text-lg font-bold text-foreground">Дэлгүүрийн танилцуулга</h2>
+                </div>
+                <div className="relative aspect-video overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-card">
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${youtubeId}`}
+                    title={`${supplier.businessName} танилцуулга`}
+                    className="absolute inset-0 h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </section>
+            )}
+
+            {Boolean(dbSupplier?.posterUrls?.length) && (
+              <section>
+                <div className="mb-3 flex items-center gap-2">
+                  <Images size={19} className="text-brand" />
+                  <h2 className="text-lg font-bold text-foreground">Онцлох сурталчилгаа</h2>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {dbSupplier?.posterUrls?.slice(0, 3).map((url, index) => (
+                    <div key={url} className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-card">
+                      <Image src={url} alt={`Сурталчилгааны постер ${index + 1}`} fill className="object-cover" />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
         {/* Products header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
@@ -128,4 +171,18 @@ export default async function SupplierStorePage({ params }: Props) {
       </div>
     </div>
   );
+}
+
+function getYoutubeId(value: string) {
+  if (!value.trim()) return '';
+  try {
+    const url = new URL(value.trim());
+    if (url.hostname === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] ?? '';
+    if (!url.hostname.endsWith('youtube.com')) return '';
+    if (url.pathname === '/watch') return url.searchParams.get('v') ?? '';
+    const parts = url.pathname.split('/').filter(Boolean);
+    return ['embed', 'shorts', 'live'].includes(parts[0]) ? parts[1] ?? '' : '';
+  } catch {
+    return '';
+  }
 }
