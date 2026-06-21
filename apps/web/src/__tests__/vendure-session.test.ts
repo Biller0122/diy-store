@@ -20,6 +20,11 @@ describe('Vendure supplier session helpers', () => {
       .toBe('https://shoptool.mn/assets/vendure-assets/preview/98/image.png');
   });
 
+  it('rewrites private CDN asset URLs through the public asset route', () => {
+    expect(resolveVendureAssetUrl('https://d2tf7pwvqo3y9.cloudfront.net/assets/vendure-assets/preview/a0/cover.png'))
+      .toBe('https://shoptool.mn/assets/vendure-assets/preview/a0/cover.png');
+  });
+
   it('keeps absolute and data URLs unchanged', () => {
     expect(resolveVendureAssetUrl('https://cdn.example.com/image.png'))
       .toBe('https://cdn.example.com/image.png');

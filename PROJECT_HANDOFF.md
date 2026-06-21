@@ -60,6 +60,18 @@ All Claude and Codex sessions must read this file before editing and update it b
   - Note: the page still contains an unrelated ALB URL in `og:image` metadata for `og-default.png`; visible supplier media no longer uses ALB for raw profile assets.
 - Remaining next step: optional follow-up to normalize site metadata base if needed.
 
+### 2026-06-21 - CloudFront supplier media URL rewrite
+
+- User reported cover/logo still broken after upload while poster rendered.
+- Production API showed newly uploaded cover/logo were saved as CloudFront URLs (`https://d2tf7pwvqo3y9.cloudfront.net/assets/...`), but direct CloudFront requests returned 403 and Next image optimization returned 403 `upstream response is invalid`.
+- The same asset paths worked through `https://shoptool.mn/assets/...`.
+- Updated `apps/web/src/lib/vendure.ts` to rewrite absolute CloudFront/ALB asset URLs containing `/assets/...` through the public `https://shoptool.mn/assets/...` route.
+- Updated `apps/server/src/plugins/supplier/supplier.resolver.ts` so future uploaded asset URLs are normalized the same way before being returned for persistence.
+- Added a regression test for CloudFront asset URL rewriting.
+- Verification:
+  - `npm run test --workspace @diy-store/web -- vendure-session.test.ts --runInBand`: passed, 4 tests.
+  - `npm run build --workspace @diy-store/server`: passed.
+
 ### 2026-06-21 - Review of completed supplier profile work
 
 - Reviewed current branch `dev` at `392ced3`; supplier profile/auth/media implementation is already committed and pushed in `ea0dd14`, with deployment notes recorded in `392ced3`.

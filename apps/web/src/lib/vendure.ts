@@ -77,7 +77,19 @@ export function hasSupplierAuthToken() {
 export function resolveVendureAssetUrl(value?: string | null) {
   const source = value?.trim();
   if (!source) return '';
-  if (/^(https?:|data:|blob:)/i.test(source)) return source;
+  if (/^(data:|blob:)/i.test(source)) return source;
+  if (/^https?:/i.test(source)) {
+    try {
+      const url = new URL(source);
+      const assetIndex = url.pathname.indexOf('/assets/');
+      if (assetIndex >= 0 && (/\.cloudfront\.net$/i.test(url.hostname) || /\.elb\.amazonaws\.com$/i.test(url.hostname))) {
+        return `${PUBLIC_SITE_URL}${url.pathname.slice(assetIndex)}`;
+      }
+    } catch {
+      return source;
+    }
+    return source;
+  }
 
   const relativePath = source.startsWith('/assets/')
     ? source
