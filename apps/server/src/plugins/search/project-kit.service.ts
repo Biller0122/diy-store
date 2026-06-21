@@ -49,6 +49,9 @@ export class ProjectKitService implements OnModuleInit {
   private readonly dim = Number(process.env.EMBEDDING_DIMENSIONS || 1024);
   private readonly cacheMinSim = Number(process.env.PROJECT_KIT_CACHE_MIN_SIM || 0.93);
   private readonly cacheTtlDays = Number(process.env.PROJECT_KIT_CACHE_TTL_DAYS || 14);
+  // Cache хувилбар. Хайлтын логик өөрчлөгдөхөд энэ тоог нэмэгдүүлбэл хуучин
+  // (бохирдсон) cache бичлэгүүд үл тоомсорлогдоно. Reset = энэ тоог нэмэх.
+  private readonly cacheVersion = Number(process.env.PROJECT_KIT_CACHE_VERSION || 2);
   private cacheReady = false;
 
   constructor(
@@ -310,8 +313,14 @@ export class ProjectKitService implements OnModuleInit {
            query text NOT NULL,
            embedding vector(${this.dim}),
            result jsonb NOT NULL,
+           version integer NOT NULL DEFAULT 0,
            created_at timestamptz NOT NULL DEFAULT now()
          )`,
+      );
+      // Хуучин (version-гүй) хүснэгтэд багана нэмнэ — өмнөх бичлэгүүд version=0
+      // болж, шинэ cacheVersion-аар уншихад үл тоомсорлогдоно.
+      await this.connection.rawConnection.query(
+        'ALTER TABLE project_kit_cache ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 0',
       );
       this.cacheReady = true;
     } catch (error) {
@@ -325,10 +334,10 @@ export class ProjectKitService implements OnModuleInit {
     const rows = (await this.connection.rawConnection.query(
       `SELECT result, 1 - (embedding <=> $1::vector) AS sim
        FROM project_kit_cache
-       WHERE created_at > now() - make_interval(days => $2)
+       WHERE version = $3 AND created_at > now() - make_interval(days => $2)
        ORDER BY embedding <=> $1::vector
        LIMIT 1`,
-      [vector, this.cacheTtlDays],
+      [vector, this.cacheTtlDays, this.cacheVersion],
     )) as Array<{ result: ProjectKitResult; sim: string | number }>;
 
     const row = rows[0];
@@ -341,8 +350,8 @@ export class ProjectKitService implements OnModuleInit {
     if (!this.cacheReady) return;
     const vector = this.toVectorLiteral(queryEmbedding);
     await this.connection.rawConnection.query(
-      `INSERT INTO project_kit_cache (query, embedding, result) VALUES ($1, $2::vector, $3::jsonb)`,
-      [query, vector, JSON.stringify(result)],
+      `INSERT INTO project_kit_cache (query, embedding, result, version) VALUES ($1, $2::vector, $3::jsonb, $4)`,
+      [query, vector, JSON.stringify(result), this.cacheVersion],
     );
   }
 
