@@ -29,9 +29,10 @@ function supplierAssetPublicUrl(value?: string | null) {
     'https://shoptool.mn'
   ).replace(/\/+$/, '');
 
-  if (!publicBase) return `/assets/${assetPath}`;
-  const baseIncludesAssets = /\/assets$/i.test(publicBase);
-  return `${publicBase}${baseIncludesAssets ? '' : '/assets'}/${assetPath}`;
+  const safePublicBase = /\.elb\.amazonaws\.com/i.test(publicBase) ? 'https://shoptool.mn' : publicBase;
+  if (!safePublicBase) return `/assets/${assetPath}`;
+  const baseIncludesAssets = /\/assets$/i.test(safePublicBase);
+  return `${safePublicBase}${baseIncludesAssets ? '' : '/assets'}/${assetPath}`;
 }
 
 @Resolver()

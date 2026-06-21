@@ -45,6 +45,7 @@ All Claude and Codex sessions must read this file before editing and update it b
   - Production smoke of the fixed URL shape: `https://shoptool.mn/_next/image?url=https%3A%2F%2Fshoptool.mn%2Fassets%2Fvendure-assets%2Fpreview%2F98%2Fscreenshot-2026-06-17-111640__preview.png&w=1200&q=75` returned 200 `image/png`.
 - Follow-up after first deploy smoke: production initially emitted absolute ALB asset URLs, which Next image optimization rejected with 400 because the ALB host is not in `remotePatterns`. `resolveVendureAssetUrl()` and supplier upload URL generation now prefer the public site URL (`NEXT_PUBLIC_SITE_URL` / `PRODUCTION_BASE_URL`) before Vendure API or asset prefix origins.
 - Second deploy smoke still showed ALB URLs because the production web runtime did not expose `NEXT_PUBLIC_SITE_URL` to this helper. Added a hard public fallback of `https://shoptool.mn` for web normalization and server upload URL generation.
+- Third deploy smoke showed the runtime `NEXT_PUBLIC_SITE_URL` itself can be an ALB URL. Added an ALB-host guard so `.elb.amazonaws.com` is never used as the public media origin; it falls back to `https://shoptool.mn`.
 - Follow-up verification:
   - `npm run test --workspace @diy-store/web -- vendure-session.test.ts --runInBand`: passed, 3 tests.
   - `npm run build --workspace @diy-store/server`: passed.

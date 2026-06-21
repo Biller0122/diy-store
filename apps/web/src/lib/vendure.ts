@@ -1,9 +1,15 @@
 const PUBLIC_SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
 const PUBLIC_ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? '/admin-api';
-const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') || 'https://shoptool.mn';
+const PUBLIC_SITE_URL = publicSiteUrl(process.env.NEXT_PUBLIC_SITE_URL);
 const AUTH_TOKEN_KEY = 'diy-vendure-auth-token';
 const ADMIN_AUTH_TOKEN_KEY = 'diy-vendure-admin-auth-token';
 const SUPPLIER_AUTH_TOKEN_KEY = 'diy-supplier-auth-token';
+
+function publicSiteUrl(value?: string) {
+  const normalized = value?.replace(/\/+$/, '') || '';
+  if (!normalized || /\.elb\.amazonaws\.com/i.test(normalized)) return 'https://shoptool.mn';
+  return normalized;
+}
 
 function getShopApi() {
   if (PUBLIC_SHOP_API.startsWith('http')) return PUBLIC_SHOP_API;
