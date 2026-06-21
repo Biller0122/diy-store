@@ -24,9 +24,22 @@ All Claude and Codex sessions must read this file before editing and update it b
 | 2026-06-21 | Codex | Fix supplier profile token isolation, S3 asset URL crash, and 3-second profile visibility | Local verification complete; awaiting user review |
 | 2026-06-21 | Codex | Reuse the supplier profile design for the public store page and show real store media on supplier cards | Local verification complete; no deploy |
 | 2026-06-21 | Codex | Fix saved posters missing on first public profile visit | Local verification complete; no deploy |
-| 2026-06-21 | Codex | Release verified supplier profile/auth/media changes to production | Verification passed; preparing commit and dev push |
+| 2026-06-21 | Codex | Release verified supplier profile/auth/media changes to production | Deployed and production smoke-tested successfully |
 
 ## Latest Handoff
+
+### 2026-06-21 - Production release `ea0dd14`
+
+- Committed supplier profile/auth/media work as `ea0dd14 feat(supplier): publish store profile media` and pushed `dev`.
+- Local release gates passed: 102 tests, server/web lint with 0 errors, server/web production build, and production compose config validation.
+- GitHub CI run `27896349699` completed successfully.
+- GitHub Deploy Production run `27896349080` completed successfully in 17m28s and updated AWS ECS.
+- Production smoke tests passed on `https://shoptool.mn`:
+  - Homepage Odbayar supplier card displays the real logo and links to the supplier profile.
+  - `/suppliers` displays the real Odbayar cover and logo.
+  - `/suppliers/odbayar` displays the featured poster and 3 products.
+  - Browser console errors: 0; raw `vendure-assets/...` image sources: 0.
+- Unrelated local mobile generated files and `tmp/` remain intentionally uncommitted.
 
 ### 2026-06-21 - Public poster freshness
 
