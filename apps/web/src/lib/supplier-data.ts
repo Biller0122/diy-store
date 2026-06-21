@@ -3,6 +3,7 @@ export interface SupplierCard {
   businessName: string;
   slug: string;
   logo?: string;
+  coverImage?: string;
   description: string;
   district: string;
   rating: number;

@@ -2,6 +2,7 @@ const PUBLIC_SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
 const PUBLIC_ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? '/admin-api';
 const AUTH_TOKEN_KEY = 'diy-vendure-auth-token';
 const ADMIN_AUTH_TOKEN_KEY = 'diy-vendure-admin-auth-token';
+const SUPPLIER_AUTH_TOKEN_KEY = 'diy-supplier-auth-token';
 
 function getShopApi() {
   if (PUBLIC_SHOP_API.startsWith('http')) return PUBLIC_SHOP_API;
@@ -21,7 +22,66 @@ function getAdminApi() {
 
 function getVendureAuthToken() {
   if (typeof window === 'undefined') return null;
+  if (window.location.pathname.startsWith('/supplier')) {
+    const supplierToken = window.localStorage.getItem(SUPPLIER_AUTH_TOKEN_KEY);
+    if (isPlatformToken(supplierToken, 'SUPPLIER')) return supplierToken;
+  }
   return window.localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+// Платформ (supplier/driver) JWT мөн эсэх — body-д `role` талбартай гурван
+// хэсэгтэй токен. Vendure-ийн `vendure-auth-token` нь үүнийг ДАРЖ БИЧИХЭЭС
+// сэргийлнэ (эс бөгөөс supplier upload/update "Token буруу байна" өгдөг).
+function isPlatformToken(token: string | null, expectedRole?: string): boolean {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const decoded = typeof atob === 'function' ? atob(json) : '';
+    const body = JSON.parse(decoded) as { role?: unknown; exp?: unknown };
+    if (typeof body.role !== 'string') return false;
+    if (expectedRole && body.role !== expectedRole) return false;
+    return typeof body.exp !== 'number' || body.exp > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+}
+
+export function setSupplierAuthToken(token: string | null) {
+  if (typeof window === 'undefined') return;
+  if (token) window.localStorage.setItem(SUPPLIER_AUTH_TOKEN_KEY, token);
+  else window.localStorage.removeItem(SUPPLIER_AUTH_TOKEN_KEY);
+}
+
+export function hasSupplierAuthToken() {
+  if (typeof window === 'undefined') return false;
+  const dedicated = window.localStorage.getItem(SUPPLIER_AUTH_TOKEN_KEY);
+  if (isPlatformToken(dedicated, 'SUPPLIER')) return true;
+
+  // Migrate a valid token created before the dedicated supplier key existed.
+  const legacy = window.localStorage.getItem(AUTH_TOKEN_KEY);
+  if (!isPlatformToken(legacy, 'SUPPLIER')) return false;
+  window.localStorage.setItem(SUPPLIER_AUTH_TOKEN_KEY, legacy!);
+  return true;
+}
+
+export function resolveVendureAssetUrl(value?: string | null) {
+  const source = value?.trim();
+  if (!source) return '';
+  if (/^(https?:|data:|blob:)/i.test(source)) return source;
+
+  const relativePath = source.startsWith('/assets/')
+    ? source
+    : `/assets/${source.replace(/^\/+/, '').replace(/^assets\//, '')}`;
+  if (!PUBLIC_SHOP_API.startsWith('http')) return relativePath;
+
+  try {
+    return `${new URL(PUBLIC_SHOP_API).origin}${relativePath}`;
+  } catch {
+    return relativePath;
+  }
 }
 
 async function vendureHttpError(res: Response, label: string) {
@@ -81,7 +141,9 @@ export async function vendureShopFetch<T>(
   }
 
   const nextToken = res.headers.get('vendure-auth-token');
-  if (nextToken && typeof window !== 'undefined') {
+  // Supplier/driver JWT идэвхтэй үед Vendure-ийн session token-оор бүү дарж бич —
+  // эс бөгөөс supplier upload/update "Token буруу байна" болно.
+  if (nextToken && typeof window !== 'undefined' && !isPlatformToken(getVendureAuthToken())) {
     window.localStorage.setItem(AUTH_TOKEN_KEY, nextToken);
   }
 

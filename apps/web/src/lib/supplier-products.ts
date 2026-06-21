@@ -151,7 +151,9 @@ export async function getDbSupplierBySlug(slug: string) {
     const data = await vendureShopFetch<{ supplierBySlug: DbSupplier | null }>(
       SUPPLIER_BY_SLUG_QUERY,
       { slug },
-      { revalidate: 120 },
+      // Profile media must be visible on the first public visit after saving.
+      // ISR can serve one stale response while it revalidates in the background.
+      { revalidate: 0 },
     );
     return data.supplierBySlug;
   } catch {
@@ -291,6 +293,7 @@ export function dbSupplierToCard(supplier: DbSupplier): SupplierCard {
     businessName: supplier.businessName,
     slug: supplier.slug,
     logo: supplier.logo ?? undefined,
+    coverImage: supplier.coverImage ?? undefined,
     description: supplier.description || `${supplier.businessName} нийлүүлэгчийн дэлгүүр`,
     district: supplier.district || 'Улаанбаатар',
     rating: supplier.rating || 0,

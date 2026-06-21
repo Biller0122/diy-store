@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
   Camera,
@@ -24,7 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
-import { vendureShopFetch } from '@/lib/vendure';
+import { resolveVendureAssetUrl, vendureShopFetch } from '@/lib/vendure';
 import { formatPrice } from '@/lib/price';
 
 type ProfileProduct = {
@@ -86,6 +87,7 @@ const posterIdeas = [
 ];
 
 export default function StoreProfileDesignPage() {
+  const router = useRouter();
   const { supplier, setSupplier } = useSupplierStore();
   const [products, setProducts] = useState<ProfileProduct[]>([]);
   const [loading, setLoading] = useState(Boolean(supplier?.id));
@@ -133,6 +135,11 @@ export default function StoreProfileDesignPage() {
       { id: supplier.id, input },
     );
     setSupplier(data.updateSupplier);
+    router.refresh();
+    window.setTimeout(() => {
+      router.refresh();
+      if (data.updateSupplier.slug) router.prefetch(`/suppliers/${data.updateSupplier.slug}`);
+    }, 3000);
     return data.updateSupplier;
   }
 
@@ -242,6 +249,8 @@ export default function StoreProfileDesignPage() {
 
   const storeName = supplier?.businessName || 'Таны дэлгүүр';
   const youtubeId = getYoutubeId(youtubeUrl);
+  const coverImageSrc = resolveVendureAssetUrl(coverImage);
+  const logoSrc = resolveVendureAssetUrl(supplier?.logo);
   const initials = storeName
     .split(/\s+/)
     .map((part) => part[0])
@@ -283,8 +292,8 @@ export default function StoreProfileDesignPage() {
 
       <section id="profile-home" className="scroll-mt-20 overflow-hidden rounded-[28px] border border-[var(--glass-border)] bg-card shadow-xl shadow-black/5">
         <div className="relative h-48 overflow-hidden bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,.22),transparent_25%),linear-gradient(120deg,#111827_0%,#233553_45%,#ff4b00_140%)] md:h-64">
-          {coverImage && <Image src={coverImage} alt="Дэлгүүрийн cover" fill priority className="object-cover" />}
-          {coverImage && <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/20 to-black/10" />}
+          {coverImageSrc && <Image src={coverImageSrc} alt="Дэлгүүрийн cover" fill priority className="object-cover" />}
+          {coverImageSrc && <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/20 to-black/10" />}
           <div className="absolute -right-16 -top-28 h-72 w-72 rounded-full border-[48px] border-white/5" />
           <div className="absolute bottom-0 right-0 hidden w-[52%] -skew-x-12 bg-brand/90 py-20 md:block" />
           <div className="absolute left-6 top-6 max-w-md text-white md:left-10 md:top-10">
@@ -299,8 +308,8 @@ export default function StoreProfileDesignPage() {
         <div className="relative px-5 pb-6 md:px-9">
           <div className="flex flex-col gap-4 md:flex-row md:items-start">
             <div className="relative -mt-14 h-28 w-28 shrink-0 rounded-[26px] border-4 border-card bg-gradient-to-br from-brand to-[#ff8b33] shadow-lg md:-mt-16 md:h-32 md:w-32">
-              {supplier?.logo ? (
-                <Image src={supplier.logo} alt={storeName} fill className="rounded-[22px] object-cover" />
+              {logoSrc ? (
+                <Image src={logoSrc} alt={storeName} fill className="rounded-[22px] object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-3xl font-black text-white">{initials || <Store />}</div>
               )}
@@ -396,7 +405,7 @@ export default function StoreProfileDesignPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {posterUrls.length ? posterUrls.map((url, index) => (
                 <article key={url} className="group relative aspect-[4/5] overflow-hidden rounded-2xl bg-surface">
-                  <Image src={url} alt={`Сурталчилгааны постер ${index + 1}`} fill className="object-cover" />
+                  <Image src={resolveVendureAssetUrl(url)} alt={`Сурталчилгааны постер ${index + 1}`} fill className="object-cover" />
                   <button type="button" onClick={() => void removePoster(url)} className="absolute right-3 top-3 rounded-full bg-black/60 p-2 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100" aria-label="Постер хасах"><X size={14} /></button>
                 </article>
               )) : posterIdeas.map((poster) => (
@@ -458,8 +467,8 @@ export default function StoreProfileDesignPage() {
             {products.map((product) => (
               <Link href={`/product/${product.slug}`} key={product.id} className="overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-surface transition-transform hover:-translate-y-0.5">
                 <div className="relative aspect-square bg-white">
-                  {product.image ? (
-                    <Image src={product.image} alt={product.name} fill className="object-contain p-3" />
+                  {resolveVendureAssetUrl(product.image) ? (
+                    <Image src={resolveVendureAssetUrl(product.image)} alt={product.name} fill className="object-contain p-3" />
                   ) : (
                     <div className="flex h-full items-center justify-center text-foreground-muted"><Package size={30} /></div>
                   )}

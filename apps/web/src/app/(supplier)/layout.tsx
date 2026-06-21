@@ -13,6 +13,7 @@ import { Providers } from '@/components/providers';
 import { getCustomerHomeHref } from '@/lib/portal-links';
 import { BrandLogo } from '@/components/BrandLogo';
 import { SupplierNotifications } from '@/components/supplier/SupplierNotifications';
+import { hasSupplierAuthToken } from '@/lib/vendure';
 
 const NAV = [
   { href: '/supplier',          icon: LayoutDashboard, label: 'Хяналтын самбар' },
@@ -128,16 +129,21 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function SupplierGuard({ children }: { children: React.ReactNode }) {
-  const { supplier, hasHydrated } = useSupplierStore();
+  const { supplier, hasHydrated, logout } = useSupplierStore();
   const router = useRouter();
   const pathname = usePathname();
   const publicRoute = pathname === '/supplier/login' || pathname === '/supplier/register' || pathname === '/supplier/pending';
 
   useEffect(() => {
+    if (hasHydrated && supplier && !publicRoute && !hasSupplierAuthToken()) {
+      logout();
+      router.replace('/supplier/login?reason=session-expired');
+      return;
+    }
     if (hasHydrated && !supplier && !publicRoute) {
       router.replace('/supplier/login');
     }
-  }, [supplier, hasHydrated, publicRoute, router]);
+  }, [supplier, hasHydrated, publicRoute, router, logout]);
 
   if ((!hasHydrated || !supplier) && !publicRoute) {
     return (

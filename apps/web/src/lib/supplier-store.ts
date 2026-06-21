@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { setVendureAuthToken, vendureShopFetch } from './vendure';
+import { setSupplierAuthToken, setVendureAuthToken, vendureShopFetch } from './vendure';
 
 export type SupplierStatus = 'PENDING_VERIFICATION' | 'PENDING' | 'PENDING_APPROVAL' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED';
 
@@ -245,7 +245,7 @@ export const useSupplierStore = create<SupplierState>()(
             return { success: false };
           }
 
-          setVendureAuthToken(data.verifySupplierOTP.token ?? null);
+          setSupplierAuthToken(data.verifySupplierOTP.token ?? null);
           const supplier = await loadSupplierFromApi(data.verifySupplierOTP.supplierId);
           if (!supplier) {
             set({ isLoading: false, error: 'Нийлүүлэгчийн мэдээлэл олдсонгүй' });
@@ -276,6 +276,7 @@ export const useSupplierStore = create<SupplierState>()(
 
       logout: () => {
         setSupplierCookies(null);
+        setSupplierAuthToken(null);
         setVendureAuthToken(null);
         set({ supplier: null });
       },

@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowRight, BookOpen, CheckCircle2, Clock, Flame, MapPin, Package, Search, Sparkles, Star, Store, Truck } from 'lucide-react';
-import { vendureShopFetch, type VendureCollection } from '@/lib/vendure';
+import { resolveVendureAssetUrl, vendureShopFetch, type VendureCollection } from '@/lib/vendure';
 import { TrustStrip } from '@/components/ui/TrustStrip';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { LazyProductGrid } from '@/components/ui/LazyProductGrid';
@@ -297,9 +298,10 @@ function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplie
             href={`/suppliers/${sup.slug}`}
             className="group block rounded-2xl bg-card border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-all hover:shadow-lg hover:shadow-black/30 p-5"
           >
-            {/* Logo */}
-            <div className="w-14 h-14 rounded-2xl bg-brand/15 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
-              🏪
+            <div className="relative w-14 h-14 overflow-hidden rounded-2xl bg-brand/15 flex items-center justify-center text-xl font-black text-brand mb-4 group-hover:scale-110 transition-transform">
+              {resolveVendureAssetUrl(sup.logo) ? (
+                <Image src={resolveVendureAssetUrl(sup.logo)} alt={`${sup.businessName} logo`} fill className="object-cover" />
+              ) : sup.businessName.slice(0, 1).toUpperCase()}
             </div>
 
             <h3 className="font-semibold text-sm text-foreground group-hover:text-brand transition-colors leading-tight mb-1">
