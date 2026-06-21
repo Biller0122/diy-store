@@ -49,7 +49,16 @@ All Claude and Codex sessions must read this file before editing and update it b
 - Follow-up verification:
   - `npm run test --workspace @diy-store/web -- vendure-session.test.ts --runInBand`: passed, 3 tests.
   - `npm run build --workspace @diy-store/server`: passed.
-- Remaining next step: deploy web/server after user approval, then smoke-test `https://shoptool.mn/suppliers/odbayar` visually and verify browser console/image requests are clean.
+- Deployment:
+  - Pushed supplier media fixes through commits `78abb39`, `e5e96de`, `86a8127`, and final ALB-origin guard `804ddc0`.
+  - CI run `27898620550`: success.
+  - Deploy Production run `27898619943`: success.
+- Production smoke after final deploy:
+  - `https://shoptool.mn/suppliers/odbayar` renders cover and poster image sources through `https://shoptool.mn/assets/...`.
+  - Cover and poster Next image optimizer URLs returned 200 `image/png`.
+  - `Онцлох сурталчилгаа` is present.
+  - Note: the page still contains an unrelated ALB URL in `og:image` metadata for `og-default.png`; visible supplier media no longer uses ALB for raw profile assets.
+- Remaining next step: optional follow-up to normalize site metadata base if needed.
 
 ### 2026-06-21 - Review of completed supplier profile work
 
