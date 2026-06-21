@@ -11,9 +11,10 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ScrollProgress } from '@/components/ScrollProgress';
 
-// ISR: нүүр хуудсыг 120 секунд тутамд дахин үүсгэж кэшлэнэ — backend-ээс
-// хүсэлт бүрт дахин татахгүй тул эхний ачаалал хурдан.
-export const revalidate = 120;
+// Нүүр хуудсыг хүсэлт бүрт амьдаар (dynamic) render хийнэ. Статик prerender
+// үед backend түр хүрэхгүй бол "0 бараа" шигдэж, stale-кэшэнд гацдаг байсныг
+// зайлуулна. Хүсэлт бүрт backend-ийн бодит өгөгдлийг харуулна.
+export const dynamic = 'force-dynamic';
 
 // ─── Data fetching ────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ function MarketplaceHero({ supplierCount, productCount }: { supplierCount: numbe
     { icon: Clock, value: '30 мин', label: 'Дундаж хариу' },
     { icon: Truck, value: '24ц', label: 'Хүргэлт' },
   ];
-  const trust = ['Баталгаатай бүтээгдэхүүн', 'Өрсөлдөхүйц үнэ', 'Шуурхай хүргэлт'];
+  const trust = ['Олон төрлийн бүтээгдэхүүн', 'Өрсөлдөхүйц үнэ', 'Шуурхай хүргэлт'];
 
   return (
     <section className="relative overflow-hidden px-4 py-12 sm:px-6 lg:py-16">
@@ -378,7 +379,7 @@ function Footer() {
           {[
             { title: 'Платформ', links: ['Нийлүүлэгч болох', 'Жолооч болох', 'Бүх ангилал', 'Шинэ бараа'] },
             { title: 'Компани', links: ['Бидний тухай', 'Карьер', 'Хэвлэлийн мэдэгдэл', 'Холбоо барих'] },
-            { title: 'Тусламж', links: ['Захиалга хянах', 'Буцаалт', 'Баталгаа', 'Хаяг олох'] },
+            { title: 'Тусламж', links: ['Захиалга хянах', 'Буцаалт', 'Хаяг олох'] },
           ].map(({ title, links }) => (
             <div key={title}>
               <h4 className="font-semibold text-foreground text-sm mb-4">{title}</h4>
@@ -416,7 +417,6 @@ function footerHref(label: string) {
     'Холбоо барих': '/trade',
     'Захиалга хянах': '/track/demo',
     'Буцаалт': '/trade',
-    'Баталгаа': '/trade',
     'Хаяг олох': '/stores',
   };
   return routes[label] ?? '/';
