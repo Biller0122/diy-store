@@ -26,7 +26,7 @@ function supplierAssetPublicUrl(value?: string | null) {
     process.env.PRODUCTION_BASE_URL ||
     process.env.STOREFRONT_URL ||
     process.env.ASSET_URL_PREFIX ||
-    ''
+    'https://shoptool.mn'
   ).replace(/\/+$/, '');
 
   if (!publicBase) return `/assets/${assetPath}`;

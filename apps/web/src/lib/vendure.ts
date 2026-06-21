@@ -1,6 +1,6 @@
 const PUBLIC_SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
 const PUBLIC_ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? '/admin-api';
-const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') ?? '';
+const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') || 'https://shoptool.mn';
 const AUTH_TOKEN_KEY = 'diy-vendure-auth-token';
 const ADMIN_AUTH_TOKEN_KEY = 'diy-vendure-admin-auth-token';
 const SUPPLIER_AUTH_TOKEN_KEY = 'diy-supplier-auth-token';
