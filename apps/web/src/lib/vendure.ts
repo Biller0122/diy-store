@@ -78,8 +78,8 @@ export function resolveVendureAssetUrl(value?: string | null) {
     : `/assets/${source.replace(/^\/+/, '').replace(/^assets\//, '')}`;
 
   try {
-    if (PUBLIC_SHOP_API.startsWith('http')) return `${new URL(PUBLIC_SHOP_API).origin}${relativePath}`;
     if (PUBLIC_SITE_URL) return `${PUBLIC_SITE_URL}${relativePath}`;
+    if (PUBLIC_SHOP_API.startsWith('http')) return `${new URL(PUBLIC_SHOP_API).origin}${relativePath}`;
     if (typeof window !== 'undefined') return `${window.location.origin}${relativePath}`;
   } catch {
     // Fall through to the relative path below.

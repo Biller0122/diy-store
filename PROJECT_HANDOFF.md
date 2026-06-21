@@ -43,6 +43,10 @@ All Claude and Codex sessions must read this file before editing and update it b
   - `npm run lint --workspace @diy-store/server`: passed with 0 errors and 15 existing warnings.
   - `npm run lint --workspace @diy-store/web`: passed with 0 errors and 85 existing warnings.
   - Production smoke of the fixed URL shape: `https://shoptool.mn/_next/image?url=https%3A%2F%2Fshoptool.mn%2Fassets%2Fvendure-assets%2Fpreview%2F98%2Fscreenshot-2026-06-17-111640__preview.png&w=1200&q=75` returned 200 `image/png`.
+- Follow-up after first deploy smoke: production initially emitted absolute ALB asset URLs, which Next image optimization rejected with 400 because the ALB host is not in `remotePatterns`. `resolveVendureAssetUrl()` and supplier upload URL generation now prefer the public site URL (`NEXT_PUBLIC_SITE_URL` / `PRODUCTION_BASE_URL`) before Vendure API or asset prefix origins.
+- Follow-up verification:
+  - `npm run test --workspace @diy-store/web -- vendure-session.test.ts --runInBand`: passed, 3 tests.
+  - `npm run build --workspace @diy-store/server`: passed.
 - Remaining next step: deploy web/server after user approval, then smoke-test `https://shoptool.mn/suppliers/odbayar` visually and verify browser console/image requests are clean.
 
 ### 2026-06-21 - Review of completed supplier profile work
