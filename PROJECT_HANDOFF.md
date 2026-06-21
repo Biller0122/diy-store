@@ -71,6 +71,15 @@ All Claude and Codex sessions must read this file before editing and update it b
 - Verification:
   - `npm run test --workspace @diy-store/web -- vendure-session.test.ts --runInBand`: passed, 4 tests.
   - `npm run build --workspace @diy-store/server`: passed.
+- Deployment:
+  - Commit `d31fa4e fix(supplier): rewrite private cdn media urls` pushed to `dev`.
+  - CI run `27899524705`: success.
+  - Deploy Production run `27899523990`: success.
+- Production smoke after deploy:
+  - `/suppliers/odbayar` no longer emits the broken CloudFront cover/logo URLs.
+  - Cover and logo now emit `https://shoptool.mn/assets/...` URLs.
+  - Cover and logo Next image optimizer URLs returned 200 `image/png`.
+  - Poster section remains present.
 
 ### 2026-06-21 - Review of completed supplier profile work
 
