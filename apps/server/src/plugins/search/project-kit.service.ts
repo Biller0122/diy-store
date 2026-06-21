@@ -80,9 +80,27 @@ export class ProjectKitService implements OnModuleInit {
       if (cached) return { ...cached, fromCache: true };
     }
 
-    // Retrieval — одоо байгаа hybrid хайлтыг дахин ашиглана
-    const candidatesTake = Math.max(12, Math.min(take * 2, 40));
-    const { items } = await this.embeddingService.semanticSearch(trimmed, candidatesTake);
+    // Retrieval — ажлыг материалын нэр болгон задлаад (Claude) нэр тус бүрээр
+    // хайна. "хана будах" гэх ажлын хэллэг шууд тааруулахад сул, харин "цагаан
+    // будаг", "акрил праймер" гэх материалын нэр сайн олддог тул задлалт чухал.
+    const terms = await this.decomposeJob(trimmed);
+    const searchTerms = [trimmed, ...terms];
+    const perTermTake = Math.max(6, Math.min(take, 12));
+    const groups = await Promise.all(
+      searchTerms.map((t) =>
+        this.embeddingService
+          .semanticSearch(t, perTermTake)
+          .then((r) => r.items)
+          .catch(() => [] as SemanticSearchItem[]),
+      ),
+    );
+    const best = new Map<string, SemanticSearchItem>();
+    for (const item of groups.flat()) {
+      const key = `${item.source}:${item.id}`;
+      const ex = best.get(key);
+      if (!ex || item.score > ex.score) best.set(key, item);
+    }
+    const items = Array.from(best.values()).sort((a, b) => b.score - a.score).slice(0, 40);
     if (items.length === 0) {
       return { query: trimmed, jobUnderstood: '', groups: [], notes: '', fromCache: false };
     }
@@ -225,7 +243,49 @@ export class ProjectKitService implements OnModuleInit {
     };
   }
 
-  private parseJson(text: string): { jobUnderstood?: unknown; groups?: unknown; notes?: unknown } | null {
+  /** Ажлыг бараа хайлтад тохирох материал/багажийн нэр болгон задална (Claude). */
+  private async decomposeJob(query: string): Promise<string[]> {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return [];
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: process.env.CLAUDE_QUERY_MODEL || 'claude-haiku-4-5-20251001',
+          max_tokens: 200,
+          system:
+            'Чи DIY (засвар, барилга) дэлгүүрийн зөвлөх. Хэрэглэгчийн ажилд хэрэгтэй ' +
+            'материал, багажийг бараа хайхад тохирох богино монгол нэр болгон гаргана. ' +
+            'Зөвхөн компакт JSON буцаа.',
+          messages: [
+            {
+              role: 'user',
+              content:
+                `Ажил: "${query}".\nЭнэ ажилд хэрэгтэй 4-8 материал/багажийн хайлтын нэр гарга. ` +
+                'Яг ийм формат: {"terms":["цагаан будаг","акрил праймер","будгийн валик","шпатель"]}',
+            },
+          ],
+        }),
+      });
+      if (!response.ok) return [];
+      const data = (await response.json()) as ClaudeMessageResponse;
+      const text = data.content?.find((p) => p.type === 'text' && p.text)?.text ?? '';
+      const parsed = this.parseJson(text);
+      const terms = parsed?.terms;
+      if (!Array.isArray(terms)) return [];
+      return terms.map((t) => String(t).trim()).filter(Boolean).slice(0, 8);
+    } catch (error) {
+      console.error('[ProjectKit] decomposeJob failed', error);
+      return [];
+    }
+  }
+
+  private parseJson(text: string): Record<string, unknown> | null {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     if (start === -1 || end <= start) return null;
