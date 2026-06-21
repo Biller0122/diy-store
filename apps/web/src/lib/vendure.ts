@@ -1,5 +1,6 @@
 const PUBLIC_SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
 const PUBLIC_ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? '/admin-api';
+const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') ?? '';
 const AUTH_TOKEN_KEY = 'diy-vendure-auth-token';
 const ADMIN_AUTH_TOKEN_KEY = 'diy-vendure-admin-auth-token';
 const SUPPLIER_AUTH_TOKEN_KEY = 'diy-supplier-auth-token';
@@ -75,13 +76,15 @@ export function resolveVendureAssetUrl(value?: string | null) {
   const relativePath = source.startsWith('/assets/')
     ? source
     : `/assets/${source.replace(/^\/+/, '').replace(/^assets\//, '')}`;
-  if (!PUBLIC_SHOP_API.startsWith('http')) return relativePath;
 
   try {
-    return `${new URL(PUBLIC_SHOP_API).origin}${relativePath}`;
+    if (PUBLIC_SHOP_API.startsWith('http')) return `${new URL(PUBLIC_SHOP_API).origin}${relativePath}`;
+    if (PUBLIC_SITE_URL) return `${PUBLIC_SITE_URL}${relativePath}`;
+    if (typeof window !== 'undefined') return `${window.location.origin}${relativePath}`;
   } catch {
-    return relativePath;
+    // Fall through to the relative path below.
   }
+  return relativePath;
 }
 
 async function vendureHttpError(res: Response, label: string) {

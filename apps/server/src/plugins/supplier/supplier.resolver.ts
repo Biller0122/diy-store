@@ -15,6 +15,25 @@ type SupplierProfileImageInput = {
   dataUrl: string;
 };
 
+function supplierAssetPublicUrl(value?: string | null) {
+  const source = value?.trim();
+  if (!source) return '';
+  if (/^(https?:|data:|blob:)/i.test(source)) return source;
+
+  const assetPath = source.replace(/^\/+/, '').replace(/^assets\//, '');
+  const publicBase = (
+    process.env.ASSET_PUBLIC_URL ||
+    process.env.ASSET_URL_PREFIX ||
+    process.env.PRODUCTION_BASE_URL ||
+    process.env.STOREFRONT_URL ||
+    ''
+  ).replace(/\/+$/, '');
+
+  if (!publicBase) return `/assets/${assetPath}`;
+  const baseIncludesAssets = /\/assets$/i.test(publicBase);
+  return `${publicBase}${baseIncludesAssets ? '' : '/assets'}/${assetPath}`;
+}
+
 @Resolver()
 export class SupplierResolver {
   constructor(
@@ -207,7 +226,7 @@ export class SupplierResolver {
     const safeFilename = input.filename.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase() || 'supplier-image.jpg';
     const asset = await this.assetService.createFromFileStream(Readable.from(buffer), safeFilename, ctx);
     if ('errorCode' in asset) throw new Error(asset.message);
-    return asset.preview || asset.source;
+    return supplierAssetPublicUrl(asset.preview || asset.source);
   }
 
   @Mutation()

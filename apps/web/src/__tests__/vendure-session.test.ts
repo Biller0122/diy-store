@@ -17,7 +17,7 @@ describe('Vendure supplier session helpers', () => {
 
   it('normalizes a raw S3 asset key to the Vendure asset route', () => {
     expect(resolveVendureAssetUrl('vendure-assets/preview/98/image.png'))
-      .toBe('/assets/vendure-assets/preview/98/image.png');
+      .toBe('http://localhost/assets/vendure-assets/preview/98/image.png');
   });
 
   it('keeps absolute and data URLs unchanged', () => {
