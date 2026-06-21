@@ -727,6 +727,24 @@ function SearchContent() {
 
           {/* Results */}
           <div className="flex-1 min-w-0">
+            {!loading && query && isJobLike(query) && (
+              <button
+                type="button"
+                onClick={() => runKit(query)}
+                className="mb-6 flex w-full items-center gap-3 rounded-2xl border border-brand/30 bg-brand/5 p-4 text-left transition-colors hover:bg-brand/10"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card">
+                  <Wrench className="h-5 w-5 text-brand" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-brand">Ажлын багц гаргах</span>
+                  <span className="block text-xs text-foreground-muted">
+                    Энэ ажилд хэрэгтэй бүх материалыг бүлэглэж харуулна
+                  </span>
+                </span>
+                <ChevronDown className="h-4 w-4 -rotate-90 text-brand" />
+              </button>
+            )}
             {loading ? (
               <Skeleton />
             ) : hits.length > 0 ? (
@@ -761,25 +779,6 @@ function SearchContent() {
                     )}
                   </div>
                 </section>
-
-                {isJobLike(query) && (
-                  <button
-                    type="button"
-                    onClick={() => runKit(query)}
-                    className="flex w-full items-center gap-3 rounded-2xl border border-brand/30 bg-brand/5 p-4 text-left transition-colors hover:bg-brand/10"
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card">
-                      <Wrench className="h-5 w-5 text-brand" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-brand">Ажлын багц гаргах</span>
-                      <span className="block text-xs text-foreground-muted">
-                        Энэ ажилд хэрэгтэй бүх материалыг бүлэглэж харуулна
-                      </span>
-                    </span>
-                    <ChevronDown className="h-4 w-4 -rotate-90 text-brand" />
-                  </button>
-                )}
 
                 {groupedHits.map(([category, items], groupIndex) => (
                   <section key={category} className="space-y-3">
