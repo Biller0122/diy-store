@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react';
 import { m } from 'framer-motion';
 import Link from 'next/link';
-import { ArrowRight, Zap, Shield, Star } from 'lucide-react';
+import { ArrowRight, Star } from 'lucide-react';
 import { Button } from './Button';
 
 const TYPEWRITER_TEXTS = [
   'Хамгийн шилдэг багажийг олоорой.',
   'Мэргэжлийн чанарын бараа нийлүүлэгч.',
-  'Монголын хамгийн том DIY дэлгүүр.',
+  'Барилгын материалын ухаалаг шийдэл.',
   'Барилга. Засвар. Бүтээл.',
 ];
 
@@ -134,8 +134,6 @@ export function HeroSection() {
             className="flex flex-wrap gap-4"
           >
             {[
-              { icon: Zap, text: '2 цагт хүргэлт' },
-              { icon: Shield, text: '14 хоног баталгаа' },
               { icon: Star, text: '10,000+ бараа' },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-1.5 text-sm text-foreground-muted">

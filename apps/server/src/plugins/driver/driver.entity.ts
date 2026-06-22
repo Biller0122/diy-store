@@ -81,6 +81,9 @@ export class Driver extends VendureEntity {
   @Column({ nullable: true })
   otpExpiresAt: Date | null;
 
+  @Column({ default: 0 })
+  otpAttempts: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

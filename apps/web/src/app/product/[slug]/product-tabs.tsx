@@ -17,8 +17,6 @@ interface Variant {
 const TABS = [
   { id: 'features', label: 'Тайлбар' },
   { id: 'specs', label: 'Техникийн үзүүлэлт' },
-  { id: 'docs', label: 'Баримт бичиг' },
-  { id: 'warranty', label: 'Баталгаа' },
   { id: 'reviews', label: 'Сэтгэгдэл' },
 ] as const;
 
@@ -85,38 +83,6 @@ function SpecsTab({
   );
 }
 
-function DocsTab() {
-  return (
-    <div className="flex flex-col items-center py-12 text-foreground-muted">
-      <span className="text-4xl">📄</span>
-      <p className="mt-3 text-sm">Баримт бичиг байхгүй байна.</p>
-      <p className="text-xs">Худалдагчтай холбогдон тодруулна уу.</p>
-    </div>
-  );
-}
-
-function WarrantyTab() {
-  const items = [
-    { icon: '🛡️', title: '12 сарын үйлдвэрийн баталгаа', desc: 'Үйлдвэрийн доголдолд 12 сарын хугацаанд үнэгүй засвар хийнэ.' },
-    { icon: '🔧', title: 'Засварын үйлчилгээ', desc: 'Улаанбаатар хотод үнэгүй засварын үйлчилгээ үзүүлнэ.' },
-    { icon: '↩️', title: '14 хоногийн буцаалт', desc: 'Гэмтэлгүй, анхны савлагаатай бол 14 хоногт буцааж болно.' },
-    { icon: '📞', title: 'Техникийн дэмжлэг', desc: '7 хоногийн 7 хоног, өдрийн 9:00–21:00 цагт утсаар зөвлөгөө авна.' },
-  ];
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      {items.map((item) => (
-        <div key={item.title} className="flex gap-3 rounded-xl bg-dark p-4">
-          <span className="text-2xl">{item.icon}</span>
-          <div>
-            <p className="text-sm font-semibold text-foreground">{item.title}</p>
-            <p className="mt-0.5 text-xs text-foreground-muted">{item.desc}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function ReviewsTab({ productId }: { productId: string }) {
   return <ReviewSection productId={productId} />;
 }
@@ -161,8 +127,6 @@ export default function ProductTabs({
         <div data-testid={`tab-content-${activeTab}`}>
           {activeTab === 'features' && <FeaturesTab description={description} />}
           {activeTab === 'specs' && <SpecsTab facetValues={facetValues} variants={variants} />}
-          {activeTab === 'docs' && <DocsTab />}
-          {activeTab === 'warranty' && <WarrantyTab />}
           {activeTab === 'reviews' && <ReviewsTab productId={productId} />}
         </div>
       </div>

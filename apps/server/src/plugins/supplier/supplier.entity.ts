@@ -25,6 +25,15 @@ export class Supplier extends VendureEntity {
   @Column({ nullable: true })
   logo: string;
 
+  @Column({ nullable: true })
+  coverImage: string;
+
+  @Column({ nullable: true })
+  youtubeUrl: string;
+
+  @Column({ type: 'simple-json', nullable: true })
+  posterUrls: string[];
+
   @Column({ type: 'text', nullable: true })
   description: string;
 
@@ -45,6 +54,9 @@ export class Supplier extends VendureEntity {
 
   @Column({ nullable: true })
   otpExpiresAt: Date;
+
+  @Column({ default: 0 })
+  otpAttempts: number;
 
   @Column({ type: 'text', nullable: true })
   address: string;

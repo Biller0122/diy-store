@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Navigation, Package, Phone, RefreshCw, Wifi, WifiOff } from 'lucide-react';
-import { vendureAdminFetch } from '@/lib/vendure';
+import { getVendureAdminAuthToken, vendureAdminFetch } from '@/lib/vendure';
 
 interface LiveDriver {
   id: string;
@@ -218,7 +218,11 @@ export default function AdminDeliveriesPage() {
     let socket: import('socket.io-client').Socket | null = null;
 
     import('socket.io-client').then(({ io }) => {
-      socket = io(getSocketUrl(), { transports: ['websocket', 'polling'] });
+      const token = getVendureAdminAuthToken();
+      socket = io(getSocketUrl(), {
+        auth: token ? { token } : undefined,
+        transports: ['websocket', 'polling'],
+      });
 
       socket.on('connect', () => setSocketConnected(true));
       socket.on('disconnect', () => setSocketConnected(false));

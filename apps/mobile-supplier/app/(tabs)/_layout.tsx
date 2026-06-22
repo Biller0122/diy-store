@@ -1,16 +1,12 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, StyleSheet } from 'react-native';
 
 const C = {
   bg: '#08080E',
   primary: '#FF4500',
   textTertiary: '#55556A',
-  red: '#EF4444',
 };
-
-const PENDING_COUNT = 4;
 
 function TabBarIcon({
   name,
@@ -32,14 +28,7 @@ function TabBarIcon({
 
 function OrdersIcon({ color, focused }: { color: string; focused: boolean }) {
   return (
-    <View>
-      <Ionicons name={focused ? 'bag' : 'bag-outline'} size={focused ? 24 : 22} color={color} />
-      {PENDING_COUNT > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{PENDING_COUNT}</Text>
-        </View>
-      )}
-    </View>
+    <Ionicons name={focused ? 'bag' : 'bag-outline'} size={focused ? 24 : 22} color={color} />
   );
 }
 
@@ -101,38 +90,50 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="revenue"
         options={{
-          title: 'Профайл',
+          title: 'Орлого',
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon
-              name={focused ? 'person' : 'person-outline'}
+              name={focused ? 'stats-chart' : 'stats-chart-outline'}
               color={color}
               focused={focused}
             />
           ),
         }}
       />
+      <Tabs.Screen
+        name="reviews"
+        options={{
+          title: 'Review',
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name={focused ? 'star' : 'star-outline'}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Тохиргоо',
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name={focused ? 'settings' : 'settings-outline'}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -8,
-    backgroundColor: C.red,
-    borderRadius: 99,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-});

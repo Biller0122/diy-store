@@ -3,20 +3,24 @@
 import { useState, useEffect } from 'react';
 import { m } from 'framer-motion';
 import Link from 'next/link';
-import { Search, ShoppingCart, User, Hammer, Menu, X, Truck } from 'lucide-react';
+import { Search, ShoppingCart, User, Menu, X } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { MegaMenu } from './ui/MegaMenu';
 import { cn } from '@/lib/utils';
+import { getCustomerHomeHref } from '@/lib/portal-links';
+import { BrandLogo } from './BrandLogo';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { items } = useCartStore();
-  const { openSearch, openCart } = useUIStore();
+  const { openSearch, openCart, openAccount } = useUIStore();
   const { customer } = useAuthStore();
   const cartCount = items.reduce((a, i) => a + i.qty, 0);
+  const customerHomeHref = getCustomerHomeHref();
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 20);
@@ -30,62 +34,53 @@ export function Header() {
         'sticky top-0 z-40 transition-all duration-300',
         scrolled
           ? 'glass border-b border-[var(--glass-border)] shadow-lg shadow-black/20'
-          : 'bg-transparent',
+          : 'bg-surface/80 backdrop-blur-xl md:bg-transparent',
       )}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center gap-4 h-16">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="grid h-16 grid-cols-[auto_1fr_auto] items-center gap-4 lg:gap-6">
           {/* Logo */}
-          <Link href="/" data-testid="logo" className="flex items-center gap-2 shrink-0 group">
-            <m.div
-              whileHover={{ rotate: [0, -12, 12, 0] }}
-              transition={{ duration: 0.4 }}
-              className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center shadow-lg shadow-brand/30"
-            >
-              <Hammer size={16} className="text-white" />
-            </m.div>
-            <div className="hidden sm:block">
-              <span className="font-display font-black text-lg text-foreground tracking-tight">
-                DIY<span className="text-brand">Store</span>
-              </span>
-            </div>
+          <Link href={customerHomeHref} data-testid="logo" className="flex shrink-0 items-center">
+            <BrandLogo />
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1 ml-2">
-            <MegaMenu />
-            {[
-              { href: '/how-to', label: 'DIY Зөвлөгөө' },
-              { href: '/trade', label: 'Trade данс' },
-              ...(!customer ? [{ href: '/driver/login', label: 'Жолооч' }] : []),
-            ].map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className="px-3 py-2 rounded-xl text-sm font-medium text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
+          <div className="hidden min-w-0 items-center justify-center gap-5 md:flex">
+            {/* Desktop nav */}
+            <nav className="flex shrink-0 items-center gap-2">
+              <MegaMenu />
+              {[
+                { href: '/trade', label: 'Trade данс' },
+              ].map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="rounded-xl px-3 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-white/5 hover:text-foreground"
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
 
-          {/* Search bar (desktop) */}
-          <button
-            data-testid="search-trigger"
-            onClick={openSearch}
-            className="hidden md:flex flex-1 max-w-xs items-center gap-2 glass glass-hover rounded-full px-4 py-2 text-sm text-foreground-muted hover:text-foreground transition-all"
-          >
-            <Search size={15} />
-            <span className="flex-1 text-left">Хайлт хийх...</span>
-            <kbd className="text-[10px] border border-[var(--glass-border)] rounded px-1.5 py-0.5 font-mono">
-              ⌘K
-            </kbd>
-          </button>
-
-          <div className="flex-1 md:flex-none" />
+            {/* Search bar (desktop) */}
+            <button
+              data-testid="search-trigger"
+              onClick={openSearch}
+              className="glass glass-hover flex w-full max-w-[360px] items-center gap-2 rounded-full px-4 py-2 text-sm text-foreground-muted transition-all hover:text-foreground lg:max-w-[420px]"
+            >
+              <Search size={15} />
+              <span className="flex-1 text-left">Хайлт хийх...</span>
+              <kbd className="rounded border border-[var(--glass-border)] px-1.5 py-0.5 font-mono text-[10px]">
+                ⌘K
+              </kbd>
+            </button>
+          </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center justify-end gap-2">
+            <div className="hidden lg:block">
+              <ThemeToggle />
+            </div>
+
             {/* Search icon (mobile) */}
             <button
               data-testid="search-trigger-mobile"
@@ -94,31 +89,6 @@ export function Header() {
             >
               <Search size={18} />
             </button>
-
-            {/* Driver — hidden for logged-in customers */}
-            {!customer && (
-              <Link
-                href="/driver/login"
-                className="hidden lg:flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white transition-colors"
-              >
-                <Truck size={16} />
-                <span>Жолооч</span>
-              </Link>
-            )}
-
-            {/* Account */}
-            <Link
-              href={customer ? '/account' : '/account/login'}
-              className="hidden sm:flex w-9 h-9 rounded-xl items-center justify-center text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
-            >
-              {customer ? (
-                <div className="w-6 h-6 rounded-full bg-brand flex items-center justify-center text-white text-xs font-bold">
-                  {customer.firstName?.[0] ?? 'U'}
-                </div>
-              ) : (
-                <User size={18} />
-              )}
-            </Link>
 
             {/* Cart */}
             <button
@@ -142,6 +112,26 @@ export function Header() {
               </span>
             </button>
 
+            {/* Account — opens the slide-out drawer */}
+            <button
+              onClick={openAccount}
+              aria-label="Профайл"
+              className="group relative hidden sm:flex items-center justify-center"
+            >
+              {customer ? (
+                <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand to-amber p-[2px] shadow-lg shadow-brand/25 transition-transform group-hover:scale-105">
+                  <span className="flex h-full w-full items-center justify-center rounded-full bg-surface text-xs font-extrabold text-foreground">
+                    {customer.firstName?.[0]?.toUpperCase() ?? 'U'}
+                  </span>
+                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success" />
+                </span>
+              ) : (
+                <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--glass-border)] bg-card text-foreground-muted shadow-sm transition-all group-hover:border-brand/50 group-hover:text-brand group-hover:shadow-brand/20">
+                  <User size={17} />
+                </span>
+              )}
+            </button>
+
             {/* Mobile menu */}
             <button
               data-testid="mobile-menu"
@@ -163,11 +153,12 @@ export function Header() {
           className="md:hidden border-t border-[var(--glass-border)] bg-surface/95 backdrop-blur-xl"
         >
           <div className="px-4 py-4 space-y-1">
+            <div className="px-2 pb-3">
+              <ThemeToggle />
+            </div>
             {[
               { href: '/category', label: '📦 Ангилал' },
-              { href: '/how-to', label: '🔨 DIY Зөвлөгөө' },
               { href: '/trade', label: '🏢 Trade данс' },
-              { href: '/account', label: '👤 Миний данс' },
             ].map(({ href, label }) => (
               <Link
                 key={href}
@@ -178,6 +169,12 @@ export function Header() {
                 {label}
               </Link>
             ))}
+            <button
+              onClick={() => { setMobileOpen(false); openAccount(); }}
+              className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-white/5 transition-colors"
+            >
+              👤 Миний данс
+            </button>
           </div>
         </m.div>
       )}

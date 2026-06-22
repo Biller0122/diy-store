@@ -1,17 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { AnimatePresence, m } from 'framer-motion';
 import { CheckCircle, Package, MapPin, Clock } from 'lucide-react';
-import { useCartStore, calcSubtotal, calcDiscount, calcDeliveryFee, getSupplierGroups } from '@/lib/cart-store';
+import { useCartStore, calcSubtotal, calcDiscount, getSupplierGroups } from '@/lib/cart-store';
 import { useOrderStore } from '@/lib/order-store';
 import { vendureShopFetch } from '@/lib/vendure';
 import { useAuthStore } from '@/lib/auth-store';
 import { useCustomerAddressStore, type CustomerAddress } from '@/lib/customer-address-store';
 import { QPayModal } from '@/components/payment/QPayModal';
-import { MonPayModal } from '@/components/payment/MonPayModal';
 import { trackBeginCheckout, trackAddPaymentInfo } from '@/lib/analytics/ga4';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -28,16 +26,8 @@ const UB_DISTRICTS = [
   'Чингэлтэй','Сонгинохайрхан','Налайх','Багануур','Багахангай',
 ];
 
-const STORES = [
-  { id: '1', name: 'Баянзүрх салбар',  address: 'Баянзүрх дүүрэг, Нарны зам 5' },
-  { id: '2', name: 'Сүхбаатар салбар', address: 'Сүхбаатар дүүрэг, Бага тойруу 14' },
-  { id: '3', name: 'Хан-Уул салбар',   address: 'Хан-Уул дүүрэг, Зайсан 12' },
-  { id: '4', name: 'Баянгол салбар',   address: 'Баянгол дүүрэг, Чингисийн өргөн чөлөө 8' },
-  { id: '5', name: 'Чингэлтэй салбар', address: 'Чингэлтэй дүүрэг, Энхтайваны өргөн чөлөө 3' },
-];
-
-type DeliveryType  = 'delivery' | 'pickup';
-type PaymentMethod = 'qpay' | 'monpay' | 'card' | 'testpay';
+type DeliveryType  = 'delivery';
+type PaymentMethod = 'qpay';
 type DeliveryStatus = 'SEARCHING' | 'OFFERED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
 type DispatchStatusData = {
@@ -54,14 +44,19 @@ type DispatchStatusData = {
   estimatedArrivalMinutes?: number;
 };
 
+type PublishedDelivery = {
+  orderNumber: string;
+  trackingToken: string;
+};
+
 function fmt(minor: number) {
   return `₮${Math.round(minor / 100).toLocaleString('mn-MN')}`;
 }
 
-function fallbackOrderNo() {
-  const year = new Date().getFullYear();
-  const seq = String(Math.floor(Math.random() * 99999) + 1).padStart(5, '0');
-  return `DIY-${year}-${seq}`;
+function normalizeMongolianPhone(value: string) {
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('976') && digits.length > 8) digits = digits.slice(3);
+  return digits;
 }
 
 const CREATE_DELIVERY_REQUEST = `
@@ -94,6 +89,7 @@ const CREATE_DELIVERY_REQUEST = `
       id
       orderId
       orderNumber
+      trackingToken
       status
     }
   }
@@ -155,7 +151,7 @@ interface ContactData {
   name: string; phone: string; email: string;
   deliveryType: DeliveryType;
   province: string; district: string; khoroo: string; address: string; doorCode: string;
-  storeId: string; note: string;
+  note: string;
 }
 
 function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onSelectAddress }: {
@@ -171,13 +167,11 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
   function validate() {
     const e: typeof errors = {};
     if (data.name.trim().length < 2) e.name = 'Нэр 2-оос дээш тэмдэгттэй байх ёстой';
-    const cleanPhone = data.phone.replace(/\D/g, '');
-    if (!/^[6789]\d{7}$/.test(cleanPhone)) e.phone = 'Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой';
-    if (data.deliveryType === 'delivery') {
-      if (!data.province) e.province = 'Аймаг/хот сонгоно уу';
-      if (!data.district) e.district = 'Дүүрэг оруулна уу';
-      if (!data.address.trim()) e.address = 'Дэлгэрэнгүй хаяг оруулна уу';
-    }
+    const cleanPhone = normalizeMongolianPhone(data.phone);
+    if (!/^[6789]\d{7}$/.test(cleanPhone)) e.phone = 'Утасны дугаар +976 угтвартай байж болно, үндсэн дугаар нь 8 оронтой 6/7/8/9-өөр эхлэх ёстой';
+    if (!data.province) e.province = 'Аймаг/хот сонгоно уу';
+    if (!data.district) e.district = 'Дүүрэг оруулна уу';
+    if (!data.address.trim()) e.address = 'Дэлгэрэнгүй хаяг оруулна уу';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -206,16 +200,8 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
 
       <section>
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground-muted">Хүргэлтийн мэдээлэл</h2>
-        <div className="mb-4 flex overflow-hidden rounded-xl border border-[var(--glass-border)]">
-          {([['delivery','🚚 Хүргэлт'], ['pickup','🏪 Салбараас авах']] as const).map(([val, label]) => (
-            <button key={val} onClick={() => onChange({ deliveryType: val })}
-              className={`flex-1 py-2.5 text-sm font-semibold transition ${data.deliveryType === val ? 'bg-brand text-white' : 'bg-card text-foreground-muted hover:bg-dark'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
 
-        {data.deliveryType === 'delivery' && addresses && addresses.length > 0 && (
+        {addresses && addresses.length > 0 && (
           <div className="mb-4">
             <label className="mb-1 block text-xs font-semibold text-foreground-muted">Хадгалсан хаяг</label>
             <select
@@ -240,63 +226,43 @@ function StepContact({ data, onChange, onNext, addresses, selectedAddressId, onS
           </div>
         )}
 
-        {data.deliveryType === 'delivery' ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Аймаг / Хот" required error={errors.province}>
-              <select className={inputCls} value={data.province}
-                onChange={(e) => onChange({ province: e.target.value, district: '' })}>
-                <option value="">Сонгох...</option>
-                {PROVINCES.map((p) => <option key={p}>{p}</option>)}
-              </select>
-            </Field>
-            <Field label="Дүүрэг / Сум" required error={errors.district}>
-              {districts.length > 0 ? (
-              <select data-testid="district-select" className={inputCls} value={data.district}
-                  onChange={(e) => onChange({ district: e.target.value })}>
-                  <option value="">Сонгох...</option>
-                  {districts.map((d) => <option key={d}>{d} дүүрэг</option>)}
-                </select>
-              ) : (
-                <input data-testid="district-select" className={inputCls} placeholder="Сум/дүүрэг" value={data.district}
-                  onChange={(e) => onChange({ district: e.target.value })} />
-              )}
-            </Field>
-            <Field label="Хороо / Баг">
-              <input data-testid="input-khoroo" className={inputCls} placeholder="1-р хороо" value={data.khoroo}
-                onChange={(e) => onChange({ khoroo: e.target.value })} />
-            </Field>
-            <Field label="Дэлгэрэнгүй хаяг" required error={errors.address}>
-              <input data-testid="input-address" className={inputCls} placeholder="Байр, давхар, тоот" value={data.address}
-                onChange={(e) => onChange({ address: e.target.value })} />
-            </Field>
-            <Field label="Хаалганы код">
-              <input className={inputCls} placeholder="#1234" value={data.doorCode}
-                onChange={(e) => onChange({ doorCode: e.target.value })} />
-            </Field>
-            <Field label="Тэмдэглэл">
-              <input className={inputCls} placeholder="3-р давхар, хэн нэгэнд..." value={data.note}
-                onChange={(e) => onChange({ note: e.target.value })} />
-            </Field>
-          </div>
-        ) : (
-          <Field label="Салбар сонгох">
-            <div className="space-y-2">
-              {STORES.map((s) => (
-                <label key={s.id}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                    data.storeId === s.id ? 'border-brand/50 bg-brand/5' : 'border-[var(--glass-border)] hover:border-brand/30'
-                  }`}>
-                  <input type="radio" name="store" value={s.id} checked={data.storeId === s.id}
-                    onChange={() => onChange({ storeId: s.id })} className="mt-0.5 accent-brand" />
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{s.name}</p>
-                    <p className="text-xs text-foreground-muted">{s.address}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Аймаг / Хот" required error={errors.province}>
+            <select className={inputCls} value={data.province}
+              onChange={(e) => onChange({ province: e.target.value, district: '' })}>
+              <option value="">Сонгох...</option>
+              {PROVINCES.map((p) => <option key={p}>{p}</option>)}
+            </select>
           </Field>
-        )}
+          <Field label="Дүүрэг / Сум" required error={errors.district}>
+            {districts.length > 0 ? (
+            <select data-testid="district-select" className={inputCls} value={data.district}
+                onChange={(e) => onChange({ district: e.target.value })}>
+                <option value="">Сонгох...</option>
+                {districts.map((d) => <option key={d}>{d} дүүрэг</option>)}
+              </select>
+            ) : (
+              <input data-testid="district-select" className={inputCls} placeholder="Сум/дүүрэг" value={data.district}
+                onChange={(e) => onChange({ district: e.target.value })} />
+            )}
+          </Field>
+          <Field label="Хороо / Баг">
+            <input data-testid="input-khoroo" className={inputCls} placeholder="1-р хороо" value={data.khoroo}
+              onChange={(e) => onChange({ khoroo: e.target.value })} />
+          </Field>
+          <Field label="Дэлгэрэнгүй хаяг" required error={errors.address}>
+            <input data-testid="input-address" className={inputCls} placeholder="Байр, давхар, тоот" value={data.address}
+              onChange={(e) => onChange({ address: e.target.value })} />
+          </Field>
+          <Field label="Хаалганы код">
+            <input className={inputCls} placeholder="#1234" value={data.doorCode}
+              onChange={(e) => onChange({ doorCode: e.target.value })} />
+          </Field>
+          <Field label="Тэмдэглэл">
+            <input className={inputCls} placeholder="3-р давхар, хэн нэгэнд..." value={data.note}
+              onChange={(e) => onChange({ note: e.target.value })} />
+          </Field>
+        </div>
       </section>
 
       <button data-testid="checkout-next" onClick={() => { if (validate()) onNext(); }}
@@ -318,17 +284,15 @@ interface PaymentData {
 
 const METHOD_INFO: { id: PaymentMethod; icon: string; label: string; desc: string; color: string }[] = [
   { id: 'qpay',   icon: '📱', label: 'QPay',   desc: 'QR кодоор төлнө',      color: 'border-brand/40 bg-brand/5' },
-  { id: 'monpay', icon: '💳', label: 'MonPay', desc: 'MonPay апп-аар төлнө', color: 'border-sky-500/40 bg-sky-500/5' },
-  { id: 'card',   icon: '🏦', label: 'Карт',   desc: 'Дебит / Кредит карт',  color: 'border-purple-500/40 bg-purple-500/5' },
-  { id: 'testpay', icon: '✅', label: 'Тест төлбөр', desc: 'Шууд төлөгдсөн болгоно', color: 'border-success/40 bg-success/5' },
 ];
 
-function StepPayment({ data, total, onChange, onBack, onNext }: {
-  data: PaymentData; total: number; onChange: (d: Partial<PaymentData>) => void; onBack: () => void; onNext: () => void;
+function StepPayment({ data, total, submitting, onChange, onBack, onNext }: {
+  data: PaymentData; total: number; submitting: boolean; onChange: (d: Partial<PaymentData>) => void; onBack: () => void; onNext: () => void;
 }) {
   const [error, setError] = useState('');
 
   function handleConfirm() {
+    if (submitting) return;
     if (!data.method) { setError('Төлбөрийн аргаа сонгоно уу'); return; }
     if (data.vatRequired && (!data.companyName || !data.registerNo)) {
       setError('Компанийн нэр болон регистрийн дугаар оруулна уу'); return;
@@ -341,12 +305,12 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
     <div className="space-y-6">
       <section>
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground-muted">Төлбөрийн арга</h2>
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-1">
           {METHOD_INFO.map((m) => (
-            <button data-testid={`payment-${m.id}`} key={m.id} onClick={() => onChange({ method: m.id })}
+            <button data-testid={`payment-${m.id}`} key={m.id} onClick={() => onChange({ method: m.id })} disabled={submitting}
               className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition ${
                 data.method === m.id ? m.color : 'border-[var(--glass-border)] hover:border-[var(--glass-border)]'
-              }`}>
+              } disabled:cursor-not-allowed disabled:opacity-60`}>
               <span className="text-3xl">{m.icon}</span>
               <span className="text-sm font-bold text-foreground">{m.label}</span>
               <span className="text-xs text-foreground-muted">{m.desc}</span>
@@ -360,9 +324,6 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
           <span className="text-xl">{METHOD_INFO.find((m) => m.id === data.method)?.icon}</span>
           <div className="text-sm text-foreground-muted">
             {data.method === 'qpay'   && <><span className="text-foreground font-semibold">QPay</span> — Дараа QR код харагдана. Банкны аппаа бэлдээрэй.</>}
-            {data.method === 'monpay' && <><span className="text-foreground font-semibold">MonPay</span> — Дараа QR код харагдана. MonPay апп-аа бэлдээрэй.</>}
-            {data.method === 'card'   && <><span className="text-foreground font-semibold">Карт</span> — Дараагийн хуудсанд картын мэдээлэл оруулна уу.</>}
-            {data.method === 'testpay' && <><span className="text-foreground font-semibold">Тест төлбөр</span> — Дармагц төлбөр төлөгдсөн гэж үзээд захиалга үүсгэнэ.</>}
           </div>
         </div>
       )}
@@ -395,13 +356,13 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
       {error && <p className="text-sm text-error">{error}</p>}
 
       <div className="flex gap-3">
-        <button onClick={onBack}
-          className="flex-1 rounded-xl border border-[var(--glass-border)] py-3 text-sm font-semibold text-foreground-muted hover:bg-dark">
+        <button onClick={onBack} disabled={submitting}
+          className="flex-1 rounded-xl border border-[var(--glass-border)] py-3 text-sm font-semibold text-foreground-muted hover:bg-dark disabled:cursor-not-allowed disabled:opacity-60">
           ← Буцах
         </button>
-        <button data-testid="pay-btn" onClick={handleConfirm}
-          className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold text-white hover:bg-brand-hover">
-          Төлбөр хийх ✓
+        <button data-testid="pay-btn" onClick={handleConfirm} disabled={submitting}
+          className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface disabled:text-foreground-muted">
+          {submitting ? 'Илгээж байна...' : 'Төлбөр хийх ✓'}
         </button>
       </div>
     </div>
@@ -410,8 +371,19 @@ function StepPayment({ data, total, onChange, onBack, onNext }: {
 
 // ─── Step 3 — Confirmation ────────────────────────────────────
 
-function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
+function trackHref(orderNo: string, trackingToken?: string) {
+  return trackingToken ? `/track/${orderNo}?t=${encodeURIComponent(trackingToken)}` : `/track/${orderNo}`;
+}
+
+function dispatchStatusHref(orderNo: string, trackingToken?: string) {
+  return trackingToken
+    ? `/api/order/${encodeURIComponent(orderNo)}/dispatch-status?t=${encodeURIComponent(trackingToken)}`
+    : `/api/order/${encodeURIComponent(orderNo)}/dispatch-status`;
+}
+
+function StepConfirmation({ orderNo, trackingToken, estimatedMinutes, deliveryAddress }: {
   orderNo: string;
+  trackingToken?: string;
   estimatedMinutes: number;
   deliveryAddress?: string;
 }) {
@@ -423,8 +395,11 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
 
     async function fetchDispatchStatus() {
       try {
-        const response = await fetch(`/api/order/${encodeURIComponent(orderNo)}/dispatch-status`, {
+        const token = window.localStorage.getItem('diy-vendure-auth-token');
+        const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+        const response = await fetch(dispatchStatusHref(orderNo, trackingToken), {
           cache: 'no-store',
+          headers,
         });
         if (!response.ok) return;
         const data = await response.json() as DispatchStatusData;
@@ -440,7 +415,7 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [orderNo]);
+  }, [orderNo, trackingToken]);
 
   const accepted = ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(dispatch.status);
   const offered = dispatch.status === 'OFFERED';
@@ -498,7 +473,7 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
         <div className="rounded-xl bg-surface border border-[var(--glass-border)] p-3 flex flex-col items-center gap-1.5">
           <MapPin size={18} className="text-brand" />
           <p className="text-xs text-foreground-muted">Хүргэх хаяг</p>
-          <p className="text-xs font-semibold text-foreground line-clamp-2">{deliveryAddress ?? 'Салбараас авах'}</p>
+          <p className="text-xs font-semibold text-foreground line-clamp-2">{deliveryAddress ?? 'Хүргэлтийн хаяг'}</p>
         </div>
       </div>
 
@@ -528,7 +503,7 @@ function StepConfirmation({ orderNo, estimatedMinutes, deliveryAddress }: {
       {/* Actions */}
       <div className="space-y-3">
         <Link
-          href={`/track/${orderNo}`}
+          href={trackHref(orderNo, trackingToken)}
           className="flex items-center justify-center gap-2 w-full rounded-xl bg-brand py-3.5 text-sm font-bold text-white hover:bg-brand-hover"
         >
           <Package size={16} /> Захиалга хянах
@@ -550,23 +525,27 @@ const CONTACT_INIT: ContactData = {
   name: '', phone: '', email: '',
   deliveryType: 'delivery',
   province: 'Улаанбаатар', district: '', khoroo: '', address: '', doorCode: '',
-  storeId: STORES[0].id, note: '',
+  note: '',
 };
 
-const PAYMENT_INIT: PaymentData = { method: null, vatRequired: false, companyName: '', registerNo: '' };
+const PAYMENT_INIT: PaymentData = { method: 'qpay', vatRequired: false, companyName: '', registerNo: '' };
 
 export default function CheckoutPage() {
-  const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [contact, setContact] = useState<ContactData>(CONTACT_INIT);
   const [payment, setPayment] = useState<PaymentData>(PAYMENT_INIT);
   const [orderNo, setOrderNo] = useState('');
+  const [trackingToken, setTrackingToken] = useState('');
   const [showQPay, setShowQPay] = useState(false);
-  const [showMonPay, setShowMonPay] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [showSaveAddressPrompt, setShowSaveAddressPrompt] = useState(false);
   const [addressSaved, setAddressSaved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const submittingRef = useRef(false);
+  const deliveryPublishRef = useRef<Promise<PublishedDelivery> | null>(null);
+  const paymentSuccessHandledRef = useRef(false);
   const { items, promo, deliveryFee, customerAddress, clearCart } = useCartStore();
   const { addOrder } = useOrderStore();
   const { customer, fetchActiveCustomer } = useAuthStore();
@@ -602,13 +581,29 @@ export default function CheckoutPage() {
   }, [addresses, customer, customerAddress, hydrated]);
 
   const sub      = calcSubtotal(items);
-  const hasDelivery = items.some((i) => i.mode === 'delivery');
-  const delivery = hasDelivery ? deliveryFee : 0;
+  const delivery = items.length > 0 ? deliveryFee : 0;
   const discount = calcDiscount(sub, promo);
   const total    = sub + delivery - discount;
 
   // Estimated minutes from delivery fee calc (rough)
   const estimatedMinutes = 35;
+
+  function createSessionId() {
+    return `session-${globalThis.crypto.randomUUID()}`;
+  }
+
+  function lockSubmitting() {
+    if (submittingRef.current) return false;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setPaymentError('');
+    return true;
+  }
+
+  function unlockSubmitting() {
+    submittingRef.current = false;
+    setSubmitting(false);
+  }
 
   function goToPayment() {
     setStep(2);
@@ -616,7 +611,7 @@ export default function CheckoutPage() {
     trackBeginCheckout(items.map((i) => ({ id: i.productId, variantId: i.variantId, name: i.name, price: i.price, qty: i.qty })), total);
   }
 
-  function createOrder(no: string) {
+  function createOrder(no: string, token?: string) {
     addOrder({
       id: no,
       code: no,
@@ -631,46 +626,42 @@ export default function CheckoutPage() {
         price: item.price,
         image: item.image ?? '',
       })),
-      deliveryAddress: contact.deliveryType === 'delivery'
-        ? `${contact.district}, ${contact.address}`
-        : undefined,
-      paymentMethod: payment.method ?? 'qpay',
+      deliveryAddress: `${contact.district}, ${contact.address}`,
+      trackingToken: token,
+      paymentMethod: 'qpay',
     });
   }
 
-  async function publishDeliveryRequest(sessionId: string): Promise<string> {
+  async function publishDeliveryRequest(sessionId: string): Promise<PublishedDelivery> {
     const groups = getSupplierGroups(items);
-    const fallbackStop = {
-      supplierId: 'diy-store',
-      supplierName: 'DIY Store',
-      address: 'Улаанбаатар',
-      lat: 47.9185,
-      lng: 106.917,
+    if (groups.length === 0) {
+      throw new Error('Захиалгын бараа олдсонгүй. Сагсаа шалгаад дахин оролдоно уу.');
+    }
+    const missingLocation = groups.find((group) => group.supplierLat == null || group.supplierLng == null);
+    if (missingLocation) {
+      throw new Error(`${missingLocation.supplierName} нийлүүлэгчийн байршил байхгүй тул хүргэлт үүсгэх боломжгүй байна.`);
+    }
+    const pickupStops = groups.map((group) => ({
+      supplierId: group.supplierId,
+      supplierName: group.supplierName,
+      address: group.supplierDistrict || 'Улаанбаатар',
+      lat: group.supplierLat,
+      lng: group.supplierLng,
       status: 'PENDING',
-    };
-    const pickupStops = groups.length > 0
-      ? groups.map((group, index) => ({
-          supplierId: group.supplierId,
-          supplierName: group.supplierName,
-          address: group.supplierDistrict || 'Улаанбаатар',
-          lat: group.supplierLat ?? 47.9185 + index * 0.004,
-          lng: group.supplierLng ?? 106.917 + index * 0.004,
-          status: 'PENDING',
-        }))
-      : [fallbackStop];
+    }));
 
     try {
       const data = await vendureShopFetch<{
-        createDeliveryRequest: { id: string; orderId: string; orderNumber: string; status: string };
+        createDeliveryRequest: { id: string; orderId: string; orderNumber: string; trackingToken: string; status: string };
       }>(CREATE_DELIVERY_REQUEST, {
         orderId: sessionId,
-        customerId: customer?.id || contact.phone.replace(/\D/g, '') || 'guest',
+        customerId: customer?.id || normalizeMongolianPhone(contact.phone) || 'guest',
         customerName: contact.name.trim(),
-        customerPhone: contact.phone.replace(/\D/g, ''),
+        customerPhone: normalizeMongolianPhone(contact.phone),
         pickupStops,
         orderItems: items.map((item) => ({
           supplierId: item.supplierId ?? 'diy-store',
-          supplierName: item.supplierName ?? 'DIY Store',
+          supplierName: item.supplierName ?? 'shoptool.mn',
           productId: item.productId,
           variantId: item.variantId,
           name: item.name,
@@ -679,19 +670,29 @@ export default function CheckoutPage() {
           price: item.price,
         })),
         orderTotal: total,
-        paymentMethod: payment.method ?? 'qpay',
-        dropoffAddress: contact.deliveryType === 'delivery'
-          ? `${contact.province}, ${contact.district}, ${contact.address}`
-          : STORES.find((store) => store.id === contact.storeId)?.address ?? 'Салбараас авах',
+        paymentMethod: 'qpay',
+        dropoffAddress: `${contact.province}, ${contact.district}, ${contact.address}`,
         dropoffLat: 47.9189,
         dropoffLng: 106.9176,
       });
-      // Use the server-generated DIY-YYYY-XXXXX order number
-      return data.createDeliveryRequest.orderNumber || fallbackOrderNo();
+      if (!data.createDeliveryRequest.orderNumber) {
+        throw new Error('Захиалгын дугаар үүссэнгүй. Дахин оролдоно уу.');
+      }
+      return {
+        orderNumber: data.createDeliveryRequest.orderNumber,
+        trackingToken: data.createDeliveryRequest.trackingToken || '',
+      };
     } catch (err) {
       console.error('Delivery request publish failed', err);
-      return fallbackOrderNo();
+      throw err instanceof Error ? err : new Error('Хүргэлтийн хүсэлт үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.');
     }
+  }
+
+  function publishDeliveryRequestOnce(sessionId: string) {
+    if (!deliveryPublishRef.current) {
+      deliveryPublishRef.current = publishDeliveryRequest(sessionId);
+    }
+    return deliveryPublishRef.current;
   }
 
   function handleSelectAddress(address: CustomerAddress | null) {
@@ -733,48 +734,44 @@ export default function CheckoutPage() {
   }
 
   function handlePaymentConfirm() {
-    const sessionId = `session-${Date.now()}`;
+    if (!lockSubmitting()) return;
+    const sessionId = createSessionId();
 
-    const methodLabel = payment.method === 'qpay' ? 'QPay' : payment.method === 'monpay' ? 'MonPay' : payment.method === 'testpay' ? 'TestPay' : 'Card';
-    trackAddPaymentInfo((methodLabel === 'TestPay' ? 'Card' : methodLabel) as 'QPay' | 'MonPay' | 'Card');
-
-    if (payment.method === 'qpay') {
-      setShowQPay(true);
-      // Store sessionId for later use
-      setOrderNo(sessionId);
-    } else if (payment.method === 'monpay') {
-      setShowMonPay(true);
-      setOrderNo(sessionId);
-    } else if (payment.method === 'card') {
-      setOrderNo(sessionId);
-      const fallback = fallbackOrderNo();
-      createOrder(fallback);
-      clearCart();
-      router.push(`/checkout/mock-psp?session=MOCK-CARD-${sessionId}&order=${fallback}&amount=${Math.round(total / 100)}`);
-    } else if (payment.method === 'testpay') {
-      setOrderNo(sessionId);
-      handlePaymentSuccess(sessionId);
-    }
+    trackAddPaymentInfo('QPay');
+    setShowQPay(true);
+    setOrderNo(sessionId);
+    setTrackingToken('');
   }
 
   function handlePaymentSuccess(forcedSessionId?: string) {
-    const sessionId = forcedSessionId || orderNo || `session-${Date.now()}`;
-    const savedDeliveryType = contact.deliveryType;
+    if (paymentSuccessHandledRef.current) return;
+    paymentSuccessHandledRef.current = true;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setPaymentError('');
+    const sessionId = forcedSessionId || orderNo || createSessionId();
     const savedAddress = contact.address;
     const savedAddressId = selectedAddressId;
-    clearCart();
     setShowQPay(false);
-    setShowMonPay(false);
 
     // Publish delivery request and navigate to tracking with real order number
-    publishDeliveryRequest(sessionId).then((realOrderNo) => {
-      createOrder(realOrderNo);
-      setOrderNo(realOrderNo);
+    publishDeliveryRequestOnce(sessionId).then(({ orderNumber, trackingToken }) => {
+      createOrder(orderNumber, trackingToken);
+      clearCart();
+      setOrderNo(orderNumber);
+      setTrackingToken(trackingToken);
       setStep(3);
       window.scrollTo(0, 0);
-      if (savedDeliveryType === 'delivery' && savedAddress.trim() && !savedAddressId && customer) {
+      if (savedAddress.trim() && !savedAddressId && customer) {
         setShowSaveAddressPrompt(true);
       }
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : 'Хүргэлтийн хүсэлт үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.';
+      setPaymentError(message);
+      deliveryPublishRef.current = null;
+      paymentSuccessHandledRef.current = false;
+    }).finally(() => {
+      unlockSubmitting();
     });
   }
 
@@ -854,9 +851,15 @@ export default function CheckoutPage() {
               )}
               {step === 2 && (
                 <m.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                  {paymentError && (
+                    <div className="mb-4 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                      {paymentError}
+                    </div>
+                  )}
                   <StepPayment
                     data={payment}
                     total={total}
+                    submitting={submitting}
                     onChange={(d) => setPayment((p) => ({ ...p, ...d }))}
                     onBack={() => setStep(1)}
                     onNext={handlePaymentConfirm}
@@ -867,12 +870,9 @@ export default function CheckoutPage() {
                 <m.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
                   <StepConfirmation
                     orderNo={orderNo}
+                    trackingToken={trackingToken}
                     estimatedMinutes={estimatedMinutes}
-                    deliveryAddress={
-                      contact.deliveryType === 'delivery'
-                        ? `${contact.district}, ${contact.address}`
-                        : undefined
-                    }
+                    deliveryAddress={`${contact.district}, ${contact.address}`}
                   />
                 </m.div>
               )}
@@ -883,10 +883,7 @@ export default function CheckoutPage() {
 
       <AnimatePresence>
         {showQPay && (
-          <QPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => setShowQPay(false)} />
-        )}
-        {showMonPay && (
-          <MonPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => setShowMonPay(false)} />
+          <QPayModal orderNo={orderNo} total={total} onSuccess={handlePaymentSuccess} onClose={() => { setShowQPay(false); unlockSubmitting(); }} />
         )}
       </AnimatePresence>
     </>

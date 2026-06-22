@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { useState, useRef } from 'react';
+import { isRenderableImageSrc, withImagePreset } from '@/lib/image-url';
 
 interface Asset {
   id: string;
@@ -21,7 +22,9 @@ export default function ImageGallery({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const main = assets[activeIdx] ?? assets[0];
-  const mainSrc = main?.preview.startsWith('data:') ? main.preview : main ? `${main.preview}?preset=large` : '';
+  const mainSrc = isRenderableImageSrc(main?.preview)
+    ? withImagePreset(main!.preview, 'large')
+    : '';
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -42,7 +45,7 @@ export default function ImageGallery({
         onMouseLeave={() => setZoomed(false)}
         className="relative aspect-square overflow-hidden rounded-2xl bg-surface cursor-zoom-in"
       >
-        {main && mainSrc.startsWith('data:') ? (
+        {mainSrc.startsWith('data:') ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={mainSrc}
@@ -53,7 +56,7 @@ export default function ImageGallery({
               transformOrigin: `${origin.x}% ${origin.y}%`,
             }}
           />
-        ) : main ? (
+        ) : mainSrc ? (
           <Image
             src={mainSrc}
             alt={productName}
@@ -73,7 +76,7 @@ export default function ImageGallery({
         )}
 
         {/* Zoom hint */}
-        {!zoomed && main && (
+        {!zoomed && mainSrc && (
           <span className="absolute bottom-3 right-3 rounded-full bg-black/40 px-2.5 py-1 text-xs text-white backdrop-blur-sm">
             🔍 Томруулах
           </span>
@@ -96,14 +99,16 @@ export default function ImageGallery({
               {asset.preview.startsWith('data:') ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={asset.preview} alt={`${productName} - зураг ${i + 1}`} className="h-full w-full object-cover" />
-              ) : (
+              ) : isRenderableImageSrc(asset.preview) ? (
                 <Image
-                  src={`${asset.preview}?preset=thumb`}
+                  src={withImagePreset(asset.preview, 'thumb')}
                   alt={`${productName} - зураг ${i + 1}`}
                   fill
                   sizes="64px"
                   className="object-cover"
                 />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-2xl text-foreground-muted/30">📦</div>
               )}
             </button>
           ))}

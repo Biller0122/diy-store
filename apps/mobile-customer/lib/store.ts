@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { shopFetch, LOGIN_MUTATION, LOGOUT_MUTATION, REGISTER_MUTATION, ACTIVE_CUSTOMER_QUERY } from './api';
+import { Alert } from 'react-native';
+import {
+  setShopSessionToken,
+  shopFetch,
+  PASSWORD_LOGIN_MUTATION,
+  LOGOUT_MUTATION,
+  REGISTER_MUTATION,
+  REQUEST_EMAIL_OTP_MUTATION,
+  VERIFY_EMAIL_OTP_MUTATION,
+  REQUEST_PASSWORD_RESET_OTP_MUTATION,
+  RESET_PASSWORD_WITH_OTP_MUTATION,
+} from './api';
 
 interface Customer {
   id: string;
@@ -18,17 +29,80 @@ interface Customer {
   }>;
 }
 
+export interface SupplierCartItem {
+  id: string;
+  productId: string;
+  variantId: string;
+  name: string;
+  slug: string;
+  image?: string | null;
+  price: number;
+  qty: number;
+  supplierId: string;
+  supplierName: string;
+  supplierSlug?: string;
+  supplierDistrict?: string | null;
+  supplierAddress?: string | null;
+  supplierPhone?: string | null;
+  supplierLat?: number | null;
+  supplierLng?: number | null;
+}
+
+type ThemeMode = 'dark' | 'light';
+
 interface AppState {
   customer: Customer | null;
   token: string | null;
   cartCount: number;
+  supplierCart: SupplierCartItem[];
   isLoading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string, firstName: string, lastName: string) => Promise<boolean>;
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+  toggleTheme: () => void;
+  login: (identifier: string, password: string) => Promise<boolean>;
+  requestEmailOtp: (email: string) => Promise<{ ok: boolean; otp?: string | null }>;
+  verifyEmailOtp: (email: string, otp: string) => Promise<boolean>;
+  requestPasswordResetOtp: (email: string) => Promise<{ ok: boolean; otp?: string | null }>;
+  resetPasswordWithOtp: (email: string, otp: string, password: string) => Promise<boolean>;
+  register: (input: RegisterInput) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
   setCartCount: (count: number) => void;
+  addSupplierCartItem: (item: Omit<SupplierCartItem, 'id'>) => void;
+  updateSupplierCartQty: (id: string, qty: number) => void;
+  removeSupplierCartItem: (id: string) => void;
+  clearSupplierCart: () => void;
+}
+
+interface RegisterInput {
+  firstName: string;
+  lastName: string;
+  emailAddress: string;
+  password: string;
+  phoneNumber?: string;
+}
+
+type CustomerAuthResult = {
+  success?: boolean;
+  message?: string;
+  token?: string | null;
+  customer?: Customer | null;
+};
+
+function applyCustomerAuth(result: CustomerAuthResult, set: (state: Partial<AppState>) => void) {
+  if (!result.success || !result.token || !result.customer) {
+    set({ isLoading: false, error: result.message ?? 'Нэвтрэхэд алдаа гарлаа' });
+    return false;
+  }
+  setShopSessionToken(result.token);
+  set({ customer: result.customer, token: result.token, isLoading: false, error: null });
+  return true;
+}
+
+function cartRowId(supplierId: string, variantId: string) {
+  const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${supplierId}-${variantId}-${uuid}`;
 }
 
 export const useAppStore = create<AppState>()(
@@ -37,36 +111,23 @@ export const useAppStore = create<AppState>()(
       customer: null,
       token: null,
       cartCount: 0,
+      supplierCart: [],
       isLoading: false,
       error: null,
+      theme: 'dark',
 
-      login: async (email: string, password: string): Promise<boolean> => {
+      setTheme: (theme: ThemeMode) => set({ theme }),
+      toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
+
+      login: async (identifier: string, password: string): Promise<boolean> => {
         set({ isLoading: true, error: null });
         try {
-          const data = await shopFetch<{ login: { id?: string; identifier?: string; errorCode?: string; message?: string } }>(
-            LOGIN_MUTATION,
-            { username: email, password }
+          const data = await shopFetch<{ customerPasswordLogin: CustomerAuthResult }>(
+            PASSWORD_LOGIN_MUTATION,
+            { identifier, password }
           );
 
-          const result = data.login;
-          if (result.errorCode) {
-            set({ error: result.message || 'Нэвтрэх алдаа гарлаа', isLoading: false });
-            return false;
-          }
-
-          if (result.id) {
-            const customerData = await shopFetch<{ activeCustomer: Customer | null }>(
-              ACTIVE_CUSTOMER_QUERY
-            );
-            set({
-              customer: customerData.activeCustomer,
-              isLoading: false,
-            });
-            return true;
-          }
-
-          set({ error: 'Нэвтрэх алдаа гарлаа', isLoading: false });
-          return false;
+          return applyCustomerAuth(data.customerPasswordLogin, set);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : 'Холболтын алдаа';
           set({ error: msg, isLoading: false });
@@ -74,28 +135,78 @@ export const useAppStore = create<AppState>()(
         }
       },
 
-      register: async (email: string, password: string, firstName: string, lastName: string): Promise<boolean> => {
+      requestEmailOtp: async (email: string) => {
         set({ isLoading: true, error: null });
         try {
           const data = await shopFetch<{
-            registerCustomerAccount: { success?: boolean; errorCode?: string; message?: string };
+            requestCustomerEmailOtp: { success: boolean; message: string; otp?: string | null };
+          }>(REQUEST_EMAIL_OTP_MUTATION, { emailAddress: email });
+          const result = data.requestCustomerEmailOtp;
+          set({ isLoading: false, error: result.success ? null : result.message });
+          return { ok: result.success, otp: result.otp };
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Сүлжээний алдаа';
+          set({ error: msg, isLoading: false });
+          return { ok: false };
+        }
+      },
+
+      verifyEmailOtp: async (email: string, otp: string): Promise<boolean> => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await shopFetch<{ verifyCustomerEmailOtp: CustomerAuthResult }>(
+            VERIFY_EMAIL_OTP_MUTATION,
+            { emailAddress: email, otp },
+          );
+          return applyCustomerAuth(data.verifyCustomerEmailOtp, set);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Сүлжээний алдаа';
+          set({ error: msg, isLoading: false });
+          return false;
+        }
+      },
+
+      requestPasswordResetOtp: async (email: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await shopFetch<{
+            requestCustomerPasswordResetOtp: { success: boolean; message: string; otp?: string | null };
+          }>(REQUEST_PASSWORD_RESET_OTP_MUTATION, { emailAddress: email });
+          const result = data.requestCustomerPasswordResetOtp;
+          set({ isLoading: false, error: result.success ? null : result.message });
+          return { ok: result.success, otp: result.otp };
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Сүлжээний алдаа';
+          set({ error: msg, isLoading: false });
+          return { ok: false };
+        }
+      },
+
+      resetPasswordWithOtp: async (email: string, otp: string, password: string): Promise<boolean> => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await shopFetch<{ resetCustomerPasswordWithOtp: CustomerAuthResult }>(
+            RESET_PASSWORD_WITH_OTP_MUTATION,
+            { emailAddress: email, otp, password },
+          );
+          return applyCustomerAuth(data.resetCustomerPasswordWithOtp, set);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Нууц үг сэргээхэд алдаа гарлаа';
+          set({ error: msg, isLoading: false });
+          return false;
+        }
+      },
+
+      register: async (input: RegisterInput): Promise<boolean> => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await shopFetch<{
+            customerPasswordRegister: CustomerAuthResult;
           }>(REGISTER_MUTATION, {
-            input: { emailAddress: email, password, firstName, lastName },
+            input,
           });
 
-          const result = data.registerCustomerAccount;
-          if (result.errorCode) {
-            set({ error: result.message || 'Бүртгэлийн алдаа гарлаа', isLoading: false });
-            return false;
-          }
-
-          if (result.success) {
-            set({ isLoading: false });
-            return true;
-          }
-
-          set({ error: 'Бүртгэлийн алдаа гарлаа', isLoading: false });
-          return false;
+          return applyCustomerAuth(data.customerPasswordRegister, set);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : 'Холболтын алдаа';
           set({ error: msg, isLoading: false });
@@ -104,13 +215,53 @@ export const useAppStore = create<AppState>()(
       },
 
       logout: () => {
-        shopFetch(LOGOUT_MUTATION).catch(() => {});
+        shopFetch(LOGOUT_MUTATION).catch((error) => {
+          console.error('[AppStore] logout mutation failed', error);
+          Alert.alert('Серверээс гарахад алдаа гарлаа', 'Төхөөрөмж дээрх session цэвэрлэгдсэн.');
+        });
+        setShopSessionToken(null);
         set({ customer: null, token: null, cartCount: 0 });
       },
 
       clearError: () => set({ error: null }),
 
       setCartCount: (count: number) => set({ cartCount: count }),
+
+      addSupplierCartItem: (item) =>
+        set((state) => {
+          const existing = state.supplierCart.find(
+            (cartItem) => cartItem.variantId === item.variantId && cartItem.supplierId === item.supplierId,
+          );
+          if (existing) {
+            return {
+              supplierCart: state.supplierCart.map((cartItem) =>
+                cartItem.id === existing.id
+                  ? { ...cartItem, qty: cartItem.qty + item.qty }
+                  : cartItem,
+              ),
+            };
+          }
+          return {
+            supplierCart: [
+              ...state.supplierCart,
+              { ...item, id: cartRowId(item.supplierId, item.variantId) },
+            ],
+          };
+        }),
+
+      updateSupplierCartQty: (id, qty) => {
+        if (qty < 1) return;
+        set((state) => ({
+          supplierCart: state.supplierCart.map((item) => (item.id === id ? { ...item, qty } : item)),
+        }));
+      },
+
+      removeSupplierCartItem: (id) =>
+        set((state) => ({
+          supplierCart: state.supplierCart.filter((item) => item.id !== id),
+        })),
+
+      clearSupplierCart: () => set({ supplierCart: [] }),
     }),
     {
       name: 'diy-store-customer',
@@ -118,7 +269,12 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         customer: state.customer,
         token: state.token,
+        supplierCart: state.supplierCart,
+        theme: state.theme,
       }),
+      onRehydrateStorage: () => (state) => {
+        setShopSessionToken(state?.token ?? null);
+      },
     }
   )
 );

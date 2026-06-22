@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   View,
   Text,
@@ -8,62 +9,211 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/lib/store';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { MY_ORDERS_QUERY, shopFetch } from '@/lib/api';
 
 type AccountOrder = { id: string; code: string; state: string; total: number; createdAt?: string };
 
-function StatusColor(status: string) {
+function statusColor(C: ThemeColors, status: string) {
   if (status === 'Хүргэгдлээ') return C.success;
-  if (status === 'Цуцлагдсан') return '#FF4444';
+  if (status === 'Цуцлагдсан') return C.danger;
   return C.warning;
+}
+
+function AppearanceToggle() {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const mode = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Үзэмж</Text>
+      <View style={styles.themeRow}>
+        <TouchableOpacity
+          style={[styles.themeOption, mode === 'light' && styles.themeOptionActive]}
+          onPress={() => setTheme('light')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="sunny-outline" size={18} color={mode === 'light' ? C.onPrimary : C.textSub} />
+          <Text style={[styles.themeOptionText, mode === 'light' && styles.themeOptionTextActive]}>Цайвар</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.themeOption, mode === 'dark' && styles.themeOptionActive]}
+          onPress={() => setTheme('dark')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="moon-outline" size={18} color={mode === 'dark' ? C.onPrimary : C.textSub} />
+          <Text style={[styles.themeOptionText, mode === 'dark' && styles.themeOptionTextActive]}>Бараан</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 function formatPrice(price: number) {
   return '₮' + price.toLocaleString('mn-MN');
 }
 
-function AuthPanel() {
-  const [tab, setTab] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [showPass, setShowPass] = useState(false);
+function validEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
 
-  const { login, register, isLoading, error, clearError } = useAppStore();
+function AuthPanel() {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const [tab, setTab] = useState<'login' | 'otp'>('login');
+  const [formError, setFormError] = useState('');
+  const [info, setInfo] = useState('');
+
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpStep, setOtpStep] = useState<'email' | 'code'>('email');
+
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPwd, setShowLoginPwd] = useState(false);
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetStep, setResetStep] = useState<'email' | 'reset'>('email');
+
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [regFirstName, setRegFirstName] = useState('');
+  const [regLastName, setRegLastName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirm, setRegConfirm] = useState('');
+  const [showRegPwd, setShowRegPwd] = useState(false);
+
+  const {
+    login,
+    register,
+    requestEmailOtp,
+    verifyEmailOtp,
+    requestPasswordResetOtp,
+    resetPasswordWithOtp,
+    isLoading,
+    error,
+    clearError,
+  } = useAppStore();
+
+  const displayError = formError || error;
+
+  function resetMessages() {
+    setFormError('');
+    setInfo('');
+    clearError();
+  }
+
+  function handleTabChange(next: 'login' | 'otp') {
+    setTab(next);
+    setResetOpen(false);
+    resetMessages();
+  }
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Алдаа', 'И-мэйл болон нууц үгийг оруулна уу');
+    resetMessages();
+    if (!loginEmail.trim() || !loginPassword.trim()) {
+      setFormError('И-мэйл/утас болон нууц үгээ оруулна уу');
       return;
     }
-    const ok = await login(email.trim(), password);
-    if (!ok && error) {
-      Alert.alert('Нэвтрэх алдаа', error);
-      clearError();
+    await login(loginEmail.trim(), loginPassword);
+  };
+
+  const handleRequestOtp = async () => {
+    resetMessages();
+    if (!validEmail(otpEmail)) {
+      setFormError('И-мэйл хаяг буруу байна');
+      return;
+    }
+    const result = await requestEmailOtp(otpEmail.trim());
+    if (result.ok) {
+      setOtpStep('code');
+      setInfo(result.otp ? `Туршилтын код: ${result.otp}` : 'Код и-мэйлээр илгээгдлээ');
     }
   };
 
-  const handleRegister = async () => {
-    if (!email.trim() || !password.trim() || !firstName.trim() || !lastName.trim()) {
-      Alert.alert('Алдаа', 'Бүх талбарыг бөглөнө үү');
+  const handleVerifyOtp = async () => {
+    resetMessages();
+    if (!/^\d{4}$/.test(otpCode.trim())) {
+      setFormError('4 оронтой код оруулна уу');
       return;
     }
-    const ok = await register(email.trim(), password, firstName.trim(), lastName.trim());
-    if (ok) {
-      Alert.alert('Амжилттай', 'Бүртгэл амжилттай үүслээ. Нэвтрэнэ үү.', [
-        { text: 'OK', onPress: () => setTab('login') },
-      ]);
-    } else if (error) {
-      Alert.alert('Бүртгэлийн алдаа', error);
-      clearError();
+    await verifyEmailOtp(otpEmail.trim(), otpCode.trim());
+  };
+
+  const handleRegister = async () => {
+    resetMessages();
+    if (!regFirstName.trim() || !regLastName.trim() || !regEmail.trim() || !regPassword.trim()) {
+      setFormError('Бүх шаардлагатай талбарыг бөглөнө үү');
+      return;
     }
+    if (!validEmail(regEmail)) {
+      setFormError('И-мэйл хаяг буруу байна');
+      return;
+    }
+    if (regPhone && !/^[6789]\d{7}$/.test(regPhone.replace(/\D/g, ''))) {
+      setFormError('Утасны дугаар 8 оронтой, 6/7/8/9-өөр эхлэх ёстой');
+      return;
+    }
+    if (regPassword.length < 8) {
+      setFormError('Нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой');
+      return;
+    }
+    if (regPassword !== regConfirm) {
+      setFormError('Нууц үг таарахгүй байна');
+      return;
+    }
+    const ok = await register({
+      firstName: regFirstName.trim(),
+      lastName: regLastName.trim(),
+      emailAddress: regEmail.trim(),
+      password: regPassword,
+      phoneNumber: regPhone.replace(/\D/g, '') || undefined,
+    });
+    if (ok) {
+      Alert.alert('Амжилттай', 'Бүртгэл үүслээ. Та автоматаар нэвтэрлээ.');
+    }
+  };
+
+  const handleRequestReset = async () => {
+    resetMessages();
+    if (!validEmail(resetEmail)) {
+      setFormError('И-мэйл хаяг буруу байна');
+      return;
+    }
+    const result = await requestPasswordResetOtp(resetEmail.trim());
+    if (result.ok) {
+      setResetStep('reset');
+      setInfo(result.otp ? `Туршилтын сэргээх код: ${result.otp}` : 'Сэргээх код и-мэйлээр илгээгдлээ');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    resetMessages();
+    if (!/^\d{4}$/.test(resetOtp.trim())) {
+      setFormError('4 оронтой сэргээх код оруулна уу');
+      return;
+    }
+    if (resetPassword.length < 8) {
+      setFormError('Шинэ нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой');
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      setFormError('Шинэ нууц үг таарахгүй байна');
+      return;
+    }
+    await resetPasswordWithOtp(resetEmail.trim(), resetOtp.trim(), resetPassword);
   };
 
   return (
@@ -73,146 +223,209 @@ function AuthPanel() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.authLogo}>
-        <View style={styles.authLogoDot} />
-        <Text style={styles.authLogoText}>DIY Store</Text>
+        <Image source={require('../../assets/shoptool-logo.png')} style={styles.authLogoImage} resizeMode="contain" />
       </View>
-      <Text style={styles.authWelcome}>Тавтай морилно уу 👋</Text>
+      <Text style={styles.authTitle}>Нэвтрэх</Text>
+      <Text style={styles.authWelcome}>Эхлээд email-ээр бүртгүүлээд, дараа нь email эсвэл утсаараа нэвтэрнэ</Text>
 
-      {/* Tab switcher */}
       <View style={styles.tabRow}>
         <TouchableOpacity
           style={[styles.tabBtn, tab === 'login' && styles.tabBtnActive]}
-          onPress={() => setTab('login')}
+          onPress={() => handleTabChange('login')}
         >
-          <Text style={[styles.tabBtnText, tab === 'login' && styles.tabBtnTextActive]}>
-            Нэвтрэх
-          </Text>
+          <Text style={[styles.tabBtnText, tab === 'login' && styles.tabBtnTextActive]}>Email/утас</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tabBtn, tab === 'register' && styles.tabBtnActive]}
-          onPress={() => setTab('register')}
+          style={[styles.tabBtn, tab === 'otp' && styles.tabBtnActive]}
+          onPress={() => handleTabChange('otp')}
         >
-          <Text style={[styles.tabBtnText, tab === 'register' && styles.tabBtnTextActive]}>
-            Бүртгүүлэх
-          </Text>
+          <Text style={[styles.tabBtnText, tab === 'otp' && styles.tabBtnTextActive]}>Email код</Text>
         </TouchableOpacity>
       </View>
 
-      {tab === 'login' ? (
+      {displayError ? <Text style={styles.errorBox}>{displayError}</Text> : null}
+      {info ? <Text style={styles.infoBox}>{info}</Text> : null}
+
+      {tab === 'otp' && otpStep === 'email' ? (
         <View style={styles.form}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>И-мэйл</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="name@example.com"
-              placeholderTextColor={C.textTertiary}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Нууц үг</Text>
-            <View style={styles.passwordWrapper}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                placeholder="••••••••"
-                placeholderTextColor={C.textTertiary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPass}
-              />
-              <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPass(!showPass)}>
-                <Ionicons name={showPass ? 'eye-off' : 'eye'} size={20} color={C.textTertiary} />
-              </TouchableOpacity>
-            </View>
-          </View>
+          <AuthField label="И-мэйл">
+            <TextInput style={styles.input} placeholder="example@gmail.com" placeholderTextColor={C.textTertiary} value={otpEmail} onChangeText={setOtpEmail} keyboardType="email-address" autoCapitalize="none" />
+          </AuthField>
           <TouchableOpacity
             style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]}
-            onPress={handleLogin}
+            onPress={handleRequestOtp}
             disabled={isLoading}
             activeOpacity={0.85}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryBtnText}>Нэвтрэх</Text>
-            )}
+            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Код авах</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { setTab('login'); setResetOpen(true); setResetEmail(otpEmail); resetMessages(); }}>
+            <Text style={styles.linkText}>Нууц үг сэргээх</Text>
           </TouchableOpacity>
         </View>
-      ) : (
+      ) : null}
+
+      {tab === 'otp' && otpStep === 'code' ? (
         <View style={styles.form}>
-          <View style={styles.nameRow}>
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={styles.inputLabel}>Овог</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Батаа"
-                placeholderTextColor={C.textTertiary}
-                value={lastName}
-                onChangeText={setLastName}
-              />
-            </View>
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={styles.inputLabel}>Нэр</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Дорж"
-                placeholderTextColor={C.textTertiary}
-                value={firstName}
-                onChangeText={setFirstName}
-              />
-            </View>
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>И-мэйл</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="name@example.com"
-              placeholderTextColor={C.textTertiary}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Нууц үг</Text>
-            <View style={styles.passwordWrapper}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                placeholder="••••••••"
-                placeholderTextColor={C.textTertiary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPass}
-              />
-              <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPass(!showPass)}>
-                <Ionicons name={showPass ? 'eye-off' : 'eye'} size={20} color={C.textTertiary} />
-              </TouchableOpacity>
-            </View>
-          </View>
+          <AuthField label="И-мэйл">
+            <TextInput style={styles.input} value={otpEmail} onChangeText={setOtpEmail} keyboardType="email-address" autoCapitalize="none" />
+          </AuthField>
+          <AuthField label="Баталгаажуулах код">
+            <TextInput style={[styles.input, styles.otpInput]} value={otpCode} onChangeText={(value) => setOtpCode(value.replace(/\D/g, '').slice(0, 4))} placeholder="1234" placeholderTextColor={C.textTertiary} keyboardType="number-pad" maxLength={4} />
+          </AuthField>
           <TouchableOpacity
             style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]}
-            onPress={handleRegister}
+            onPress={handleVerifyOtp}
             disabled={isLoading}
             activeOpacity={0.85}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryBtnText}>Бүртгүүлэх</Text>
-            )}
+            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Нэвтрэх</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setOtpStep('email')}>
+            <Text style={styles.mutedLinkText}>И-мэйлээ солих</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
+
+      {tab === 'login' && !resetOpen ? (
+        <View style={styles.form}>
+          <AuthField label="И-мэйл эсвэл утас">
+            <TextInput style={styles.input} placeholder="example@mail.com эсвэл 99112233" placeholderTextColor={C.textTertiary} value={loginEmail} onChangeText={setLoginEmail} keyboardType="email-address" autoCapitalize="none" />
+          </AuthField>
+          <AuthField label="Нууц үг">
+            <PasswordField value={loginPassword} onChange={setLoginPassword} show={showLoginPwd} setShow={setShowLoginPwd} />
+          </AuthField>
+          <TouchableOpacity onPress={() => { setResetOpen(true); setResetEmail(loginEmail); resetMessages(); }}>
+            <Text style={styles.linkText}>Нууц үгээ мартсан уу?</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]} onPress={handleLogin} disabled={isLoading} activeOpacity={0.85}>
+            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Нэвтрэх</Text>}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {tab === 'login' && resetOpen && resetStep === 'email' ? (
+        <View style={styles.form}>
+          <Text style={styles.panelTitle}>Нууц үг сэргээх</Text>
+          <AuthField label="Бүртгэлтэй и-мэйл">
+            <TextInput style={styles.input} placeholder="example@mail.com" placeholderTextColor={C.textTertiary} value={resetEmail} onChangeText={setResetEmail} keyboardType="email-address" autoCapitalize="none" />
+          </AuthField>
+          <TouchableOpacity style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]} onPress={handleRequestReset} disabled={isLoading} activeOpacity={0.85}>
+            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Сэргээх код авах</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setResetOpen(false)}>
+            <Text style={styles.mutedLinkText}>Буцах</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {tab === 'login' && resetOpen && resetStep === 'reset' ? (
+        <View style={styles.form}>
+          <AuthField label="Сэргээх код">
+            <TextInput style={[styles.input, styles.otpInput]} value={resetOtp} onChangeText={(value) => setResetOtp(value.replace(/\D/g, '').slice(0, 4))} placeholder="1234" placeholderTextColor={C.textTertiary} keyboardType="number-pad" maxLength={4} />
+          </AuthField>
+          <AuthField label="Шинэ нууц үг">
+            <PasswordField value={resetPassword} onChange={setResetPassword} show={showRegPwd} setShow={setShowRegPwd} />
+          </AuthField>
+          <AuthField label="Шинэ нууц үг давтах">
+            <TextInput style={styles.input} value={resetConfirm} onChangeText={setResetConfirm} secureTextEntry={!showRegPwd} />
+          </AuthField>
+          <TouchableOpacity style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]} onPress={handleResetPassword} disabled={isLoading} activeOpacity={0.85}>
+            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Нууц үг шинэчлэх</Text>}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      <View style={styles.registerCard}>
+        <View style={styles.registerHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.registerTitle}>Шинэ хэрэглэгч үү?</Text>
+            <Text style={styles.registerText}>Email-ээр бүртгүүлнэ. Дараа нь email эсвэл утсаараа нэвтэрч болно.</Text>
+          </View>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setRegisterOpen((value) => !value); resetMessages(); }}>
+            <Text style={styles.secondaryBtnText}>Бүртгэл үүсгэх</Text>
+          </TouchableOpacity>
+        </View>
+
+        {registerOpen ? (
+          <View style={[styles.form, styles.registerForm]}>
+            <View style={styles.nameRow}>
+              <AuthField label="Нэр" style={{ flex: 1 }}>
+                <TextInput style={styles.input} value={regFirstName} onChangeText={setRegFirstName} />
+              </AuthField>
+              <AuthField label="Овог" style={{ flex: 1 }}>
+                <TextInput style={styles.input} value={regLastName} onChangeText={setRegLastName} />
+              </AuthField>
+            </View>
+            <AuthField label="И-мэйл">
+              <TextInput style={styles.input} value={regEmail} onChangeText={setRegEmail} keyboardType="email-address" autoCapitalize="none" />
+            </AuthField>
+            <AuthField label="Утасны дугаар">
+              <TextInput style={styles.input} value={regPhone} onChangeText={setRegPhone} placeholder="9911 2233" placeholderTextColor={C.textTertiary} keyboardType="phone-pad" />
+            </AuthField>
+            <AuthField label="Нууц үг">
+              <PasswordField value={regPassword} onChange={setRegPassword} show={showRegPwd} setShow={setShowRegPwd} />
+            </AuthField>
+            <AuthField label="Нууц үг давтах">
+              <TextInput style={styles.input} value={regConfirm} onChangeText={setRegConfirm} secureTextEntry={!showRegPwd} />
+            </AuthField>
+            <TouchableOpacity style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]} onPress={handleRegister} disabled={isLoading} activeOpacity={0.85}>
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Бүртгэл үүсгэх</Text>}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </View>
+
+      <AppearanceToggle />
     </ScrollView>
+  );
+}
+
+function AuthField({ label, children, style }: { label: string; children: ReactNode; style?: object }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  return (
+    <View style={[styles.inputGroup, style]}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+
+function PasswordField({
+  value,
+  onChange,
+  show,
+  setShow,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  show: boolean;
+  setShow: (value: boolean) => void;
+}) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  return (
+    <View style={styles.passwordWrapper}>
+      <TextInput
+        style={[styles.input, styles.passwordInput]}
+        placeholder="Хамгийн багадаа 8 тэмдэгт"
+        placeholderTextColor={C.textTertiary}
+        value={value}
+        onChangeText={onChange}
+        secureTextEntry={!show}
+      />
+      <TouchableOpacity style={styles.eyeBtn} onPress={() => setShow(!show)}>
+        <Ionicons name={show ? 'eye-off' : 'eye'} size={20} color={C.textTertiary} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 function LoggedInPanel() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { customer, logout } = useAppStore();
   const [orders, setOrders] = useState<AccountOrder[]>([]);
 
@@ -262,7 +475,7 @@ function LoggedInPanel() {
         {orders.slice(0, 3).map((order) => (
           <View key={order.id} style={styles.miniOrderCard}>
             <Text style={styles.miniOrderCode}>{order.code}</Text>
-            <Text style={[styles.miniOrderStatus, { color: StatusColor(order.state) }]}>
+            <Text style={[styles.miniOrderStatus, { color: statusColor(C, order.state) }]}>
               {order.state}
             </Text>
             <Text style={styles.miniOrderTotal}>{formatPrice(order.total)}</Text>
@@ -292,6 +505,8 @@ function LoggedInPanel() {
         </TouchableOpacity>
       </View>
 
+      <AppearanceToggle />
+
       {/* Logout */}
       <TouchableOpacity
         style={styles.logoutBtn}
@@ -314,6 +529,8 @@ function LoggedInPanel() {
 
 export default function AccountScreen() {
   const customer = useAppStore((s) => s.customer);
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -331,7 +548,7 @@ export default function AccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
     paddingHorizontal: 16,
@@ -340,15 +557,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
+  themeRow: { flexDirection: 'row', gap: 10 },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+  },
+  themeOptionActive: { backgroundColor: C.primary, borderColor: C.primary },
+  themeOptionText: { color: C.textSub, fontSize: 13, fontWeight: '700' },
+  themeOptionTextActive: { color: C.onPrimary },
   headerTitle: { color: C.text, fontSize: 22, fontWeight: '800' },
 
   // Auth
   authScroll: { flex: 1 },
   authContent: { padding: 24, paddingTop: 48 },
-  authLogo: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  authLogoDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
-  authLogoText: { color: C.text, fontSize: 22, fontWeight: '800' },
-  authWelcome: { color: C.textSub, fontSize: 15, marginBottom: 28 },
+  authLogo: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  authLogoImage: { width: 230, height: 84 },
+  authTitle: { color: C.text, fontSize: 22, fontWeight: '900', marginTop: 4 },
+  authWelcome: { color: C.textSub, fontSize: 14, lineHeight: 20, marginTop: 5, marginBottom: 24 },
 
   tabRow: {
     flexDirection: 'row',
@@ -376,6 +609,7 @@ const styles = StyleSheet.create({
     color: C.text,
     fontSize: 14,
   },
+  otpInput: { textAlign: 'center', fontSize: 20, fontWeight: '800', letterSpacing: 8 },
   passwordWrapper: { position: 'relative' },
   passwordInput: { paddingRight: 44 },
   eyeBtn: { position: 'absolute', right: 12, top: 13 },
@@ -388,6 +622,53 @@ const styles = StyleSheet.create({
   },
   primaryBtnDisabled: { opacity: 0.6 },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  secondaryBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,69,0,0.35)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  secondaryBtnText: { color: C.primary, fontSize: 12, fontWeight: '800' },
+  linkText: { color: C.primary, fontSize: 12, fontWeight: '800' },
+  mutedLinkText: { color: C.textSub, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  errorBox: {
+    overflow: 'hidden',
+    color: '#FF7777',
+    backgroundColor: 'rgba(255,68,68,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,68,68,0.22)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  infoBox: {
+    overflow: 'hidden',
+    color: C.success,
+    backgroundColor: 'rgba(0,212,170,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,212,170,0.22)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  panelTitle: { color: C.text, fontSize: 15, fontWeight: '800' },
+  registerCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+    marginTop: 18,
+  },
+  registerHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  registerTitle: { color: C.text, fontSize: 15, fontWeight: '900' },
+  registerText: { color: C.textSub, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  registerForm: { marginTop: 16 },
 
   // Logged in
   loggedScroll: { flex: 1 },
@@ -442,7 +723,7 @@ const styles = StyleSheet.create({
   },
   miniOrderCode: { color: C.text, fontSize: 12, fontFamily: 'monospace', flex: 1 },
   miniOrderStatus: { fontSize: 11, fontWeight: '600', flex: 1, textAlign: 'center' },
-  miniOrderTotal: { color: C.primary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+  miniOrderTotal: { color: C.accent, fontSize: 12, fontWeight: '700', textAlign: 'right' },
 
   addressCard: {
     flexDirection: 'row',

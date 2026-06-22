@@ -1,12 +1,21 @@
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Clock, Flame, Sparkles, Star, Store, Truck, MapPin, CheckCircle2 } from 'lucide-react';
-import { vendureShopFetch, type VendureCollection } from '@/lib/vendure';
+import Image from 'next/image';
+import { ArrowRight, BookOpen, CheckCircle2, Clock, Flame, MapPin, Package, Search, Sparkles, Star, Store, Truck } from 'lucide-react';
+import { resolveVendureAssetUrl, vendureShopFetch, type VendureCollection } from '@/lib/vendure';
 import { TrustStrip } from '@/components/ui/TrustStrip';
-import { CategoryCard } from '@/components/ui/CategoryCard';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
+import { LazyProductGrid } from '@/components/ui/LazyProductGrid';
 import { HomepageBanner, type HomepageBannerData } from '@/components/ui/HomepageBanner';
 import { ARTICLES } from './how-to/articles';
-import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers } from '@/lib/supplier-products';
+import { dbProductToCard, dbSupplierToCard, getDbSupplierProducts, getDbSuppliers, supplierProductMatchesCategory, type DbSupplierProduct } from '@/lib/supplier-products';
+import { BrandLogo } from '@/components/BrandLogo';
+import { ScrollReveal } from '@/components/ScrollReveal';
+import { ScrollProgress } from '@/components/ScrollProgress';
+
+// Нүүр хуудсыг хүсэлт бүрт амьдаар (dynamic) render хийнэ. Статик prerender
+// үед backend түр хүрэхгүй бол "0 бараа" шигдэж, stale-кэшэнд гацдаг байсныг
+// зайлуулна. Хүсэлт бүрт backend-ийн бодит өгөгдлийг харуулна.
+export const dynamic = 'force-dynamic';
 
 // ─── Data fetching ────────────────────────────────────────────
 
@@ -100,7 +109,7 @@ async function getFeaturedProducts(): Promise<ProductCardData[]> {
 
 async function getCatalogProductCount() {
   try {
-    const data = await vendureShopFetch<{ search: { totalItems: number } }>(FEATURED_QUERY, undefined, { revalidate: 0 });
+    const data = await vendureShopFetch<{ search: { totalItems: number } }>(FEATURED_QUERY, undefined, { revalidate: 120 });
     return data.search?.totalItems ?? 0;
   } catch {
     return 0;
@@ -112,7 +121,7 @@ async function getHomepageBanners(): Promise<HomepageBannerData[]> {
     const data = await vendureShopFetch<{ homepageBanners: HomepageBannerData[] }>(
       HOMEPAGE_BANNERS_QUERY,
       undefined,
-      { revalidate: 0 },
+      { revalidate: 120 },
     );
     return data.homepageBanners ?? [];
   } catch {
@@ -127,15 +136,17 @@ const HOW_IT_WORKS = [
   { step: 4, icon: '📍', title: 'Хүргэлт хянах', desc: 'Жолоочийн байршлыг шууд хянана уу' },
 ];
 
+const CATEGORY_FALLBACK_ICONS = ['🏗️', '🔩', '🧱', '🚿', '🪵', '🎨', '🧰', '💡'];
+
 // ─── Components ───────────────────────────────────────────────
 
 function SectionHeader({
-  icon: Icon, title, subtitle, href,
+  icon: Icon, title, subtitle, href, actionLabel = 'Бүгдийг харах',
 }: {
-  icon: React.ElementType; title: string; subtitle?: string; href?: string;
+  icon: React.ElementType; title: string; subtitle?: string; href?: string; actionLabel?: string;
 }) {
   return (
-    <div className="flex items-end justify-between mb-6">
+    <div className="mb-5 flex items-end justify-between gap-4">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Icon size={18} className="text-brand" />
@@ -145,7 +156,7 @@ function SectionHeader({
       </div>
       {href && (
         <Link href={href} className="flex items-center gap-1 text-sm text-brand hover:text-brand-light transition-colors font-medium">
-          Бүгдийг харах <ArrowRight size={14} />
+          {actionLabel} <ArrowRight size={14} />
         </Link>
       )}
     </div>
@@ -153,40 +164,55 @@ function SectionHeader({
 }
 
 function MarketplaceHero({ supplierCount, productCount }: { supplierCount: number; productCount: number }) {
+  const stats = [
+    { icon: Package, value: productCount.toLocaleString('mn-MN'), label: 'Бүтээгдэхүүн' },
+    { icon: Store, value: supplierCount.toLocaleString('mn-MN'), label: 'Нийлүүлэгч' },
+    { icon: Clock, value: '30 мин', label: 'Дундаж хариу' },
+    { icon: Truck, value: '24ц', label: 'Хүргэлт' },
+  ];
+  const trust = ['Олон төрлийн бүтээгдэхүүн', 'Өрсөлдөхүйц үнэ', 'Шуурхай хүргэлт'];
+
   return (
-    <section className="relative overflow-hidden py-20 px-4">
-      <div className="absolute inset-0 gradient-mesh opacity-60" />
-      <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 30% 50%, rgba(255,69,0,0.15) 0%, transparent 60%)' }} />
-      <div className="relative max-w-7xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 text-xs font-semibold text-brand border border-brand/20 mb-6">
-          <Sparkles size={12} /> Backend нийлүүлэгч нэг платформд
+    <section className="relative overflow-hidden px-4 py-12 sm:px-6 lg:py-16">
+      <div className="absolute inset-0 gradient-mesh" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-dark to-transparent" />
+
+      <div className="relative mx-auto flex max-w-4xl flex-col items-center text-center">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-4 py-2 text-xs font-bold text-brand">
+          <Sparkles size={13} /> Барилгын материалын ухаалаг шийдэл
         </div>
-        <h1 className="font-display font-black text-5xl sm:text-6xl lg:text-7xl text-foreground leading-tight mb-6">
-          Барилгын материал.{' '}
-          <span className="text-brand">Хүргэлттэй.</span>
+        <h1 className="font-display text-4xl font-black leading-[1.02] text-foreground sm:text-5xl lg:text-6xl">
+          Барилгын материалыг <span className="gradient-text">нэг платформоос.</span>
         </h1>
-        <p className="text-xl text-foreground-muted max-w-2xl mx-auto mb-10 leading-relaxed">
-          Backend-д бүртгэлтэй нийлүүлэгчийн бараа. Шуурхай хүргэлт. Нэг сагсаар олон дэлгүүрээс захиалаарай.
+        <p className="mt-5 max-w-2xl text-base leading-7 text-foreground-muted sm:text-lg">
+          Нийлүүлэгч, бүтээгдэхүүн, хүргэлтийг нэг дор холбосон shoptool.mn платформ. Бодит үнэ, шуурхай хүргэлт, найдвартай захиалга.
         </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/suppliers" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-brand text-white font-bold text-base hover:bg-brand-hover transition-all shadow-xl shadow-brand/30 hover:scale-105">
-            <Store size={18} /> Нийлүүлэгчид үзэх
+
+        {/* Trust chips */}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          {trust.map((label) => (
+            <span key={label} className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground-muted">
+              <CheckCircle2 size={14} className="text-brand" /> {label}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+          <Link href="/search" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand px-7 py-4 text-sm font-black text-white shadow-xl shadow-brand/25 transition-transform hover:-translate-y-0.5">
+            <Search size={17} /> Материал хайх <ArrowRight size={16} />
           </Link>
-          <Link href="/category" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl glass glass-hover text-foreground font-bold text-base hover:scale-105 transition-all">
-            Ангилал харах <ArrowRight size={16} />
+          <Link href="/suppliers" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--glass-border)] bg-card px-7 py-4 text-sm font-black text-foreground shadow-sm transition-transform hover:-translate-y-0.5 hover:border-brand/40">
+            <Store size={17} /> Нийлүүлэгчид үзэх
           </Link>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto mt-14">
-          {[
-            { value: supplierCount.toLocaleString('mn-MN'), label: 'Нийлүүлэгч' },
-            { value: productCount.toLocaleString('mn-MN'), label: 'Бүтээгдэхүүн' },
-            { value: '30 мин', label: 'Дундаж хүргэлт' },
-          ].map(({ value, label }) => (
-            <div key={label} className="glass rounded-2xl p-4 text-center">
-              <p className="text-2xl font-black font-mono text-brand">{value}</p>
-              <p className="text-xs text-foreground-muted mt-1">{label}</p>
+        {/* Stats strip */}
+        <div className="mt-10 grid w-full max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
+          {stats.map(({ icon: Icon, value, label }) => (
+            <div key={label} className="flex flex-col items-center rounded-2xl border border-[var(--glass-border)] bg-card/70 px-3 py-4 backdrop-blur">
+              <Icon size={20} className="mb-2 text-brand" />
+              <p className="font-mono text-xl font-black text-brand sm:text-2xl">{value}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-foreground-muted">{label}</p>
             </div>
           ))}
         </div>
@@ -195,12 +221,73 @@ function MarketplaceHero({ supplierCount, productCount }: { supplierCount: numbe
   );
 }
 
+function CategoryRail({ collections, supplierProducts }: { collections: VendureCollection[]; supplierProducts: DbSupplierProduct[] }) {
+  return (
+    <section className="relative z-10 mx-auto -mt-10 max-w-7xl px-4 sm:px-6">
+      <div className="rounded-[28px] border border-[var(--glass-border)] bg-card p-5 shadow-[var(--card-shadow)]">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-black text-foreground">Ангиллууд</h2>
+          <Link href="/category" className="inline-flex items-center gap-1 text-xs font-bold text-foreground-muted hover:text-brand">
+            Бүгдийг харах <ArrowRight size={13} />
+          </Link>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {collections.slice(0, 8).map((category, index) => (
+            <Link
+              key={category.id}
+              href={`/category/${category.slug}`}
+              className="min-w-[132px] rounded-2xl border border-[var(--glass-border)] bg-surface p-3 text-center transition hover:-translate-y-0.5 hover:border-brand/35"
+            >
+              <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/10 text-4xl">
+                {category.customFields?.icon ?? CATEGORY_FALLBACK_ICONS[index % CATEGORY_FALLBACK_ICONS.length]}
+              </div>
+              <p className="line-clamp-1 text-sm font-bold text-foreground">{category.name}</p>
+              <p className="mt-1 text-[11px] text-foreground-muted">
+                {getDbSupplierProductCountForCategory(supplierProducts, category).toLocaleString('mn-MN')}+ бүтээгдэхүүн
+              </p>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function getDbSupplierProductCountForCategory(products: DbSupplierProduct[], category: VendureCollection) {
+  return products.filter((product) => product.enabled && supplierProductMatchesCategory(product, category, true)).length;
+}
+
+type CategorySection = { category: VendureCollection; total: number; items: ProductCardData[] };
+
+function CategoryProductsSections({ sections }: { sections: CategorySection[] }) {
+  if (sections.length === 0) return null;
+  return (
+    <>
+      {sections.map(({ category, total, items }, sectionIndex) => (
+        <section
+          key={category.id}
+          data-reveal
+          className={`py-8 max-w-7xl mx-auto px-4 sm:px-6 ${sectionIndex % 2 === 1 ? '' : ''}`}
+        >
+          <SectionHeader
+            icon={Package}
+            title={`${category.customFields?.icon ?? ''} ${category.name}`.trim()}
+            subtitle={`${total.toLocaleString('mn-MN')} бүтээгдэхүүн`}
+            href={`/category/${category.slug}`}
+          />
+          <LazyProductGrid products={items} initial={20} step={10} />
+        </section>
+      ))}
+    </>
+  );
+}
+
 function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplierToCard>[] }) {
   const featured = suppliers.slice(0, 4);
   return (
-    <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-      <SectionHeader icon={Store} title="Онцлох нийлүүлэгчид" subtitle="Найдвартай нийлүүлэгчдээс шууд захиалаарай" href="/suppliers" />
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+      <SectionHeader icon={Store} title="Дэлгүүрүүд" subtitle="Найдвартай нийлүүлэгчдээс шууд захиалаарай" href="/suppliers" actionLabel="Бүгд" />
+      <div className="reveal-stagger grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {featured.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-2 lg:col-span-4">
             Backend дээр идэвхтэй нийлүүлэгч алга байна.
@@ -211,9 +298,10 @@ function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplie
             href={`/suppliers/${sup.slug}`}
             className="group block rounded-2xl bg-card border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-all hover:shadow-lg hover:shadow-black/30 p-5"
           >
-            {/* Logo */}
-            <div className="w-14 h-14 rounded-2xl bg-brand/15 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
-              🏪
+            <div className="relative w-14 h-14 overflow-hidden rounded-2xl bg-brand/15 flex items-center justify-center text-xl font-black text-brand mb-4 group-hover:scale-110 transition-transform">
+              {resolveVendureAssetUrl(sup.logo) ? (
+                <Image src={resolveVendureAssetUrl(sup.logo)} alt={`${sup.businessName} logo`} fill className="object-cover" />
+              ) : sup.businessName.slice(0, 1).toUpperCase()}
             </div>
 
             <h3 className="font-semibold text-sm text-foreground group-hover:text-brand transition-colors leading-tight mb-1">
@@ -249,7 +337,7 @@ function SupplierSection({ suppliers }: { suppliers: ReturnType<typeof dbSupplie
 
 function HowItWorksSection() {
   return (
-    <section className="py-16 border-y border-[var(--glass-border)] bg-surface/40">
+    <section data-reveal className="py-16 border-y border-[var(--glass-border)] bg-surface/40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-10">
           <h2 className="font-display font-bold text-3xl text-foreground mb-2">Хэрхэн ажилладаг вэ?</h2>
@@ -284,19 +372,16 @@ function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center">
-                <span className="text-white text-sm">🔨</span>
-              </div>
-              <span className="font-display font-black text-lg text-foreground">DIY<span className="text-brand">Store</span></span>
+              <BrandLogo imageClassName="w-40" />
             </div>
             <p className="text-sm text-foreground-muted leading-relaxed">
-              Монголын хамгийн том DIY маркетплейс. 100+ нийлүүлэгч, шуурхай хүргэлт.
+              Монголын барилгын материалын ухаалаг шийдэл. 100+ нийлүүлэгч, шуурхай хүргэлт.
             </p>
           </div>
           {[
             { title: 'Платформ', links: ['Нийлүүлэгч болох', 'Жолооч болох', 'Бүх ангилал', 'Шинэ бараа'] },
             { title: 'Компани', links: ['Бидний тухай', 'Карьер', 'Хэвлэлийн мэдэгдэл', 'Холбоо барих'] },
-            { title: 'Тусламж', links: ['Захиалга хянах', 'Буцаалт', 'Баталгаа', 'Хаяг олох'] },
+            { title: 'Тусламж', links: ['Захиалга хянах', 'Буцаалт', 'Хаяг олох'] },
           ].map(({ title, links }) => (
             <div key={title}>
               <h4 className="font-semibold text-foreground text-sm mb-4">{title}</h4>
@@ -311,7 +396,7 @@ function Footer() {
           ))}
         </div>
         <div className="border-t border-[var(--glass-border)] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-foreground-muted">© 2025 DIY Store Marketplace. Бүх эрх хуулиар хамгаалагдсан.</p>
+          <p className="text-xs text-foreground-muted">© 2025 shoptool.mn Marketplace. Бүх эрх хуулиар хамгаалагдсан.</p>
           <div className="flex items-center gap-4 text-xs text-foreground-muted">
             <Link href="/trade" className="hover:text-foreground transition-colors">Нууцлалын бодлого</Link>
             <Link href="/trade" className="hover:text-foreground transition-colors">Үйлчилгээний нөхцөл</Link>
@@ -334,7 +419,6 @@ function footerHref(label: string) {
     'Холбоо барих': '/trade',
     'Захиалга хянах': '/track/demo',
     'Буцаалт': '/trade',
-    'Баталгаа': '/trade',
     'Хаяг олох': '/stores',
   };
   return routes[label] ?? '/';
@@ -357,44 +441,57 @@ export default async function HomePage() {
     ...supplierProducts.map((product) => dbProductToCard(product, supplierById.get(product.supplierId))),
     ...catalogProducts,
   ];
+  // Барааны тоог аль хэдийн татсан жагсаалтаас тооцоолно — base64 зурагтай бүх барааг
+  // дахин татах (getDbSupplierProductCount) шаардлагагүй болгож, SSR-ийн дата хагасаар багасгав.
   const productCount = catalogProductCount + supplierProducts.length;
   const displayCategories = collections;
   const displayProducts = products;
-  const newProducts = displayProducts.slice(0, 4);
+  const newProducts = displayProducts.slice(0, 12);
   const saleProducts = displayProducts.filter((product) => product.originalPrice && product.originalPrice > product.price).slice(0, 8);
   const articles = ARTICLES.slice(0, 3);
 
+  // Ангилал тус бүрд хамгийн ихдээ 100 бараа.
+  const PER_CATEGORY_LIMIT = 100;
+  const matchedProductIds = new Set<string>();
+  const categorySections: CategorySection[] = displayCategories
+    .map((category) => ({
+      category,
+      matched: supplierProducts.filter(
+        (product) => product.enabled && supplierProductMatchesCategory(product, category, true),
+      ),
+    }))
+    .filter((section) => section.matched.length > 0)
+    .sort((a, b) => b.matched.length - a.matched.length)
+    .map(({ category, matched }) => {
+      matched.forEach((product) => matchedProductIds.add(String(product.id)));
+      return {
+        category,
+        total: matched.length,
+        items: matched
+          .slice(0, PER_CATEGORY_LIMIT)
+          .map((product) => dbProductToCard(product, supplierById.get(product.supplierId))),
+      };
+    });
+
+  // Ямар ч ангилалд ороогүй бараануудыг "Бусад" хэсэгт харуулж, нэгийг ч нуухгүй.
+  const otherProducts = supplierProducts
+    .filter((product) => product.enabled && !matchedProductIds.has(String(product.id)))
+    .slice(0, PER_CATEGORY_LIMIT)
+    .map((product) => dbProductToCard(product, supplierById.get(product.supplierId)));
+
   return (
     <>
-      <MarketplaceHero supplierCount={suppliersResult.total} productCount={productCount} />
+      <ScrollProgress />
+      <ScrollReveal />
       <HomepageBanner banners={banners} />
-      <TrustStrip />
-
-      {/* Supplier spotlight */}
-      <SupplierSection suppliers={suppliers} />
-
-      {/* Categories */}
-      <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6">
-        <SectionHeader icon={Sparkles} title="Онцлох ангилал" subtitle="Шаардлагатай бараагаа хурдан олоорой" href="/category" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {displayCategories.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted sm:col-span-3 lg:col-span-4 xl:col-span-6">
-              Backend дээр ангилал бүртгэгдээгүй байна.
-            </div>
-          ) : displayCategories.slice(0, 12).map((cat, i) => (
-            <CategoryCard key={cat.id} name={cat.name} slug={cat.slug} icon={cat.customFields?.icon ?? '📦'} index={i} />
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <HowItWorksSection />
+      <MarketplaceHero supplierCount={suppliersResult.total} productCount={productCount} />
+      <CategoryRail collections={displayCategories} supplierProducts={supplierProducts} />
 
       {/* New products */}
-      <section id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
+      <section data-reveal id="new-products" className="scroll-mt-24 py-10 border-y border-[var(--glass-border)] bg-surface/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Sparkles} title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" href="/#new-products" />
-          <div className="flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 sm:-mx-6 sm:px-6 snap-x snap-mandatory">
+          <SectionHeader icon={Sparkles} title="Шинэ бараа" subtitle="Сүүлд нэмэгдсэн бүтээгдэхүүн" href="/products?mode=new" />
+          <div className="reveal-stagger flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 sm:-mx-6 sm:px-6 snap-x snap-mandatory">
             {newProducts.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--glass-border)] p-8 text-sm text-foreground-muted">
                 Backend дээр бараа бүртгэгдээгүй байна.
@@ -408,8 +505,48 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Products grouped by category */}
+      <CategoryProductsSections sections={categorySections} />
+
+      {/* Бусад бараа — ангилалд ороогүй бүтээгдэхүүн */}
+      {otherProducts.length > 0 && (
+        <section data-reveal className="py-8 max-w-7xl mx-auto px-4 sm:px-6">
+          <SectionHeader
+            icon={Package}
+            title="Бусад бараа"
+            subtitle={`${otherProducts.length.toLocaleString('mn-MN')} бүтээгдэхүүн`}
+            href="/products"
+          />
+          <LazyProductGrid products={otherProducts} initial={20} step={10} />
+        </section>
+      )}
+
+      {/* Sale products grid */}
+      <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+        <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/products?mode=sale" />
+        {saleProducts.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[var(--glass-border)] bg-card p-8 text-sm text-foreground-muted">
+            Одоогоор хямдралтай бараа бүртгэгдээгүй байна.
+          </div>
+        ) : (
+          <div className="reveal-stagger grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {saleProducts.map((product, i) => (
+              <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Supplier spotlight */}
+      <SupplierSection suppliers={suppliers} />
+
+      <TrustStrip />
+
+      {/* How it works */}
+      <HowItWorksSection />
+
       {/* Trade banner */}
-      <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+      <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
         <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12">
           <div className="absolute inset-0 gradient-mesh opacity-80" />
           <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(255,69,0,0.2) 0%, transparent 60%)' }} />
@@ -422,11 +559,14 @@ export default async function HomePage() {
                 Таны бизнесийг онлайнд гаргаарай
               </h2>
               <p className="text-foreground-muted mb-6 leading-relaxed">
-                DIY Store Marketplace дээр нийлүүлэгч болж, хэдэн мянган хэрэглэгчид хүр. Бүртгэл үнэгүй.
+                shoptool.mn Marketplace дээр нийлүүлэгч болж, хэдэн мянган хэрэглэгчид хүр. Бүртгэл үнэгүй.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link href={merchantLoginHref} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30">
                   Нийлүүлэгч болох <ArrowRight size={15} />
+                </Link>
+                <Link href={driverRegisterHref} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl glass glass-hover text-foreground font-semibold text-sm transition-colors">
+                  <Truck size={15} /> Жолооч болох
                 </Link>
               </div>
             </div>
@@ -447,22 +587,10 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Sale products grid */}
-      {saleProducts.length > 0 && (
-        <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
-          <SectionHeader icon={Flame} title="Хямдралтай бараа" subtitle="Backend дээр бүртгэлтэй хямдрал" href="/search?sort=price_asc" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {saleProducts.map((product, i) => (
-              <ProductCard key={product.id} product={{ ...product, badge: 'ХЯМДРАЛ' }} index={i} />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* How-to articles */}
-      <section className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
+      <section data-reveal className="py-10 max-w-7xl mx-auto px-4 sm:px-6">
         <SectionHeader icon={BookOpen} title="DIY Заавар" subtitle="Мэргэжилтнээс суралц" href="/how-to" />
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="reveal-stagger grid sm:grid-cols-3 gap-4">
           {articles.map((article) => (
             <Link key={article.slug} href={`/how-to/${article.slug}`} className="group block rounded-2xl bg-card border border-[var(--glass-border)] hover:border-[var(--glass-border-hover)] transition-all overflow-hidden">
               <div className="aspect-video bg-gradient-to-br from-surface to-card flex items-center justify-center text-6xl">{article.emoji}</div>
@@ -481,3 +609,5 @@ export default async function HomePage() {
     </>
   );
 }
+
+// redeploy: rebuild to fix chunk mismatch (consistent build)

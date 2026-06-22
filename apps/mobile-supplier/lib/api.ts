@@ -1,6 +1,18 @@
-const SHOP_API = process.env.EXPO_PUBLIC_SHOP_API_URL || 'https://shop.example.com/shop-api';
-const ADMIN_API = process.env.EXPO_PUBLIC_ADMIN_API_URL || 'https://admin.example.com/admin-api';
-const REQUEST_TIMEOUT_MS = 12000;
+import { API_URL, WEB_URL, normalizeDeviceUrl } from '@/lib/config';
+import { Platform } from 'react-native';
+
+const SHOP_API = Platform.OS === 'web'
+  ? `${API_URL}/shop-api`
+  : process.env.EXPO_PUBLIC_SHOP_API_URL
+    ? normalizeDeviceUrl(process.env.EXPO_PUBLIC_SHOP_API_URL)
+    : `${API_URL}/shop-api`;
+const ADMIN_API = Platform.OS === 'web'
+  ? `${API_URL}/admin-api`
+  : process.env.EXPO_PUBLIC_ADMIN_API_URL
+    ? normalizeDeviceUrl(process.env.EXPO_PUBLIC_ADMIN_API_URL)
+    : `${API_URL}/admin-api`;
+const REQUEST_TIMEOUT_MS = 30000;
+const AI_ANALYZE_TIMEOUT_MS = 35000;
 
 async function postGraphql<T>(
   url: string,
@@ -20,10 +32,20 @@ async function postGraphql<T>(
       body: JSON.stringify({ query, variables }),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`API холболтын алдаа (${res.status})`);
-    const json = await res.json();
-    if (json.errors) throw new Error(json.errors[0].message);
-    return json.data as T;
+    const text = await res.text();
+    let json: { data?: T; errors?: Array<{ message?: string }>; message?: string } | null = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      // Fall through to the HTTP error below with the raw response body.
+    }
+    if (!res.ok) {
+      const message = json?.errors?.[0]?.message || json?.message || text || `API холболтын алдаа (${res.status})`;
+      throw new Error(message);
+    }
+    if (json?.errors) throw new Error(json.errors[0].message);
+    if (!json?.data) throw new Error('API-с хоосон хариу ирлээ');
+    return json.data;
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error('Серверээс хариу ирсэнгүй. Дахин оролдоно уу');
@@ -51,6 +73,54 @@ export async function adminFetch<T>(
   token?: string | null,
 ): Promise<T> {
   return postGraphql<T>(ADMIN_API, query, variables, token);
+}
+
+export type ProductAnalysis = {
+  name?: string;
+  description?: string;
+  category?: string;
+  unit?: string;
+  confidence?: number;
+  error?: string;
+};
+
+export async function analyzeProductImage(image: string, category?: string): Promise<ProductAnalysis> {
+  async function postAnalyze(baseUrl: string, signal: AbortSignal) {
+    const mediaType = image.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+    const response = await fetch(`${baseUrl}/analyze-product`, {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image,
+        mediaType,
+        ...(category ? { category } : {}),
+      }),
+    });
+    const json = await response.json();
+    if (!response.ok || json?.error) {
+      throw new Error(json?.error || `AI шинжилгээний алдаа (${response.status})`);
+    }
+    return json as ProductAnalysis;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_ANALYZE_TIMEOUT_MS);
+  try {
+    try {
+      return await postAnalyze(WEB_URL, controller.signal);
+    } catch (err) {
+      if (WEB_URL === API_URL) throw err;
+      return await postAnalyze(API_URL, controller.signal);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('AI шинжилгээ хэт удаж байна. Дахин оролдоно уу');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const LOGIN_MUTATION = `
@@ -93,6 +163,7 @@ export const LOGIN_SUPPLIER_MUTATION = `
       success
       message
       email
+      otp
     }
   }
 `;
@@ -103,6 +174,7 @@ export const REGISTER_SUPPLIER_MUTATION = `
       success
       message
       email
+      otp
     }
   }
 `;
@@ -123,12 +195,68 @@ export const SUPPLIER_QUERY = `
     supplier(id: $id) {
       id
       businessName
+      description
       ownerName
       email
       phone
+      address
       status
+      bankName
+      bankAccount
       productCount
       rating
+    }
+  }
+`;
+
+export const UPDATE_SUPPLIER_MUTATION = `
+  mutation UpdateSupplier($id: ID!, $input: UpdateSupplierInput!) {
+    updateSupplier(id: $id, input: $input) {
+      id
+      businessName
+      description
+      ownerName
+      email
+      phone
+      address
+      status
+      bankName
+      bankAccount
+      productCount
+      rating
+    }
+  }
+`;
+
+export const PRODUCT_CATEGORIES_QUERY = `
+  query ProductCategories {
+    collections(options: { take: 100, sort: { position: ASC } }) {
+      items {
+        id
+        name
+        slug
+        parentId
+        parent { id name slug }
+      }
+    }
+  }
+`;
+
+export const PRODUCT_REVIEWS_QUERY = `
+  query ProductReviews($productId: ID!) {
+    getProductReviews(productId: $productId) {
+      items {
+        id
+        productId
+        customerId
+        rating
+        title
+        body
+        status
+        helpfulCount
+        createdAt
+      }
+      totalItems
     }
   }
 `;

@@ -8,8 +8,9 @@ import {
   type ColumnDef, type SortingState,
 } from '@tanstack/react-table';
 import { Plus, Search, Download, Package, ArrowUpDown, Pencil, Trash2, Eye, CheckCircle, XCircle } from 'lucide-react';
-import { MOCK_PRODUCTS, type AdminProduct } from '@/lib/admin-data';
+import type { AdminProduct } from '@/lib/admin-data';
 import { vendureAdminFetch } from '@/lib/vendure';
+import { formatPrice } from '@/lib/price';
 
 type AdminProductRow = AdminProduct & {
   supplierId?: string;
@@ -59,6 +60,12 @@ const SUPPLIER_PRODUCTS_QUERY = `
   }
 `;
 
+const DELETE_SUPPLIER_PRODUCT_MUTATION = `
+  mutation DeleteSupplierProduct($id: ID!) {
+    deleteSupplierProduct(id: $id)
+  }
+`;
+
 const STOCK_BADGE: Record<string, string> = {
   IN_STOCK:     'bg-emerald-500/15 text-emerald-400',
   LOW_STOCK:    'bg-amber-500/15 text-amber-400',
@@ -76,9 +83,11 @@ export default function AdminProductsPage() {
   const [dbProducts, setDbProducts] = useState<AdminProductRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncError, setSyncError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<AdminProductRow | null>(null);
+  const [deletingId, setDeletingId] = useState('');
 
   const categories = useMemo(
-    () => Array.from(new Set([...MOCK_PRODUCTS, ...dbProducts].flatMap((p) => p.collections.map((c) => c.name)))),
+    () => Array.from(new Set(dbProducts.flatMap((p) => p.collections.map((c) => c.name)))),
     [dbProducts],
   );
 
@@ -130,13 +139,28 @@ export default function AdminProductsPage() {
   }, []);
 
   const products = useMemo<AdminProductRow[]>(
-    () => [...dbProducts, ...MOCK_PRODUCTS].filter((product) => {
+    () => dbProducts.filter((product) => {
       const categoryOk = !categoryFilter || product.collections.some((c) => c.name === categoryFilter);
       const statusOk = !statusFilter || (statusFilter === 'active' ? product.enabled : !product.enabled);
       return categoryOk && statusOk;
     }),
     [categoryFilter, dbProducts, statusFilter],
   );
+
+  async function confirmDeleteProduct() {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    setSyncError('');
+    try {
+      await vendureAdminFetch(DELETE_SUPPLIER_PRODUCT_MUTATION, { id: deleteTarget.id });
+      setDbProducts((items) => items.filter((product) => product.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Бараа устгахад алдаа гарлаа');
+    } finally {
+      setDeletingId('');
+    }
+  }
 
   const columns = useMemo<ColumnDef<AdminProductRow>[]>(() => [
     {
@@ -184,7 +208,7 @@ export default function AdminProductsPage() {
     {
       id: 'supplier',
       header: 'Нийлүүлэгч',
-      accessorFn: (r) => r.supplierName ?? 'DIY Store',
+      accessorFn: (r) => r.supplierName ?? 'shoptool.mn',
       cell: ({ getValue }) => <span className="text-xs font-semibold text-foreground-muted">{getValue() as string}</span>,
     },
     {
@@ -212,7 +236,7 @@ export default function AdminProductsPage() {
       ),
       cell: ({ getValue }) => (
         <span className="text-xs font-semibold text-foreground">
-          ₮{Math.round((getValue() as number) / 100).toLocaleString('mn-MN')}
+          ₮{Number(formatPrice(getValue() as number)).toLocaleString('mn-MN')}
         </span>
       ),
     },
@@ -262,14 +286,19 @@ export default function AdminProductsPage() {
           >
             <Pencil size={13} />
           </Link>
-          <button className="p-1.5 rounded-lg hover:bg-error/10 text-foreground-muted hover:text-error transition-colors">
+          <button
+            onClick={() => setDeleteTarget(row.original)}
+            disabled={deletingId === row.original.id}
+            className="p-1.5 rounded-lg hover:bg-error/10 text-foreground-muted hover:text-error transition-colors disabled:opacity-50"
+            title="Устгах"
+          >
             <Trash2 size={13} />
           </button>
         </div>
       ),
       size: 80,
     },
-  ], []);
+  ], [deletingId]);
 
   const table = useReactTable({
     data: products,
@@ -286,7 +315,7 @@ export default function AdminProductsPage() {
 
   const handleExportCSV = () => {
     const rows = products.map(p =>
-      [p.name, p.supplierName ?? 'DIY Store', p.variants[0]?.sku, Math.round((p.variants[0]?.priceWithTax ?? 0) / 100), p.variants[0]?.stockOnHand, p.enabled].join(',')
+      [p.name, p.supplierName ?? 'shoptool.mn', p.variants[0]?.sku, formatPrice(p.variants[0]?.priceWithTax ?? 0), p.variants[0]?.stockOnHand, p.enabled].join(',')
     );
     const csv = ['Нэр,Нийлүүлэгч,SKU,Үнэ,Нөөц,Идэвхтэй', ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -412,6 +441,33 @@ export default function AdminProductsPage() {
           </button>
         </div>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--glass-border)] bg-card p-5 shadow-2xl">
+            <h2 className="text-base font-bold text-foreground">Бараа устгах уу?</h2>
+            <p className="mt-2 text-sm text-foreground-muted">
+              {deleteTarget.name} барааг устгавал supplier catalog-оос хасагдана.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={!!deletingId}
+                className="rounded-xl border border-[var(--glass-border)] px-4 py-2 text-sm text-foreground-muted hover:text-foreground disabled:opacity-50"
+              >
+                Болих
+              </button>
+              <button
+                onClick={() => void confirmDeleteProduct()}
+                disabled={!!deletingId}
+                className="rounded-xl bg-error px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {deletingId ? 'Устгаж байна...' : 'Устгах'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// Renders driver login and coordinates biometric, password, and OTP authentication flows.
+import { useEffect, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,13 +10,95 @@ import { Input } from '../../src/components/Input';
 import { Toast } from '../../src/components/Toast';
 import { useAuthStore } from '../../src/store/auth';
 import { colors } from '../../src/theme';
+import { authenticate, checkSupport, enableBiometric, getBiometricDriverId, getBiometricToken, isBiometricEnabled } from '../../hooks/useBiometric';
+import { saveToken } from '../../services/auth';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [phone, setPhone] = useState('8911 8564');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
-  const { requestLoginOtp, verifyOtp, isLoading, error, devOtp, clearError } = useAuthStore();
+  const [showPasswordLogin, setShowPasswordLogin] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const { login, loginWithToken, requestLoginOtp, verifyOtp, isLoading, error, devOtp, clearError } = useAuthStore();
+
+  const refreshBiometricAvailability = async () => {
+    const supported = await checkSupport();
+    const enabled = await isBiometricEnabled();
+    const token = await getBiometricToken();
+    const driverId = await getBiometricDriverId();
+    setBiometricAvailable(supported && enabled && !!token && !!driverId);
+  };
+
+  const runBiometricLogin = async () => {
+    clearError();
+    const result = await authenticate();
+    if (!result.success) {
+      return;
+    }
+
+    const token = await getBiometricToken();
+    const driverId = await getBiometricDriverId();
+    if (!token || !driverId) {
+      await refreshBiometricAvailability();
+      Alert.alert('Face ID идэвхгүй байна', 'Кодоор нэвтэрсний дараа Face ID-г дахин идэвхжүүлнэ үү');
+      return;
+    }
+
+    const ok = await loginWithToken(token, driverId);
+    if (ok) {
+      router.replace('/(tabs)');
+    } else {
+      Alert.alert('Face ID нэвтрэлт амжилтгүй', useAuthStore.getState().error ?? 'Кодоор нэвтэрч дахин идэвхжүүлнэ үү');
+    }
+  };
+
+  useEffect(() => {
+    refreshBiometricAvailability().catch(() => setBiometricAvailable(false));
+  }, []);
+
+  const offerBiometric = async (token: string, onDone: () => void) => {
+    await saveToken(token);
+    const driverId = useAuthStore.getState().driver?.id;
+    const supported = await checkSupport();
+    if (!supported || !driverId) {
+      onDone();
+      return;
+    }
+
+    Alert.alert(
+      'Face ID идэвхжүүлэх үү?',
+      'Дараагийн нэвтрэлтэд Face ID ашиглах уу?',
+      [
+        { text: 'Болих', style: 'cancel', onPress: onDone },
+        {
+          text: 'Тийм',
+          onPress: async () => {
+            await enableBiometric(token, driverId);
+            await refreshBiometricAvailability();
+            onDone();
+          },
+        },
+      ],
+    );
+  };
+
+  const submitPassword = async () => {
+    clearError();
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const ok = await login(email, password);
+    if (!ok) return;
+
+    const token = useAuthStore.getState().token;
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (token) {
+      await offerBiometric(token, () => router.replace('/(tabs)'));
+      return;
+    }
+    router.replace('/(tabs)');
+  };
 
   const submit = async () => {
     clearError();
@@ -27,7 +110,12 @@ export default function LoginScreen() {
     }
     const ok = await verifyOtp(phone, otp);
     if (ok) {
+      const token = useAuthStore.getState().token;
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (token) {
+        await offerBiometric(token, () => router.replace('/(tabs)'));
+        return;
+      }
       router.replace('/(tabs)');
     }
   };
@@ -45,7 +133,16 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.form}>
-            {!otpSent ? (
+            {showPasswordLogin ? (
+              <>
+                <Input label="И-мэйл" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+                <Input label="Нууц үг" value={password} onChangeText={setPassword} secureTextEntry passwordToggle />
+                <Toast message={error} />
+                <Button title="Нэвтрэх" loading={isLoading} onPress={submitPassword} style={styles.loginButton} />
+                {biometricAvailable ? <Button title="Face ID-аар нэвтрэх" variant="ghost" size="md" icon="finger-print" onPress={runBiometricLogin} /> : null}
+                <Button title="Утасны кодоор нэвтрэх" variant="ghost" size="md" onPress={() => { setShowPasswordLogin(false); clearError(); }} />
+              </>
+            ) : !otpSent ? (
               <Input label="Утасны дугаар" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
             ) : (
               <>
@@ -54,9 +151,15 @@ export default function LoginScreen() {
                 {devOtp ? <Text style={styles.devOtp}>Туршилтын OTP: {devOtp}</Text> : null}
               </>
             )}
-            <Toast message={error} />
-            <Button title={otpSent ? 'Нэвтрэх' : 'Код авах'} loading={isLoading} onPress={submit} style={styles.loginButton} />
-            {otpSent ? <Button title="Дугаар солих" variant="ghost" size="md" onPress={() => { setOtpSent(false); setOtp(''); clearError(); }} /> : null}
+            {!showPasswordLogin ? (
+              <>
+                <Toast message={error} />
+                {biometricAvailable ? <Button title="Face ID-аар нэвтрэх" variant="ghost" size="md" icon="finger-print" onPress={runBiometricLogin} /> : null}
+                <Button title={otpSent ? 'Нэвтрэх' : 'Код авах'} loading={isLoading} onPress={submit} style={styles.loginButton} />
+                {otpSent ? <Button title="Дугаар солих" variant="ghost" size="md" onPress={() => { setOtpSent(false); setOtp(''); clearError(); }} /> : null}
+              </>
+            ) : null}
+            {!showPasswordLogin ? <Button title="Нууц үгээр нэвтрэх" variant="ghost" size="md" onPress={() => { setShowPasswordLogin(true); clearError(); }} /> : null}
           </View>
 
           <TouchableOpacity style={styles.registerLink} onPress={() => router.push('/(auth)/register')}>

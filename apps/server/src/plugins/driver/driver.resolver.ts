@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 import { Driver, DriverStatus, VehicleType } from './driver.entity';
 import { DriverService } from './driver.service';
 import type { RegisterDriverInput } from './driver.service';
-import { requirePlatformRole } from '../../utils/auth';
+import { exposeOtp, requirePlatformRole } from '../../utils/auth';
 
 type AdminDriverInput = Partial<Driver> & {
   firstName: string;
@@ -60,7 +60,7 @@ export class DriverResolver {
   async registerDriver(@Args('input') input: RegisterDriverInput) {
     try {
       const driver = await this.driverService.registerDriver(input);
-      return { success: true, message: 'Баталгаажуулах код илгээгдлээ', phone: driver.phone, otp: this.exposeOtp(driver.otpCode) };
+      return { success: true, message: 'Баталгаажуулах код илгээгдлээ', phone: driver.phone, otp: exposeOtp(driver.otpCode) };
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : 'Алдаа гарлаа', phone: null, otp: null };
     }
@@ -71,7 +71,7 @@ export class DriverResolver {
   async loginDriver(@Args('phone') phone: string) {
     try {
       const driver = await this.driverService.loginDriver(phone);
-      return { success: true, message: 'Баталгаажуулах код илгээгдлээ', phone: driver.phone, otp: this.exposeOtp(driver.otpCode) };
+      return { success: true, message: 'Баталгаажуулах код илгээгдлээ', phone: driver.phone, otp: exposeOtp(driver.otpCode) };
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : 'Алдаа гарлаа', phone: null, otp: null };
     }
@@ -209,7 +209,4 @@ export class DriverResolver {
     if (principal.id !== driverId) throw new Error('Өөр жолоочийн мэдээлэлд хандах эрхгүй');
   }
 
-  private exposeOtp(otp: string | null) {
-    return process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true' ? otp : null;
-  }
 }

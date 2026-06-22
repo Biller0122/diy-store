@@ -13,6 +13,7 @@ out/
 */out/
 .turbo/
 coverage/
+*.tsbuildinfo
 
 # Runtime and local data
 .vendure/
@@ -69,3 +70,10 @@ test-results/
 .DS_Store
 .idea/
 .vscode/
+.expo/
+tmp-*.png
+utputFormat
+apps/ai-image/models/
+
+# Local dev
+docker-compose.local.yml

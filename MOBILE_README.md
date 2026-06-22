@@ -38,6 +38,13 @@ cd apps/mobile-supplier && npx tsc --noEmit
 
 ## EAS Build
 
+Driver app-ийн Google Maps key-г EAS secret/env-ээр өгнө:
+
+```bash
+cd apps/mobile-driver
+npx eas secret:create --scope project --name GOOGLE_MAPS_API_KEY --value "<google-maps-api-key>"
+```
+
 ```bash
 cd apps/mobile-driver
 npx eas build --platform android
@@ -58,9 +65,9 @@ npx eas build --platform ios
 
 ## API Endpoints
 
-- Shop API: `http://52.77.245.218/shop-api`
-- Admin API: `http://52.77.245.218/admin-api`
-- Realtime Socket: `http://52.77.245.218:3002`
+- Shop API: `https://shoptool.mn/shop-api`
+- Admin API: `https://shoptool.mn/admin-api`
+- Realtime Socket: `https://shoptool.mn`
 
 ## Realtime Events
 
@@ -72,5 +79,7 @@ npx eas build --platform ios
 - `driver:online` / `driver:offline` - жолоочийн онлайн төлөв шинэчлэх
 
 ## Notes
+
+Root дээрх `customer-qr.html`, `supplier-qr.html`, `expo-supplier-qr.html` нь зөвхөн dev helper. Expo URL өөрчлөгдвөл `?url=exp://YOUR-LAN-IP:PORT` query-ээр өөрийн одоогийн LAN URL-ийг өгнө.
 
 Одоогийн мобайл аппууд mock өгөгдөлтэй ажиллаж, `packages/api-client`-ээр Vendure болон realtime endpoint руу холбогдох суурь hook-уудтай болсон.

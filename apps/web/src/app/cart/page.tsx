@@ -10,12 +10,12 @@ import {
   getSupplierGroups,
   calcSubtotal,
   calcDiscount,
-  calcDeliveryFee,
   type Address,
 } from '@/lib/cart-store';
 import { useDeliveryFee } from '@/hooks/useDeliveryFee';
 import { trackViewCart, trackRemoveFromCart } from '@/lib/analytics/ga4';
 import { useCustomerAddressStore } from '@/lib/customer-address-store';
+import { isRenderableImageSrc, withImagePreset } from '@/lib/image-url';
 
 const UB_DISTRICTS = [
   'Баянзүрх','Сүхбаатар','Хан-Уул','Баянгол',
@@ -220,11 +220,13 @@ function OrderSummary({
   onCheckout,
   deliveryFee,
   feeBreakdown,
+  feeFallback,
   feeLoading,
 }: {
   onCheckout: () => void;
   deliveryFee: number;
   feeBreakdown: ReturnType<typeof useDeliveryFee>['breakdown'];
+  feeFallback: boolean;
   feeLoading: boolean;
 }) {
   const { items, promo } = useCartStore();
@@ -249,6 +251,9 @@ function OrderSummary({
             {hasDelivery ? fmt(delivery) : 'Үнэгүй'}
           </span>
         </div>
+        {hasDelivery && feeFallback && (
+          <p className="text-xs text-amber-400">Ойролцоо төлбөр. Эцсийн төлбөр хүргэлтийн үед баталгаажна.</p>
+        )}
         {hasDelivery && <FeeBreakdownPanel breakdown={feeBreakdown} isLoading={feeLoading} />}
         {discount > 0 && (
           <div className="flex justify-between">
@@ -279,7 +284,7 @@ function OrderSummary({
 
 export default function CartPage() {
   const [hydrated, setHydrated] = useState(false);
-  const { items, removeItem, updateQty, updateMode, customerAddress, setCustomerAddress, updateDeliveryFee, deliveryFee, feeBreakdown, promo } = useCartStore();
+  const { items, removeItem, updateQty, customerAddress, setCustomerAddress, updateDeliveryFee, deliveryFee, feeBreakdown, promo } = useCartStore();
   const addresses = useCustomerAddressStore((state) => state.addresses);
   const router = useRouter();
 
@@ -298,13 +303,15 @@ export default function CartPage() {
     });
   }, [addresses, customerAddress, hydrated, setCustomerAddress]);
 
+  const deliveryItems = items;
   const groups = getSupplierGroups(items);
+  const deliveryGroups = getSupplierGroups(deliveryItems);
   const sub = calcSubtotal(items);
-  const hasDelivery = items.some((i) => i.mode === 'delivery');
+  const hasDelivery = deliveryItems.length > 0;
 
   // Build delivery fee params from supplier groups
-  const feeParams = hasDelivery && groups.length > 0 ? {
-    pickupStops: groups.map((g) => ({
+  const feeParams = hasDelivery && deliveryGroups.length > 0 ? {
+    pickupStops: deliveryGroups.map((g) => ({
       supplierId: g.supplierId,
       lat: g.supplierLat,
       lng: g.supplierLng,
@@ -316,9 +323,10 @@ export default function CartPage() {
       district: customerAddress?.district,
       address: customerAddress?.address,
     },
+    totalWeightKg: deliveryItems.reduce((sum, item) => sum + item.qty, 0),
   } : null;
 
-  const { fee, breakdown, isLoading } = useDeliveryFee(feeParams);
+  const { fee, breakdown, fallback, isLoading } = useDeliveryFee(feeParams);
 
   // Sync calculated fee into store
   useEffect(() => {
@@ -385,8 +393,8 @@ export default function CartPage() {
                 {group.items.map((item) => (
                   <div key={item.id} data-testid="cart-item" className="flex gap-3 p-4">
                     <Link href={`/product/${item.slug}`} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-surface">
-                      {item.image ? (
-                        <Image src={`${item.image}?preset=thumb`} alt={item.name} fill sizes="80px" className="object-cover" />
+                      {isRenderableImageSrc(item.image) ? (
+                        <Image src={withImagePreset(item.image!, 'thumb')} alt={item.name} fill sizes="80px" className="object-cover" />
                       ) : (
                         <div className="flex h-full items-center justify-center text-2xl text-foreground-muted">📦</div>
                       )}
@@ -409,14 +417,8 @@ export default function CartPage() {
 
                       {item.sku && <p className="text-xs text-foreground-muted">Код: {item.sku}</p>}
 
-                      {/* Delivery toggle */}
-                      <div className="flex overflow-hidden rounded-lg border border-[var(--glass-border)] w-fit text-xs">
-                        {(['delivery', 'pickup'] as const).map((m) => (
-                          <button key={m} onClick={() => updateMode(item.id, m)}
-                            className={`px-3 py-1 font-medium transition ${item.mode === m ? 'bg-brand text-white' : 'text-foreground-muted hover:bg-white/5'}`}>
-                            {m === 'delivery' ? '🚚 Хүргэлт' : '🏪 Авах'}
-                          </button>
-                        ))}
+                      <div className="w-fit rounded-lg border border-[var(--glass-border)] px-3 py-1 text-xs font-medium text-foreground-muted">
+                        🚚 Хүргэлт
                       </div>
 
                       <div className="flex items-center justify-between mt-0.5">
@@ -452,6 +454,7 @@ export default function CartPage() {
               onCheckout={() => router.push('/checkout')}
               deliveryFee={fee}
               feeBreakdown={breakdown}
+              feeFallback={fallback}
               feeLoading={isLoading}
             />
           </div>

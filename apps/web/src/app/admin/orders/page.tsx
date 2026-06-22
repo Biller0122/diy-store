@@ -55,6 +55,7 @@ interface DeliveryDetail {
   finalFee: number;
   status: string;
   driverId?: string | null;
+  deliveryCode?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -108,6 +109,7 @@ const DELIVERY_DETAIL_GQL = `
       finalFee
       status
       driverId
+      deliveryCode
       createdAt
       updatedAt
     }
@@ -170,6 +172,20 @@ function groupItemsBySupplier(items: DeliveryOrderItem[]) {
   return Array.from(groups.values());
 }
 
+const UPDATE_DELIVERY_STATUS_GQL = `
+  mutation UpdateDeliveryStatus($deliveryId: ID!, $status: String!) {
+    updateDeliveryStatus(deliveryId: $deliveryId, status: $status) { id status }
+  }
+`;
+
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'SEARCHING', label: 'Жолооч хайж байна' },
+  { value: 'ACCEPTED', label: 'Жолооч авсан' },
+  { value: 'IN_PROGRESS', label: 'Хүргэж байна' },
+  { value: 'COMPLETED', label: 'Хүргэгдсэн' },
+  { value: 'CANCELLED', label: 'Цуцлагдсан' },
+];
+
 function DeliveryDetailDrawer({
   order,
   detail,
@@ -177,6 +193,7 @@ function DeliveryDetailDrawer({
   loading,
   error,
   onClose,
+  onStatusChange,
 }: {
   order: AdminOrderSummary | null;
   detail: DeliveryDetail | null;
@@ -184,7 +201,9 @@ function DeliveryDetailDrawer({
   loading: boolean;
   error: string;
   onClose: () => void;
+  onStatusChange: (status: string) => Promise<void>;
 }) {
+  const [savingStatus, setSavingStatus] = useState(false);
   if (!order) return null;
   const elapsedMinutes = detail ? minutesBetween(detail.createdAt, detail.updatedAt) : 0;
   const itemGroups = detail ? groupItemsBySupplier(detail.orderItems) : [];
@@ -229,7 +248,22 @@ function DeliveryDetailDrawer({
               <div className="rounded-2xl border border-[var(--glass-border)] bg-surface p-4">
                 <p className="flex items-center gap-2 text-xs text-foreground-muted"><Truck size={14} /> Төлөв</p>
                 <p className="mt-2 text-sm font-black text-foreground">{statusLabel(detail.status)}</p>
-                <p className="text-[11px] text-foreground-muted">{detail.distance.toFixed(1)} км</p>
+                {/* Админ статус өөрчлөх эрх */}
+                <select
+                  value={detail.status}
+                  disabled={savingStatus}
+                  onChange={async (e) => {
+                    const next = e.target.value;
+                    if (next === detail.status) return;
+                    setSavingStatus(true);
+                    try { await onStatusChange(next); } finally { setSavingStatus(false); }
+                  }}
+                  className="mt-2 w-full rounded-lg border border-[var(--glass-border)] bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-brand disabled:opacity-60"
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -253,6 +287,12 @@ function DeliveryDetailDrawer({
                 <p><span className="text-foreground">Үнэлгээ:</span> {driver?.rating ?? '-'}</p>
                 <p><span className="text-foreground">Хүргэлтийн үнэ:</span> {money(detail.finalFee || detail.proposedFee)}</p>
                 <p><span className="text-foreground">Зай:</span> {detail.distance.toFixed(1)} км</p>
+                {detail.deliveryCode && (
+                  <p className="sm:col-span-2">
+                    <span className="text-foreground">Буулгах код:</span>{' '}
+                    <span className="rounded-md bg-brand/10 px-2 py-0.5 font-mono text-base font-bold tracking-[0.3em] text-brand">{detail.deliveryCode}</span>
+                  </p>
+                )}
               </div>
             </section>
 
@@ -386,6 +426,18 @@ export default function AdminOrdersPage() {
     }
   }, []);
 
+  const changeDeliveryStatus = useCallback(async (status: string) => {
+    const current = deliveryDetail;
+    if (!current) return;
+    try {
+      await vendureAdminFetch(UPDATE_DELIVERY_STATUS_GQL, { deliveryId: current.id, status });
+      setDeliveryDetail({ ...current, status });
+      void load();
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : 'Төлөв шинэчлэхэд алдаа гарлаа');
+    }
+  }, [deliveryDetail, load]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -475,6 +527,7 @@ export default function AdminOrdersPage() {
         loading={detailLoading}
         error={detailError}
         onClose={() => setSelectedOrder(null)}
+        onStatusChange={changeDeliveryStatus}
       />
     </div>
   );

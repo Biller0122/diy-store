@@ -58,7 +58,7 @@ const STATE_LABEL: Record<string, string> = {
 };
 
 const PAYMENT_LABEL: Record<string, string> = {
-  qpay: 'QPay', monpay: 'MonPay', card: 'Карт',
+  qpay: 'QPay',
 };
 
 function formatDate(iso: string) {

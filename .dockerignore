@@ -15,3 +15,9 @@ apps/*/node_modules
 apps/*/.next
 apps/*/dist
 apps/*/coverage
+apps/*/.expo
+apps/ai-image/models
+apps/ai-image/models/**
+*.tsbuildinfo
+tmp-*.png
+utputFormat

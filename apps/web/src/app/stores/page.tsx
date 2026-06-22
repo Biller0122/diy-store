@@ -22,7 +22,7 @@ const StoreMap = dynamic(() => import('@/components/StoreMap'), {
 const STORES: StoreLocation[] = [
   {
     id: '1',
-    name: 'DIY Store Баянзүрх',
+    name: 'shoptool.mn Баянзүрх',
     address: 'Баянзүрх дүүрэг, Нарны зам 5, 2-р хороо',
     district: 'Баянзүрх',
     phone: '7711-0001',
@@ -32,7 +32,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '2',
-    name: 'DIY Store Сүхбаатар',
+    name: 'shoptool.mn Сүхбаатар',
     address: 'Сүхбаатар дүүрэг, Бага тойруу 14, 4-р хороо',
     district: 'Сүхбаатар',
     phone: '7711-0002',
@@ -42,7 +42,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '3',
-    name: 'DIY Store Хан-Уул',
+    name: 'shoptool.mn Хан-Уул',
     address: 'Хан-Уул дүүрэг, Зайсан, 12-р хороо',
     district: 'Хан-Уул',
     phone: '7711-0003',
@@ -52,7 +52,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '4',
-    name: 'DIY Store Чингэлтэй',
+    name: 'shoptool.mn Чингэлтэй',
     address: 'Чингэлтэй дүүрэг, Энхтайваны өргөн чөлөө 3',
     district: 'Чингэлтэй',
     phone: '7711-0004',
@@ -62,7 +62,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '5',
-    name: 'DIY Store Баянгол',
+    name: 'shoptool.mn Баянгол',
     address: 'Баянгол дүүрэг, Чингисийн өргөн чөлөө 8',
     district: 'Баянгол',
     phone: '7711-0005',
@@ -72,7 +72,7 @@ const STORES: StoreLocation[] = [
   },
   {
     id: '6',
-    name: 'DIY Store Налайх',
+    name: 'shoptool.mn Налайх',
     address: 'Налайх дүүрэг, Налайхын зам 1',
     district: 'Налайх',
     phone: '7711-0006',
@@ -123,7 +123,7 @@ export default function StoresPage() {
             📍 Салбарын байршил
           </h1>
           <p className="text-sm text-foreground-muted mt-1">
-            Улаанбаатар хотын {STORES.length} салбараас хамгийн ойрыг олж авна уу
+            Улаанбаатар хотын хүргэлтийн бүс, байршлын мэдээллийг харах
           </p>
         </div>
       </div>
@@ -202,7 +202,7 @@ export default function StoresPage() {
                         <p className="text-xs text-foreground-muted mt-1">📞 {store.phone}</p>
                       </div>
                       <span className="shrink-0 text-xs bg-success/10 text-success px-2 py-0.5 rounded-full font-medium">
-                        Pickup
+                        Хүргэлтийн бүс
                       </span>
                     </div>
 
@@ -229,20 +229,10 @@ export default function StoresPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="flex-1 py-2 text-xs font-semibold text-center rounded-lg border border-[var(--glass-border)] text-foreground-muted hover:text-foreground transition-colors"
+                            className="w-full py-2 text-xs font-semibold text-center rounded-lg border border-[var(--glass-border)] text-foreground-muted hover:text-foreground transition-colors"
                           >
                             🗺️ Замчлах
                           </a>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Store selection logic for checkout
-                              alert(`"${store.name}" салбарыг сонголоо`);
-                            }}
-                            className="flex-1 py-2 text-xs font-semibold rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
-                          >
-                            Энэ салбар сонгох
-                          </button>
                         </div>
                       </m.div>
                     )}
@@ -278,7 +268,7 @@ export default function StoresPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs bg-success/10 text-success px-2.5 py-1 rounded-full font-medium">
-                ✓ Pickup боломжтой
+                ✓ Хүргэлттэй бүс
               </span>
               <button
                 onClick={() => setSelectedId(null)}

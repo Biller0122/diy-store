@@ -1,12 +1,17 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Star, MapPin, Truck, Store } from 'lucide-react';
 import { dbSupplierToCard, getDbSuppliers } from '@/lib/supplier-products';
 import type { SupplierCard } from '@/lib/supplier-data';
+import { resolveVendureAssetUrl } from '@/lib/vendure';
 
 export const dynamic = 'force-dynamic';
 
 function SupplierCardComponent({ sup }: { sup: SupplierCard }) {
+  const coverImage = resolveVendureAssetUrl(sup.coverImage);
+  const logo = resolveVendureAssetUrl(sup.logo);
+
   return (
     <Link
       href={`/suppliers/${sup.slug}`}
@@ -14,10 +19,12 @@ function SupplierCardComponent({ sup }: { sup: SupplierCard }) {
     >
       {/* Header banner */}
       <div className="h-24 bg-gradient-to-br from-brand/20 to-surface relative overflow-hidden">
+        {coverImage && <Image src={coverImage} alt={`${sup.businessName} cover`} fill className="object-cover transition-transform duration-500 group-hover:scale-105" />}
+        {coverImage && <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />}
         <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(circle at 80% 50%, rgba(255,69,0,0.4) 0%, transparent 60%)' }} />
         <div className="absolute bottom-3 left-4 flex items-center gap-2">
-          <div className="w-14 h-14 rounded-2xl bg-card border-2 border-[var(--glass-border)] flex items-center justify-center text-3xl shadow-lg">
-            🏪
+          <div className="relative w-14 h-14 overflow-hidden rounded-2xl bg-card border-2 border-white/80 flex items-center justify-center text-xl font-black text-brand shadow-lg">
+            {logo ? <Image src={logo} alt={`${sup.businessName} logo`} fill className="object-cover" /> : sup.businessName.slice(0, 1).toUpperCase()}
           </div>
         </div>
         <div className="absolute top-3 right-3">

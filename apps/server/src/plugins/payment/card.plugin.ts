@@ -5,12 +5,12 @@ import {
   SettlePaymentResult,
   SettlePaymentErrorResult,
 } from '@vendure/core';
-import { createPaymentRecord, transition } from './payment-state';
+import { createPaymentRecord, paymentMockMode, transition } from './payment-state';
 
-// ─── Mock mode detection ──────────────────────────────────────
+// ─── Mock mode detection (never active in production) ─────────
 
 function isMockMode(): boolean {
-  return !process.env.CARD_PSP_URL || process.env.PAYMENT_MOCK_MODE === 'true';
+  return paymentMockMode(!!process.env.CARD_PSP_URL);
 }
 
 // ─── Mock redirect flow ───────────────────────────────────────

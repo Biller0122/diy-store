@@ -1,5 +1,8 @@
-export const SHOP_API = 'http://52.77.245.218/shop-api';
-export const ADMIN_API = 'http://52.77.245.218/admin-api';
+const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+const API_BASE = (runtimeEnv?.NEXT_PUBLIC_API_URL || runtimeEnv?.EXPO_PUBLIC_API_URL || 'https://shoptool.mn').replace(/\/$/, '');
+
+export const SHOP_API = runtimeEnv?.NEXT_PUBLIC_SHOP_API_URL || runtimeEnv?.EXPO_PUBLIC_SHOP_API_URL || `${API_BASE}/shop-api`;
+export const ADMIN_API = runtimeEnv?.NEXT_PUBLIC_ADMIN_API_URL || runtimeEnv?.EXPO_PUBLIC_ADMIN_API_URL || `${API_BASE}/admin-api`;
 
 export async function shopFetch<T>(
   query: string,

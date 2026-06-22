@@ -159,7 +159,7 @@ export default function OrdersPage() {
                   <div className="flex items-center gap-2">
                     {isActive && (
                       <Link
-                        href={`/track/${order.code}`}
+                        href={order.trackingToken ? `/track/${order.code}?t=${encodeURIComponent(order.trackingToken)}` : `/track/${order.code}`}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-bold hover:bg-brand-hover transition-colors"
                       >
                         <Navigation size={12} /> Хянах

@@ -7,6 +7,7 @@ import { SupplierResolver } from './supplier.resolver';
 import { SupplierService } from './supplier.service';
 import { EmailOtpService } from '../../services/email-otp.service';
 import { DeliveryRequest } from '../delivery/delivery-request.entity';
+import { EmbeddingService } from '../search/embedding.service';
 
 const SUPPLIER_SCHEMA_EXTENSION = gql`
   type SupplierList {
@@ -167,11 +168,14 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     businessName: String!
     slug: String!
     logo: String
+    coverImage: String
+    youtubeUrl: String
+    posterUrls: [String!]
     description: String
+    workingHours: WorkingHours
     ownerName: String!
     phone: String!
-    email: String!
-    passwordHash: String
+    email: String
     address: String
     district: String
     khoroo: String
@@ -202,6 +206,23 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     sundayClosed: Boolean
     sundayStart: String
     sundayEnd: String
+  }
+
+  type WorkingHourRange {
+    start: String
+    end: String
+  }
+
+  type SundayWorkingHours {
+    closed: Boolean!
+    start: String
+    end: String
+  }
+
+  type WorkingHours {
+    weekdays: WorkingHourRange
+    saturday: WorkingHourRange
+    sunday: SundayWorkingHours
   }
 
   input RegisterSupplierInput {
@@ -256,7 +277,11 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
   input UpdateSupplierInput {
     businessName: String
     logo: String
+    coverImage: String
+    youtubeUrl: String
+    posterUrls: [String!]
     description: String
+    workingHours: WorkingHoursInput
     ownerName: String
     phone: String
     address: String
@@ -267,6 +292,12 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
     bankAccount: String
     bankName: String
     commissionRate: Float
+  }
+
+  input SupplierProfileImageInput {
+    filename: String!
+    mimeType: String!
+    dataUrl: String!
   }
 
   extend type Query {
@@ -282,6 +313,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
   extend type Mutation {
     createSupplier(input: CreateSupplierInput!): Supplier!
     updateSupplier(id: ID!, input: UpdateSupplierInput!): Supplier!
+    uploadSupplierProfileImage(supplierId: ID!, input: SupplierProfileImageInput!): String!
     deleteSupplier(id: ID!): Boolean!
     registerSupplier(input: RegisterSupplierInput!): SupplierRegistrationResult!
     loginSupplier(email: String!): SupplierRegistrationResult!
@@ -297,7 +329,7 @@ const SUPPLIER_SCHEMA_EXTENSION = gql`
 
 @VendurePlugin({
   imports: [PluginCommonModule, TypeOrmModule.forFeature([Supplier, SupplierProduct, DeliveryRequest])],
-  providers: [SupplierResolver, SupplierService, EmailOtpService],
+  providers: [SupplierResolver, SupplierService, EmailOtpService, EmbeddingService],
   entities: [Supplier as any, SupplierProduct as any],
   shopApiExtensions: {
     schema: SUPPLIER_SCHEMA_EXTENSION,

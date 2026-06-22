@@ -6,6 +6,7 @@ import { Providers } from '@/components/providers';
 import { AnnouncementBar } from '@/components/AnnouncementBar';
 import { Header } from '@/components/Header';
 import { CartDrawer } from '@/components/ui/CartDrawer';
+import { AccountDrawer } from '@/components/ui/AccountDrawer';
 import { NotificationToast } from '@/components/ui/NotificationToast';
 import { BottomNav } from '@/components/ui/BottomNav';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -57,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="flex-1 pb-20 md:pb-0">{children}</main>
           <BottomNav />
           <CartDrawer />
+          <AccountDrawer />
           <SearchBar />
           <NotificationToast />
         </Providers>

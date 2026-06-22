@@ -101,15 +101,62 @@ describe('DriverService', () => {
   });
 
   describe('driver auth token', () => {
-    test('verified OTP returns signed driver role token', async () => {
+    test('wrong OTP persists attempts and caps after five tries', async () => {
+      const originalOtpMockMode = process.env.OTP_MOCK_MODE;
+      process.env.OTP_MOCK_MODE = 'true';
       const { driverService } = createService();
-      await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
+      try {
+        await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
 
-      const result = await driverService.verifyOTP('88001122', '1234');
-      const decoded = verifyToken(result.token);
+        await expect(driverService.verifyOTP('88001122', '0000')).rejects.toThrow('Код буруу');
+        let driver = await driverService.getDriverById('1');
+        expect(driver?.otpAttempts).toBe(1);
 
-      expect(decoded.role).toBe('DRIVER');
-      expect(decoded.id).toBe(String(result.driver.id));
+        for (let i = 0; i < 4; i++) {
+          await expect(driverService.verifyOTP('88001122', '0000')).rejects.toThrow('Код буруу');
+        }
+
+        driver = await driverService.getDriverById('1');
+        expect(driver?.otpAttempts).toBe(5);
+        await expect(driverService.verifyOTP('88001122', '1234')).rejects.toThrow('Олон удаа буруу');
+      } finally {
+        if (originalOtpMockMode === undefined) delete process.env.OTP_MOCK_MODE;
+        else process.env.OTP_MOCK_MODE = originalOtpMockMode;
+      }
+    });
+
+    test('expired OTP is rejected before attempts are counted', async () => {
+      const originalOtpMockMode = process.env.OTP_MOCK_MODE;
+      process.env.OTP_MOCK_MODE = 'true';
+      const { driverService } = createService();
+      try {
+        const driver = await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
+        driver.otpExpiresAt = new Date(Date.now() - 1000);
+
+        await expect(driverService.verifyOTP('88001122', '0000')).rejects.toThrow('Кодын хугацаа');
+        expect(driver.otpAttempts).toBe(0);
+      } finally {
+        if (originalOtpMockMode === undefined) delete process.env.OTP_MOCK_MODE;
+        else process.env.OTP_MOCK_MODE = originalOtpMockMode;
+      }
+    });
+
+    test('verified OTP returns signed driver role token', async () => {
+      const originalOtpMockMode = process.env.OTP_MOCK_MODE;
+      process.env.OTP_MOCK_MODE = 'true';
+      const { driverService } = createService();
+      try {
+        await driverService.registerDriver({ ownerName: 'Ганбаатар', phone: '88001122' });
+
+        const result = await driverService.verifyOTP('88001122', '1234');
+        const decoded = verifyToken(result.token);
+
+        expect(decoded.role).toBe('DRIVER');
+        expect(decoded.id).toBe(String(result.driver.id));
+      } finally {
+        if (originalOtpMockMode === undefined) delete process.env.OTP_MOCK_MODE;
+        else process.env.OTP_MOCK_MODE = originalOtpMockMode;
+      }
     });
   });
 });

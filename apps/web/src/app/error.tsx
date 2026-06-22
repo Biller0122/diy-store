@@ -44,8 +44,8 @@ export default function GlobalError({
         </div>
         <p className="mt-6 text-xs text-foreground-muted">
           Асуудал үргэлжлэх тохиолдолд{' '}
-          <a href="mailto:support@diystore.mn" className="text-brand hover:underline">
-            support@diystore.mn
+          <a href="mailto:support@shoptool.mn" className="text-brand hover:underline">
+            support@shoptool.mn
           </a>
           {' '}холбогдоно уу.
         </p>

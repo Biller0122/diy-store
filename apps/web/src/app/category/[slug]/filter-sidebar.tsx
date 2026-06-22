@@ -13,7 +13,6 @@ export interface FacetValueResult {
 }
 
 const AVAILABILITY_OPTIONS = [
-  { value: 'pickup', label: 'Дэлгүүрээс авах' },
   { value: 'delivery', label: 'Хүргэлттэй' },
 ];
 const PROMO_OPTIONS = [

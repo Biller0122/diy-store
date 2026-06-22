@@ -4,10 +4,11 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { m, AnimatePresence } from 'framer-motion';
-import { Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Wrench } from 'lucide-react';
 import { ProductCard, type ProductCardData } from '@/components/ui/ProductCard';
 import { trackSearch, trackViewItemList } from '@/lib/analytics/ga4';
 import { vendureShopFetch } from '@/lib/vendure';
+import { dbProductToCard, type DbSupplierProduct, type DbSupplier } from '@/lib/supplier-products';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface AlgoliaHit {
   rating: number;
   reviewCount: number;
   inStock: boolean;
+  stock?: number;
   imageUrl: string;
   tags: string[];
 }
@@ -47,6 +49,143 @@ const SORT_LABELS: Record<SortOption, string> = {
 const ALGOLIA_APP_ID    = process.env.NEXT_PUBLIC_ALGOLIA_APP_ID;
 const ALGOLIA_SEARCH_KEY = process.env.NEXT_PUBLIC_ALGOLIA_SEARCH_KEY;
 const ALGOLIA_INDEX     = process.env.NEXT_PUBLIC_ALGOLIA_INDEX_NAME ?? 'diy_products';
+
+const TOKEN_VARIANTS: Record<string, string[]> = {
+  cement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  tsement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  sement: ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемент': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  'цемэнт': ['cement', 'tsement', 'sement', 'цемент', 'цемэнт'],
+  armatur: ['armatur', 'armature', 'rebar', 'арматур'],
+  armature: ['armatur', 'armature', 'rebar', 'арматур'],
+  rebar: ['armatur', 'armature', 'rebar', 'арматур'],
+  'арматур': ['armatur', 'armature', 'rebar', 'арматур'],
+  toosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  tosgo: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  brick: ['toosgo', 'tosgo', 'brick', 'тоосго'],
+  'тоосго': ['toosgo', 'tosgo', 'brick', 'тоосго'],
+};
+
+const HOMOGLYPH_MAP: Record<string, string> = {
+  a: 'а', c: 'с', e: 'е', k: 'к', m: 'м', o: 'о', p: 'р', x: 'х', y: 'у', t: 'т', h: 'н',
+};
+const LATIN_MAP: Record<string, string> = {
+  a: 'а', b: 'б', c: 'ц', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'х', i: 'и', j: 'ж',
+  k: 'к', l: 'л', m: 'м', n: 'н', o: 'о', p: 'п', q: 'к', r: 'р', s: 'с', t: 'т',
+  u: 'у', v: 'в', w: 'в', x: 'х', y: 'у', z: 'з',
+};
+
+function latinWordToCyrillic(word: string) {
+  const w = word
+    .replace(/kh/g, 'х').replace(/ch/g, 'ч').replace(/sh/g, 'ш').replace(/ts/g, 'ц')
+    .replace(/yo/g, 'ё').replace(/yu/g, 'ю').replace(/ya/g, 'я');
+  return w.replace(/[a-z]/g, (ch) => LATIN_MAP[ch] ?? ch);
+}
+
+function normalizeSearchText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .split(/\s+/)
+    .map((word) =>
+      /[Ѐ-ӿ]/.test(word)
+        ? word.replace(/[a-z]/g, (ch) => HOMOGLYPH_MAP[ch] ?? ch)
+        : latinWordToCyrillic(word),
+    )
+    .join(' ');
+}
+
+function getSearchTokens(query: string) {
+  return normalizeSearchText(query)
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function getTokenVariants(token: string) {
+  return TOKEN_VARIANTS[token] ?? [token];
+}
+
+function matchesSearch(query: string, values: Array<string | null | undefined>) {
+  const normalized = normalizeSearchText(query.trim());
+  const tokens = getSearchTokens(query);
+  const variants = tokens.flatMap(getTokenVariants);
+  const haystack = normalizeSearchText(values.filter(Boolean).join(' '));
+
+  if (!normalized) return true;
+  if (haystack.includes(normalized)) return true;
+  return variants.some((variant) => haystack.includes(variant));
+}
+
+// ─── Ажлын багц (projectKit) ──────────────────────────────────
+
+const JOB_MARKERS = [
+  'засах', 'солих', 'хийх', 'тавих', 'будах', 'наах', 'угсрах', 'суулгах', 'яаж', 'яах',
+  'нэвчээд', 'нэвчиж', 'хэрэгтэй', 'шинэчлэх', 'битүүмжлэх', 'тэгшлэх', 'хучих', 'өрөмдөх',
+  'бэлдэх', 'гоёх', 'чимэглэх',
+];
+
+function isJobLike(text: string) {
+  const s = text.trim().toLowerCase();
+  if (!s) return false;
+  if (JOB_MARKERS.some((m) => s.includes(m))) return true;
+  return s.split(/\s+/).filter(Boolean).length >= 3;
+}
+
+type ProjectKitItem = {
+  id: string;
+  variantId: string | null;
+  name: string;
+  slug: string;
+  category: string | null;
+  image: string | null;
+  price: number;
+  source: 'catalog' | 'supplier';
+  supplierId: string | null;
+  reason: string;
+  qtyHint: string;
+  required: boolean;
+};
+type ProjectKitGroup = { title: string; items: ProjectKitItem[] };
+type ProjectKitResult = {
+  query: string;
+  jobUnderstood: string;
+  notes: string;
+  fromCache: boolean;
+  groups: ProjectKitGroup[];
+};
+
+// Каталог бараа minor unit (×100) тул хуваана; нийлүүлэгчийнх шууд.
+function formatKitPrice(item: ProjectKitItem) {
+  const value = item.source === 'catalog' ? item.price / 100 : item.price;
+  return `${Math.round(value).toLocaleString('mn-MN')}₮`;
+}
+
+const PROJECT_KIT_QUERY = `
+  query ProjectKit($query: String!, $take: Int) {
+    projectKit(query: $query, take: $take) {
+      query
+      jobUnderstood
+      notes
+      fromCache
+      groups {
+        title
+        items {
+          id variantId name slug category image price source supplierId reason qtyHint required
+        }
+      }
+    }
+  }
+`;
+
+async function fetchProjectKit(query: string): Promise<ProjectKitResult> {
+  const data = await vendureShopFetch<{ projectKit: ProjectKitResult }>(
+    PROJECT_KIT_QUERY,
+    { query, take: 24 },
+    { revalidate: 0 },
+  );
+  return data.projectKit;
+}
 
 const SUPPLIER_PRODUCTS_QUERY = `
   query SupplierProducts {
@@ -79,6 +218,23 @@ const PRODUCT_CATEGORIES_QUERY = `
   }
 `;
 
+const SUPPLIERS_QUERY = `
+  query SuppliersForSearch {
+    suppliers(status: "ACTIVE", take: 200, skip: 0) {
+      items {
+        id
+        businessName
+        slug
+        district
+        lat
+        lng
+        rating
+        reviewCount
+      }
+    }
+  }
+`;
+
 async function searchSupplierProducts(query: string, filters: {
   category?: string;
   inStock?: boolean;
@@ -87,46 +243,47 @@ async function searchSupplierProducts(query: string, filters: {
   sort?: SortOption;
 }, categoryNames: Record<string, string>): Promise<AlgoliaHit[]> {
   try {
-    const data = await vendureShopFetch<{ supplierProducts: { items: Array<{
-      id: string;
-      supplierId: string;
-      name: string;
-      slug: string;
-      image?: string | null;
-      price: number;
-      originalPrice?: number | null;
-      category?: string | null;
-      stock: number;
-      enabled: boolean;
-    }> } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 });
+    const [data, supplierData] = await Promise.all([
+      vendureShopFetch<{ supplierProducts: { items: DbSupplierProduct[] } }>(SUPPLIER_PRODUCTS_QUERY, undefined, { revalidate: 0 }),
+      vendureShopFetch<{ suppliers: { items: Array<Pick<DbSupplier, 'id' | 'businessName' | 'slug' | 'district' | 'lat' | 'lng' | 'rating' | 'reviewCount'>> } }>(SUPPLIERS_QUERY, undefined, { revalidate: 0 }).catch(() => ({ suppliers: { items: [] } })),
+    ]);
+    const suppliersById = new Map(supplierData.suppliers.items.map((supplier) => [supplier.id, supplier]));
+    const normalizedQuery = normalizeSearchText(query.trim());
 
-    const q = query.trim().toLowerCase();
     let hits = data.supplierProducts.items
       .filter((item) => item.enabled)
-      .filter((item) => !q ||
-        item.name.toLowerCase().includes(q) ||
-        item.slug.toLowerCase().includes(q) ||
-        (item.category ?? '').toLowerCase().includes(q)
-      )
+      // Зөвхөн барааны НЭРЭНД (slug) орсон хэсгээр хайна — төрөл/ангилалаар биш.
+      // matchesSearch нь латин→кирилл хөрвүүлэлт, токен хувилбарыг бодолцоно.
+      .filter((item) => matchesSearch(query, [item.name, item.slug]))
       .filter((item) => !filters.category || (item.category ?? 'supplier') === filters.category)
       .filter((item) => !filters.inStock || item.stock > 0)
       .filter((item) => !filters.priceMin || item.price >= filters.priceMin)
       .filter((item) => !filters.priceMax || item.price <= filters.priceMax)
-      .map((item) => ({
-        objectID: `supplier-${item.id}`,
-        name: item.name,
-        slug: item.slug,
-        price: item.price,
-        salePrice: item.originalPrice ?? null,
-        brand: 'Нийлүүлэгч',
-        category: categoryNames[item.category ?? ''] || item.category || 'Нийлүүлэгч',
-        categorySlug: item.category || 'supplier',
-        rating: 0,
-        reviewCount: 0,
-        inStock: item.stock > 0,
-        imageUrl: item.image ?? '',
-        tags: [item.category ?? '', item.slug],
-      }));
+      // Нэр нь хайлтын үгээр эхэлсэн барааг түрүүлж харуулна.
+      .sort((a, b) => {
+        const aStarts = normalizeSearchText(a.name).startsWith(normalizedQuery) ? 0 : 1;
+        const bStarts = normalizeSearchText(b.name).startsWith(normalizedQuery) ? 0 : 1;
+        return aStarts - bStarts;
+      })
+      .map((item) => {
+        const card = dbProductToCard(item, suppliersById.get(item.supplierId));
+        return {
+          objectID: `supplier-${item.id}`,
+          name: card.name,
+          slug: card.slug,
+          price: card.price,
+          salePrice: card.originalPrice ?? null,
+          brand: card.supplierName ?? 'Нийлүүлэгч',
+          category: categoryNames[item.category ?? ''] || item.category || 'Нийлүүлэгч',
+          categorySlug: item.category || 'supplier',
+          rating: card.rating ?? 0,
+          reviewCount: card.reviewCount ?? 0,
+          inStock: card.inStock !== false,
+          stock: card.stock,
+          imageUrl: card.image,
+          tags: [item.category ?? '', item.slug],
+        };
+      });
 
     if (filters.sort === 'price_asc') hits = [...hits].sort((a, b) => a.price - b.price);
     if (filters.sort === 'price_desc') hits = [...hits].sort((a, b) => b.price - a.price);
@@ -201,6 +358,7 @@ function hitToCard(hit: AlgoliaHit): ProductCardData {
     rating: hit.rating,
     reviewCount: hit.reviewCount,
     inStock: hit.inStock,
+    stock: hit.stock,
     badge: hit.salePrice ? 'ХЯМДРАЛ' : undefined,
   };
 }
@@ -329,6 +487,8 @@ function SearchContent() {
   const [backendCategories, setBackendCategories] = useState<ProductCategory[]>([]);
   const [loading, setLoading]     = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [kit, setKit] = useState<ProjectKitResult | null>(null);
+  const [kitLoading, setKitLoading] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState('');
   const [activeBrand, setActiveBrand]       = useState('');
@@ -347,6 +507,18 @@ function SearchContent() {
     () => backendCategories.map((category) => category.slug),
     [backendCategories],
   );
+  const queryTokens = useMemo(() => getSearchTokens(query), [query]);
+  const groupedHits = useMemo(() => {
+    const groups = new Map<string, AlgoliaHit[]>();
+
+    hits.forEach((hit) => {
+      const key = hit.category || 'Бусад';
+      groups.set(key, [...(groups.get(key) ?? []), hit]);
+    });
+
+    return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [hits]);
+  const topCategories = groupedHits.slice(0, 3).map(([category]) => category);
 
   useEffect(() => {
     let mounted = true;
@@ -387,6 +559,11 @@ function SearchContent() {
     }).finally(() => setLoading(false));
   }, [query, activeCategory, activeBrand, inStockOnly, priceMin, priceMax, sort, categoryNames, filterCategories]);
 
+  useEffect(() => {
+    setLocalQ(query);
+    setKit(null);
+  }, [query]);
+
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (localQ.trim()) router.push(`/search?q=${encodeURIComponent(localQ.trim())}`);
@@ -406,6 +583,22 @@ function SearchContent() {
     setInStockOnly(false);
     setPriceMin('');
     setPriceMax('');
+  }
+
+  async function runKit(q: string) {
+    const value = q.trim();
+    if (!value) return;
+    setKitLoading(true);
+    setKit(null);
+    try {
+      const result = await fetchProjectKit(value);
+      setKit(result);
+    } catch (err) {
+      console.error('[search] projectKit failed', err);
+      setKit(null);
+    } finally {
+      setKitLoading(false);
+    }
   }
 
   return (
@@ -534,12 +727,87 @@ function SearchContent() {
 
           {/* Results */}
           <div className="flex-1 min-w-0">
+            {!loading && query && isJobLike(query) && (
+              <button
+                type="button"
+                onClick={() => runKit(query)}
+                className="mb-6 flex w-full items-center gap-3 rounded-2xl border border-brand/30 bg-brand/5 p-4 text-left transition-colors hover:bg-brand/10"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card">
+                  <Wrench className="h-5 w-5 text-brand" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-brand">Ажлын багц гаргах</span>
+                  <span className="block text-xs text-foreground-muted">
+                    Энэ ажилд хэрэгтэй бүх материалыг бүлэглэж харуулна
+                  </span>
+                </span>
+                <ChevronDown className="h-4 w-4 -rotate-90 text-brand" />
+              </button>
+            )}
             {loading ? (
               <Skeleton />
             ) : hits.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-                {hits.map((hit, i) => (
-                  <ProductCard key={hit.objectID} product={hitToCard(hit)} index={i} />
+              <div className="space-y-8">
+                <section className="rounded-2xl border border-[var(--glass-border)] bg-card p-4 sm:p-5">
+                  <div className="flex justify-end mb-5">
+                    <div className="max-w-full rounded-2xl bg-surface px-4 py-2 text-sm font-semibold text-foreground break-words">
+                      {query}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      Таны хайлтаар {total} бараа олдлоо.
+                    </p>
+                    <p className="text-sm text-foreground-muted leading-6">
+                      {topCategories.length > 0
+                        ? `${topCategories.join(', ')} ангиллуудаас хамгийн ойр тохирох бараануудыг ялгаж харууллаа.`
+                        : 'Хамгийн ойр тохирох бараануудыг ялгаж харууллаа.'}
+                    </p>
+                    {queryTokens.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {queryTokens.slice(0, 8).map((token) => (
+                          <span
+                            key={token}
+                            className="rounded-full border border-[var(--glass-border)] bg-surface px-3 py-1 text-xs text-foreground-muted"
+                          >
+                            {token}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {groupedHits.map(([category, items], groupIndex) => (
+                  <section key={category} className="space-y-3">
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <h2 className="text-base font-bold text-foreground">{category}</h2>
+                        <p className="text-xs text-foreground-muted">{items.length} бараа</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleFilterChange('category', items[0]?.categorySlug ?? '')}
+                        className="text-xs font-semibold text-brand hover:underline"
+                      >
+                        Энэ ангиллаар харах
+                      </button>
+                    </div>
+
+                    <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+                      <div className="grid auto-cols-[minmax(180px,220px)] grid-flow-col gap-4 sm:auto-cols-[minmax(200px,240px)]">
+                        {items.map((hit, i) => (
+                          <ProductCard
+                            key={hit.objectID}
+                            product={hitToCard(hit)}
+                            index={groupIndex * 2 + i}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </section>
                 ))}
               </div>
             ) : query ? (
@@ -573,6 +841,83 @@ function SearchContent() {
           </div>
         </div>
       </div>
+
+      {(kit || kitLoading) && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-dark">
+          <div className="flex items-center gap-2 border-b border-[var(--glass-border)] bg-card px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setKit(null)}
+              className="rounded-lg p-1.5 hover:bg-white/5"
+              aria-label="Хаах"
+            >
+              <X className="h-5 w-5 text-foreground" />
+            </button>
+            <h2 className="text-base font-bold text-foreground">Ажлын багц</h2>
+          </div>
+
+          {kitLoading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand/30 border-t-brand" />
+                <p className="text-sm text-foreground-muted">Багц гаргаж байна...</p>
+              </div>
+            </div>
+          ) : kit ? (
+            <div className="flex-1 overflow-y-auto px-4 py-5">
+              <div className="mx-auto max-w-2xl space-y-5">
+                <div className="rounded-2xl border border-[var(--glass-border)] bg-card p-4">
+                  <p className="text-base font-bold text-foreground">{kit.jobUnderstood || kit.query}</p>
+                  {kit.fromCache && <p className="mt-1 text-xs text-foreground-muted">⚡ хадгалсан багц</p>}
+                </div>
+
+                {kit.groups.map((group) => (
+                  <div key={group.title} className="space-y-2">
+                    <h3 className="text-sm font-bold text-foreground">{group.title}</h3>
+                    {group.items.map((it) => (
+                      <Link
+                        key={`${it.source}-${it.id}`}
+                        href={`/product/${it.slug}`}
+                        onClick={() => setKit(null)}
+                        className="flex items-center gap-3 rounded-xl border border-[var(--glass-border)] bg-card p-2.5 transition-colors hover:border-brand/30"
+                      >
+                        {it.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={it.image} alt={it.name} className="h-14 w-14 shrink-0 rounded-lg bg-surface object-cover" />
+                        ) : (
+                          <div className="h-14 w-14 shrink-0 rounded-lg bg-surface" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-sm font-semibold text-foreground">{it.name}</p>
+                          {it.reason && <p className="mt-0.5 line-clamp-2 text-xs text-foreground-muted">{it.reason}</p>}
+                          <div className="mt-1 flex items-center gap-2">
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                it.required ? 'bg-brand/15 text-brand' : 'bg-surface text-foreground-muted'
+                              }`}
+                            >
+                              {it.required ? 'Заавал' : 'Нэмэлт'}
+                            </span>
+                            {it.qtyHint && <span className="text-xs text-foreground-muted">{it.qtyHint}</span>}
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-sm font-bold text-foreground">{formatKitPrice(it)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                ))}
+
+                {kit.notes && (
+                  <div className="rounded-2xl border border-[var(--glass-border)] bg-card p-4">
+                    <p className="text-sm leading-6 text-foreground-muted">💡 {kit.notes}</p>
+                  </div>
+                )}
+                <div className="h-6" />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

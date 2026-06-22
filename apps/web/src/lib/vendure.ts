@@ -1,12 +1,20 @@
 const PUBLIC_SHOP_API = process.env.NEXT_PUBLIC_VENDURE_SHOP_API ?? '/shop-api';
 const PUBLIC_ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? '/admin-api';
+const PUBLIC_SITE_URL = publicSiteUrl(process.env.NEXT_PUBLIC_SITE_URL);
 const AUTH_TOKEN_KEY = 'diy-vendure-auth-token';
 const ADMIN_AUTH_TOKEN_KEY = 'diy-vendure-admin-auth-token';
+const SUPPLIER_AUTH_TOKEN_KEY = 'diy-supplier-auth-token';
+
+function publicSiteUrl(value?: string) {
+  const normalized = value?.replace(/\/+$/, '') || '';
+  if (!normalized || /\.elb\.amazonaws\.com/i.test(normalized)) return 'https://shoptool.mn';
+  return normalized;
+}
 
 function getShopApi() {
   if (PUBLIC_SHOP_API.startsWith('http')) return PUBLIC_SHOP_API;
   if (typeof window === 'undefined') {
-    return process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:3001/shop-api';
+    return process.env.INTERNAL_VENDURE_SHOP_API ?? 'http://localhost:13001/shop-api';
   }
   return PUBLIC_SHOP_API;
 }
@@ -14,14 +22,97 @@ function getShopApi() {
 function getAdminApi() {
   if (PUBLIC_ADMIN_API.startsWith('http')) return PUBLIC_ADMIN_API;
   if (typeof window === 'undefined') {
-    return process.env.INTERNAL_VENDURE_ADMIN_API ?? 'http://localhost:3001/admin-api';
+    return process.env.INTERNAL_VENDURE_ADMIN_API ?? 'http://localhost:13001/admin-api';
   }
   return PUBLIC_ADMIN_API;
 }
 
 function getVendureAuthToken() {
   if (typeof window === 'undefined') return null;
+  if (window.location.pathname.startsWith('/supplier')) {
+    const supplierToken = window.localStorage.getItem(SUPPLIER_AUTH_TOKEN_KEY);
+    if (isPlatformToken(supplierToken, 'SUPPLIER')) return supplierToken;
+  }
   return window.localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+// Платформ (supplier/driver) JWT мөн эсэх — body-д `role` талбартай гурван
+// хэсэгтэй токен. Vendure-ийн `vendure-auth-token` нь үүнийг ДАРЖ БИЧИХЭЭС
+// сэргийлнэ (эс бөгөөс supplier upload/update "Token буруу байна" өгдөг).
+function isPlatformToken(token: string | null, expectedRole?: string): boolean {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const decoded = typeof atob === 'function' ? atob(json) : '';
+    const body = JSON.parse(decoded) as { role?: unknown; exp?: unknown };
+    if (typeof body.role !== 'string') return false;
+    if (expectedRole && body.role !== expectedRole) return false;
+    return typeof body.exp !== 'number' || body.exp > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+}
+
+export function setSupplierAuthToken(token: string | null) {
+  if (typeof window === 'undefined') return;
+  if (token) window.localStorage.setItem(SUPPLIER_AUTH_TOKEN_KEY, token);
+  else window.localStorage.removeItem(SUPPLIER_AUTH_TOKEN_KEY);
+}
+
+export function hasSupplierAuthToken() {
+  if (typeof window === 'undefined') return false;
+  const dedicated = window.localStorage.getItem(SUPPLIER_AUTH_TOKEN_KEY);
+  if (isPlatformToken(dedicated, 'SUPPLIER')) return true;
+
+  // Migrate a valid token created before the dedicated supplier key existed.
+  const legacy = window.localStorage.getItem(AUTH_TOKEN_KEY);
+  if (!isPlatformToken(legacy, 'SUPPLIER')) return false;
+  window.localStorage.setItem(SUPPLIER_AUTH_TOKEN_KEY, legacy!);
+  return true;
+}
+
+export function resolveVendureAssetUrl(value?: string | null) {
+  const source = value?.trim();
+  if (!source) return '';
+  if (/^(data:|blob:)/i.test(source)) return source;
+  if (/^https?:/i.test(source)) {
+    try {
+      const url = new URL(source);
+      const assetIndex = url.pathname.indexOf('/assets/');
+      if (assetIndex >= 0 && (/\.cloudfront\.net$/i.test(url.hostname) || /\.elb\.amazonaws\.com$/i.test(url.hostname))) {
+        return `${PUBLIC_SITE_URL}${url.pathname.slice(assetIndex)}`;
+      }
+    } catch {
+      return source;
+    }
+    return source;
+  }
+
+  const relativePath = source.startsWith('/assets/')
+    ? source
+    : `/assets/${source.replace(/^\/+/, '').replace(/^assets\//, '')}`;
+
+  try {
+    if (PUBLIC_SITE_URL) return `${PUBLIC_SITE_URL}${relativePath}`;
+    if (PUBLIC_SHOP_API.startsWith('http')) return `${new URL(PUBLIC_SHOP_API).origin}${relativePath}`;
+    if (typeof window !== 'undefined') return `${window.location.origin}${relativePath}`;
+  } catch {
+    // Fall through to the relative path below.
+  }
+  return relativePath;
+}
+
+async function vendureHttpError(res: Response, label: string) {
+  try {
+    const body = await res.json() as { errors?: Array<{ message?: string }>; message?: string };
+    const detail = body.errors?.[0]?.message || body.message;
+    return new Error(detail ? `${label}: ${detail}` : `${label}: ${res.status}`);
+  } catch {
+    return new Error(`${label}: ${res.status}`);
+  }
 }
 
 export function setVendureAuthToken(token: string | null) {
@@ -33,7 +124,7 @@ export function setVendureAuthToken(token: string | null) {
   }
 }
 
-function getVendureAdminAuthToken() {
+export function getVendureAdminAuthToken() {
   if (typeof window === 'undefined') return null;
   return window.localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
 }
@@ -67,11 +158,13 @@ export async function vendureShopFetch<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`Vendure API error: ${res.status}`);
+    throw await vendureHttpError(res, 'Vendure API error');
   }
 
   const nextToken = res.headers.get('vendure-auth-token');
-  if (nextToken && typeof window !== 'undefined') {
+  // Supplier/driver JWT идэвхтэй үед Vendure-ийн session token-оор бүү дарж бич —
+  // эс бөгөөс supplier upload/update "Token буруу байна" болно.
+  if (nextToken && typeof window !== 'undefined' && !isPlatformToken(getVendureAuthToken())) {
     window.localStorage.setItem(AUTH_TOKEN_KEY, nextToken);
   }
 
@@ -102,7 +195,7 @@ export async function vendureAdminFetch<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`Vendure Admin API error: ${res.status}`);
+    throw await vendureHttpError(res, 'Vendure Admin API error');
   }
 
   const nextToken = res.headers.get('vendure-auth-token');

@@ -6,8 +6,10 @@ import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { Repository } from 'typeorm';
 import { HomepageBanner } from './homepage-banner.entity';
+import { SiteAnnouncement } from './site-announcement.entity';
 
 type BannerInput = Partial<HomepageBanner>;
+type AnnouncementInput = Partial<SiteAnnouncement>;
 type BannerImageInput = {
   filename?: string | null;
   mimeType: string;
@@ -19,7 +21,32 @@ export class CmsResolver {
   constructor(
     @InjectRepository(HomepageBanner)
     private readonly bannerRepo: Repository<HomepageBanner>,
+    @InjectRepository(SiteAnnouncement)
+    private readonly announcementRepo: Repository<SiteAnnouncement>,
   ) {}
+
+  @Query()
+  @Allow(Permission.Public)
+  async siteAnnouncement() {
+    const announcement = await this.getOrCreateAnnouncement();
+    return announcement.enabled ? announcement : null;
+  }
+
+  @Query()
+  @Allow(Permission.Authenticated)
+  async adminSiteAnnouncement(@Ctx() ctx: RequestContext) {
+    this.requireAdmin(ctx);
+    return this.getOrCreateAnnouncement();
+  }
+
+  @Mutation()
+  @Allow(Permission.Authenticated)
+  async updateSiteAnnouncement(@Ctx() ctx: RequestContext, @Args('input') input: AnnouncementInput) {
+    this.requireAdmin(ctx);
+    const announcement = await this.getOrCreateAnnouncement();
+    Object.assign(announcement, this.cleanAnnouncementInput(input));
+    return this.announcementRepo.save(announcement);
+  }
 
   @Query()
   @Allow(Permission.Public)
@@ -101,6 +128,22 @@ export class CmsResolver {
       imageUrl: input.imageUrl?.trim() || null,
       accentColor: input.accentColor?.trim() || '#ff4500',
       sortOrder: Number.isFinite(Number(input.sortOrder)) ? Number(input.sortOrder) : 0,
+      enabled: input.enabled ?? true,
+    };
+  }
+
+  private async getOrCreateAnnouncement() {
+    const existing = await this.announcementRepo.find({ order: { createdAt: 'ASC' }, take: 1 });
+    if (existing[0]) return existing[0];
+    return this.announcementRepo.save(this.announcementRepo.create(this.cleanAnnouncementInput({})));
+  }
+
+  private cleanAnnouncementInput(input: AnnouncementInput) {
+    return {
+      title: input.title?.trim() || 'Үнэгүй хүргэлт',
+      message: input.message?.trim() || '₮100,000-с дээш захиалгад УБ дотор үнэгүй хүргэнэ!',
+      ctaLabel: input.ctaLabel?.trim() || 'Дэлгэрэнгүй →',
+      ctaHref: input.ctaHref?.trim() || '/trade',
       enabled: input.enabled ?? true,
     };
   }

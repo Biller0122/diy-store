@@ -4,28 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/lib/cart-store';
 import { useWishlistStore } from '@/lib/wishlist-store';
 
-// ─── Static data ─────────────────────────────────────────────
-
-const STORES = [
-  { id: '1', name: 'Баянзүрх салбар', address: 'Баянзүрх дүүрэг, Нарны зам 5' },
-  { id: '2', name: 'Сүхбаатар салбар', address: 'Сүхбаатар дүүрэг, Бага тойруу 14' },
-  { id: '3', name: 'Хан-Уул салбар', address: 'Хан-Уул дүүрэг, Зайсан 12' },
-  { id: '4', name: 'Баянгол салбар', address: 'Баянгол дүүрэг, Чингисийн өргөн чөлөө 8' },
-  { id: '5', name: 'Чингэлтэй салбар', address: 'Чингэлтэй дүүрэг, Энхтайваны өргөн чөлөө 3' },
-];
-
-const DISTRICTS: { name: string; estimate: string }[] = [
-  { name: 'Баянзүрх дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Сүхбаатар дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Хан-Уул дүүрэг', estimate: '3–5 цагт' },
-  { name: 'Баянгол дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Чингэлтэй дүүрэг', estimate: '2–4 цагт' },
-  { name: 'Сонгинохайрхан дүүрэг', estimate: '4–6 цагт' },
-  { name: 'Налайх дүүрэг', estimate: '6–8 цагт' },
-  { name: 'Багануур дүүрэг', estimate: '1–2 өдөрт' },
-  { name: 'Багахангай дүүрэг', estimate: '1–2 өдөрт' },
-];
-
 // ─── Types ───────────────────────────────────────────────────
 
 export interface ProductOption {
@@ -43,6 +21,7 @@ export interface ProductVariant {
   priceWithTax: number;
   currencyCode: string;
   stockLevel: string;
+  stockOnHand?: number;
   options: ProductOption[];
 }
 
@@ -69,6 +48,10 @@ function findVariant(
 }
 
 function StarRating({ rating, count }: { rating: number; count: number }) {
+  if (count <= 0) {
+    return <span className="text-sm text-foreground-muted">Сэтгэгдэл алга</span>;
+  }
+
   return (
     <div className="flex items-center gap-2">
       <div className="flex gap-0.5">
@@ -129,9 +112,6 @@ export default function BuyBox({
     }, {}),
   );
   const [qty, setQty] = useState(1);
-  const [mode, setMode] = useState<'pickup' | 'delivery'>('delivery');
-  const [storeId, setStoreId] = useState(STORES[0].id);
-  const [district, setDistrict] = useState(DISTRICTS[0].name);
   const [addedToCart, setAddedToCart] = useState(false);
   const [showStickyBar, setShowStickyBar] = useState(false);
   const addItem = useCartStore((s) => s.addItem);
@@ -156,17 +136,25 @@ export default function BuyBox({
       ? findVariant(variants, selectedOptions)
       : variants[0];
 
+  const stockOnHand = activeVariant?.stockOnHand;
+  const remainingStock = typeof stockOnHand === 'number' ? Math.max(0, stockOnHand) : undefined;
   const inStock =
-    !activeVariant || activeVariant.stockLevel !== 'OUT_OF_STOCK';
+    (!activeVariant || activeVariant.stockLevel !== 'OUT_OF_STOCK') && (remainingStock === undefined || remainingStock > 0);
+  const maxQty = remainingStock !== undefined ? remainingStock : undefined;
   const wishlisted = hasItem(activeVariant?.id ?? variants[0]?.id ?? '');
 
   const price = activeVariant?.priceWithTax ?? variants[0]?.priceWithTax ?? 0;
 
-  const deliveryEstimate =
-    DISTRICTS.find((d) => d.name === district)?.estimate ?? '2–4 цагт';
+  useEffect(() => {
+    if (maxQty !== undefined && qty > Math.max(1, maxQty)) {
+      setQty(Math.max(1, maxQty));
+    }
+  }, [maxQty, qty]);
 
   function handleAddToCart() {
     if (!activeVariant) return;
+    const safeQty = maxQty !== undefined ? Math.min(qty, maxQty) : qty;
+    if (safeQty < 1 || !inStock) return;
     addItem({
       productId,
       variantId: activeVariant.id,
@@ -175,9 +163,9 @@ export default function BuyBox({
       image,
       price: activeVariant.priceWithTax,
       currencyCode: activeVariant.currencyCode || 'MNT',
-      qty,
-      mode,
-      storeId,
+      qty: safeQty,
+      mode: 'delivery',
+      storeId: null,
       sku: activeVariant.sku,
       supplierId,
       supplierName,
@@ -185,6 +173,7 @@ export default function BuyBox({
       supplierDistrict,
       supplierLat,
       supplierLng,
+      stock: remainingStock,
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
@@ -211,16 +200,10 @@ export default function BuyBox({
           {/* Strike-through shown when a sale price exists; stubbed for now */}
         </div>
 
-        {/* Promo + warranty badges */}
+        {/* Inventory */}
         <div className="flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-error/10 px-3 py-1 text-xs font-medium text-red-600">
-            🏷️ Хямдрал
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-info/10 px-3 py-1 text-xs font-medium text-info">
-            🛡️ 12 сарын баталгаа
-          </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
-            ✅ Оригинал бараа
+            Үлдэгдэл {remainingStock ?? 'байгаа'}
           </span>
         </div>
 
@@ -251,76 +234,6 @@ export default function BuyBox({
           </div>
         ))}
 
-        {/* Pickup / Delivery toggle */}
-        <div>
-          <div className="flex overflow-hidden rounded-xl border border-[var(--glass-border)]">
-            {(['delivery', 'pickup'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`flex-1 py-2.5 text-sm font-semibold transition ${
-                  mode === m
-                    ? 'bg-brand text-white'
-                    : 'bg-card text-foreground-muted hover:bg-dark'
-                }`}
-              >
-                {m === 'delivery' ? '🚚 Хүргэлт' : '🏪 Дэлгүүрээс авах'}
-              </button>
-            ))}
-          </div>
-
-          {/* Delivery — district selector */}
-          {mode === 'delivery' && (
-            <div className="mt-3 space-y-2">
-              <select
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                className="w-full rounded-xl border border-[var(--glass-border)] bg-card px-3 py-2 text-sm text-foreground-muted focus:outline-none focus:ring-2 focus:ring-brand"
-              >
-                {DISTRICTS.map((d) => (
-                  <option key={d.name} value={d.name}>{d.name}</option>
-                ))}
-              </select>
-              <p className="text-sm text-foreground-muted">
-                📍 <span className="font-medium">{district}</span>-д{' '}
-                <span className="font-semibold text-success">{deliveryEstimate}</span> хүргэнэ
-              </p>
-            </div>
-          )}
-
-          {/* Pickup — store selector */}
-          {mode === 'pickup' && (
-            <div className="mt-3 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">Салбар сонгох</p>
-              <div className="space-y-2">
-                {STORES.map((store) => (
-                  <label
-                    key={store.id}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                      storeId === store.id
-                        ? 'border-amber-400 bg-brand/5'
-                        : 'border-[var(--glass-border)] hover:border-[var(--glass-border)]'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="store"
-                      value={store.id}
-                      checked={storeId === store.id}
-                      onChange={() => setStoreId(store.id)}
-                      className="mt-0.5 accent-amber-500"
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{store.name}</p>
-                      <p className="text-xs text-foreground-muted">{store.address}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Quantity */}
         <div className="flex items-center gap-4">
           <span className="text-sm font-semibold text-foreground-muted">Тоо хэмжээ</span>
@@ -336,12 +249,16 @@ export default function BuyBox({
             <span data-testid="qty-value" className="w-10 text-center text-sm font-semibold text-foreground">{qty}</span>
             <button
               data-testid="qty-increase"
-              onClick={() => setQty((q) => q + 1)}
-              className="flex h-10 w-10 items-center justify-center text-lg font-bold text-foreground-muted hover:bg-surface"
+              onClick={() => setQty((q) => (maxQty !== undefined ? Math.min(maxQty, q + 1) : q + 1))}
+              disabled={maxQty !== undefined && qty >= maxQty}
+              className="flex h-10 w-10 items-center justify-center text-lg font-bold text-foreground-muted hover:bg-surface disabled:text-foreground-muted/30"
             >
               +
             </button>
           </div>
+          {maxQty !== undefined && qty >= maxQty && (
+            <span className="text-xs font-medium text-amber-400">Үлдэгдэл {maxQty}</span>
+          )}
           {!inStock && (
             <span className="text-sm font-medium text-error">Байхгүй</span>
           )}

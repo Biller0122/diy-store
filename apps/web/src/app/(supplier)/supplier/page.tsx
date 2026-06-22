@@ -7,27 +7,15 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { useSupplierStore } from '@/lib/supplier-store';
-
-// Mock data
-function getMockRevenue() {
-  const days = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (29 - i));
-    return {
-      date: `${d.getMonth() + 1}/${d.getDate()}`,
-      revenue: Math.floor(300000 + Math.random() * 700000),
-      orders: Math.floor(3 + Math.random() * 12),
-    };
-  });
-  return days;
-}
-
-const MOCK_ORDERS = [
-  { id: 'ORD-001', customer: 'Дорж Б.', total: 2890000, status: 'PENDING', time: '10 мин өмнө' },
-  { id: 'ORD-002', customer: 'Ганаа Н.', total: 4590000, status: 'ACCEPTED_BY_SUPPLIER', time: '25 мин өмнө' },
-  { id: 'ORD-003', customer: 'Болд Э.', total: 1290000, status: 'DELIVERED', time: '1 цаг өмнө' },
-  { id: 'ORD-004', customer: 'Сарнай О.', total: 8990000, status: 'DELIVERED', time: '2 цаг өмнө' },
-];
+import {
+  useSupplierOrdersData,
+  useSupplierProductsData,
+  orderTotalFor,
+  isNewOrder,
+  isDeliveredOrder,
+  LOW_STOCK_THRESHOLD,
+  type SupplierOrderRaw,
+} from '@/lib/supplier-dashboard';
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   PENDING:              { label: 'Шинэ',       cls: 'bg-brand/15 text-brand' },
@@ -36,6 +24,14 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   ON_THE_WAY:           { label: 'Хүргэж байна', cls: 'bg-amber/15 text-amber' },
   DELIVERED:            { label: 'Хүргэгдсэн', cls: 'bg-success/15 text-success' },
 };
+
+function statusOf(order: SupplierOrderRaw) {
+  return order.status === 'COMPLETED' ? 'DELIVERED'
+    : order.status === 'IN_PROGRESS' ? 'ON_THE_WAY'
+    : order.status === 'ACCEPTED' ? 'DRIVER_ASSIGNED'
+    : order.supplierStatus === 'ACCEPTED' ? 'ACCEPTED_BY_SUPPLIER'
+    : 'PENDING';
+}
 
 function MetricCard({ icon: Icon, label, value, sub, color }: {
   icon: React.ElementType; label: string; value: string; sub?: string; color: string;
@@ -67,24 +63,56 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 
 export default function SupplierDashboard() {
   const { supplier } = useSupplierStore();
-  const revenue = useMemo(() => getMockRevenue(), []);
-  const totalRevenue = revenue.reduce((s, r) => s + r.revenue, 0);
-  const totalOrders = revenue.reduce((s, r) => s + r.orders, 0);
+  const supplierId = supplier?.id;
+  const { data: orders = [], isLoading: ordersLoading } = useSupplierOrdersData();
+  const { data: products = [] } = useSupplierProductsData();
+
+  const stats = useMemo(() => {
+    const productCount = products.length;
+    const lowStock = products.filter((p) => p.enabled && p.stock < LOW_STOCK_THRESHOLD).length;
+    const totalOrders = orders.length;
+    const pending = orders.filter(isNewOrder).length;
+
+    // 30 хоногийн орлого (₮, хүргэгдсэн захиалгаар)
+    const keys: string[] = [];
+    const byDay = new Map<string, number>();
+    for (let i = 29; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = `${d.getMonth() + 1}/${d.getDate()}`;
+      keys.push(key);
+      byDay.set(key, 0);
+    }
+    for (const order of orders) {
+      if (!isDeliveredOrder(order)) continue;
+      const d = new Date(order.createdAt);
+      const key = `${d.getMonth() + 1}/${d.getDate()}`;
+      if (byDay.has(key)) byDay.set(key, byDay.get(key)! + orderTotalFor(order, supplierId) / 100);
+    }
+    const revenueData = keys.map((k) => ({ date: k, revenue: Math.round(byDay.get(k) ?? 0) }));
+    const monthRevenue = revenueData.reduce((s, r) => s + r.revenue, 0);
+
+    const recent = [...orders]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5);
+
+    return { productCount, lowStock, totalOrders, pending, revenueData, monthRevenue, recent };
+  }, [orders, products, supplierId]);
 
   return (
     <div className="space-y-6">
       {/* Welcome */}
       <div>
-        <h2 className="text-xl font-bold text-foreground">Сайн байна уу, {supplier?.ownerName}!</h2>
+        <h2 className="text-xl font-bold text-foreground">Сайн байна уу, {supplier?.ownerName ?? ''}!</h2>
         <p className="text-sm text-foreground-muted mt-1">{supplier?.businessName} · Өнөөдрийн тойм</p>
       </div>
 
       {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={TrendingUp} label="Сарын орлого" value={`₮${(totalRevenue / 100).toLocaleString('mn-MN')}`} sub="vs өмнөх сар +8%" color="bg-brand/15 text-brand" />
-        <MetricCard icon={ShoppingCart} label="Нийт захиалга" value={String(totalOrders)} sub="4 хүлээгдэж байна" color="bg-blue-500/15 text-blue-400" />
-        <MetricCard icon={Package} label="Нийт бараа" value={String(supplier?.productCount ?? 312)} sub="3 нөөц дутмаг" color="bg-purple-500/15 text-purple-400 " />
-        <MetricCard icon={Star} label="Дундаж үнэлгээ" value={String(supplier?.rating ?? 4.7)} sub={`${supplier?.reviewCount ?? 234} сэтгэгдэл`} color="bg-amber/15 text-amber" />
+        <MetricCard icon={TrendingUp} label="Сарын орлого" value={`₮${stats.monthRevenue.toLocaleString('mn-MN')}`} sub="Сүүлийн 30 хоног" color="bg-brand/15 text-brand" />
+        <MetricCard icon={ShoppingCart} label="Нийт захиалга" value={String(stats.totalOrders)} sub={`${stats.pending} хүлээгдэж байна`} color="bg-blue-500/15 text-blue-400" />
+        <MetricCard icon={Package} label="Нийт бараа" value={String(stats.productCount)} sub={stats.lowStock > 0 ? `${stats.lowStock} нөөц дутмаг` : 'Нөөц хангалттай'} color="bg-purple-500/15 text-purple-400 " />
+        <MetricCard icon={Star} label="Дундаж үнэлгээ" value={String(supplier?.rating ?? 0)} sub={`${supplier?.reviewCount ?? 0} сэтгэгдэл`} color="bg-amber/15 text-amber" />
       </div>
 
       {/* Revenue chart */}
@@ -97,7 +125,7 @@ export default function SupplierDashboard() {
         </div>
         <div className="h-48">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={revenue} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+            <AreaChart data={stats.revenueData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="supRevGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#FF4500" stopOpacity={0.3} />
@@ -122,27 +150,37 @@ export default function SupplierDashboard() {
             Бүгдийг харах <ArrowRight size={11} />
           </Link>
         </div>
-        <div className="space-y-2">
-          {MOCK_ORDERS.map((order) => {
-            const st = STATUS_LABEL[order.status] ?? { label: order.status, cls: 'bg-white/10 text-foreground-muted' };
-            return (
-              <Link key={order.id} href={`/supplier/orders`} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 transition-colors">
-                <div className="w-7 h-7 rounded-lg bg-surface flex items-center justify-center shrink-0">
-                  <ShoppingCart size={12} className="text-foreground-muted" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-foreground">#{order.id}</p>
-                  <p className="text-[10px] text-foreground-muted">{order.customer}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[10px] text-foreground-muted flex items-center gap-0.5"><Clock size={9} /> {order.time}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${st.cls}`}>{st.label}</span>
-                  <p className="text-xs font-semibold text-foreground">₮{Math.round(order.total / 100).toLocaleString()}</p>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+        {stats.recent.length === 0 ? (
+          <div className="py-10 text-center text-sm text-foreground-muted">
+            {ordersLoading ? 'Уншиж байна...' : 'Одоогоор захиалга алга байна'}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {stats.recent.map((order) => {
+              const key = statusOf(order);
+              const st = STATUS_LABEL[key] ?? { label: key, cls: 'bg-white/10 text-foreground-muted' };
+              const total = orderTotalFor(order, supplierId);
+              return (
+                <Link key={order.id} href="/supplier/orders" className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 transition-colors">
+                  <div className="w-7 h-7 rounded-lg bg-surface flex items-center justify-center shrink-0">
+                    <ShoppingCart size={12} className="text-foreground-muted" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-foreground">#{order.orderNumber || order.orderId}</p>
+                    <p className="text-[10px] text-foreground-muted">{order.customerName || 'Хэрэглэгч'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-foreground-muted flex items-center gap-0.5">
+                      <Clock size={9} /> {new Date(order.createdAt).toLocaleDateString('mn-MN')}
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${st.cls}`}>{st.label}</span>
+                    <p className="text-xs font-semibold text-foreground">₮{Math.round(total / 100).toLocaleString()}</p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

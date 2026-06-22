@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+import { createQpayInvoice, checkQpayPayment, type QpayInvoice } from '@/lib/qpay';
 
 // ─── Bank deep links (UI only — real links added when PSP is live) ───
 
@@ -45,10 +46,12 @@ export function QPayModal({ orderNo, total, onSuccess, onClose }: QPayModalProps
   const [state, setState] = useState<ModalState>('waiting');
   const [secs, setSecs] = useState(COUNTDOWN_SECS);
   const [simulating, setSimulating] = useState(false);
+  const [invoice, setInvoice] = useState<QpayInvoice | null>(null);
+  const [invoiceError, setInvoiceError] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const qrValue = MOCK_QR_URL(orderNo, total);
+  const qrValue = invoice?.qrText ?? MOCK_QR_URL(orderNo, total);
   const fmt = (minor: number) => `₮${Math.round(minor / 100).toLocaleString('mn-MN')}`;
 
   // ── Countdown ──
@@ -81,17 +84,27 @@ export function QPayModal({ orderNo, total, onSuccess, onClose }: QPayModalProps
     setTimeout(onSuccess, 1800); // let success animation play
   };
 
-  // ── Poll mock endpoint (ready to swap for real API) ──
+  // ── Create the real QPay invoice on open (production) ──
   useEffect(() => {
-    if (IS_DEV) return; // Dev uses the simulate button instead
-    // TODO: Replace with real QPay polling when backend is live
-    // pollRef.current = setInterval(async () => {
-    //   const res = await fetch(`/api/payment/qpay/check?invoiceId=...`);
-    //   const { paid } = await res.json();
-    //   if (paid) handleSuccess();
-    // }, 3000);
-    return () => { clearInterval(pollRef.current!); };
+    if (IS_DEV) return; // Dev uses the mock QR + simulate button
+    let active = true;
+    createQpayInvoice(Math.round(total / 100), orderNo)
+      .then((inv) => { if (active) setInvoice(inv); })
+      .catch((e) => { if (active) setInvoiceError(e?.message || 'QPay-тэй холбогдож чадсангүй'); });
+    return () => { active = false; };
   }, []);
+
+  // ── Poll QPay payment status until paid ──
+  useEffect(() => {
+    if (IS_DEV || !invoice?.invoiceId) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await checkQpayPayment(invoice.invoiceId);
+        if (status.paid) handleSuccess();
+      } catch { /* transient — keep polling */ }
+    }, 3000);
+    return () => { clearInterval(pollRef.current!); };
+  }, [invoice?.invoiceId]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -208,20 +221,41 @@ export function QPayModal({ orderNo, total, onSuccess, onClose }: QPayModalProps
               {/* Bank deep links */}
               <div>
                 <p className="text-xs text-foreground-muted mb-2 font-medium">Эсвэл банкны апп сонгох:</p>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {BANKS.map((bank) => (
-                    <a
-                      key={bank.short}
-                      href="#" // TODO: Replace with real deep link from QPay invoice URLs
-                      onClick={(e) => e.preventDefault()}
-                      title={bank.name}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-opacity hover:opacity-80 ${bank.color}`}
-                    >
-                      <span className="text-base">{bank.emoji}</span>
-                      <span className="text-[9px] font-medium leading-tight">{bank.short}</span>
-                    </a>
-                  ))}
-                </div>
+                {invoice?.urls?.length ? (
+                  <div className="grid grid-cols-4 gap-1.5 max-h-44 overflow-y-auto">
+                    {invoice.urls.map((u, i) => (
+                      <a
+                        key={u.name ?? i}
+                        href={u.link ?? '#'}
+                        title={u.description ?? u.name ?? ''}
+                        className="flex flex-col items-center gap-1 p-2 rounded-xl border border-[var(--glass-border)] text-center transition-opacity hover:opacity-80"
+                      >
+                        {u.logo
+                          ? <img src={u.logo} alt="" className="w-6 h-6 rounded object-contain" />
+                          : <span className="text-base">🏦</span>}
+                        <span className="text-[9px] font-medium leading-tight text-foreground-muted truncate w-full">
+                          {u.description ?? u.name}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {BANKS.map((bank) => (
+                      <a
+                        key={bank.short}
+                        href="#"
+                        onClick={(e) => e.preventDefault()}
+                        title={bank.name}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-opacity hover:opacity-80 ${bank.color}`}
+                      >
+                        <span className="text-base">{bank.emoji}</span>
+                        <span className="text-[9px] font-medium leading-tight">{bank.short}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {invoiceError ? <p className="text-[11px] text-error mt-2 text-center">{invoiceError}</p> : null}
               </div>
 
               {/* Dev simulate button */}

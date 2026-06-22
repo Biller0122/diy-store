@@ -15,7 +15,7 @@ export interface CartItem {
   price: number;       // priceWithTax in minor units (÷100 = ₮)
   currencyCode: string;
   qty: number;
-  mode: 'pickup' | 'delivery';
+  mode: 'delivery';
   storeId: string | null;
   sku: string;
   supplierId?: string;
@@ -24,6 +24,13 @@ export interface CartItem {
   supplierDistrict?: string;
   supplierLat?: number;
   supplierLng?: number;
+  stock?: number;
+}
+
+function asDeliveryItem<T extends { mode: CartItem['mode']; storeId: string | null }>(
+  item: T,
+): Omit<T, 'mode' | 'storeId'> & { mode: 'delivery'; storeId: null } {
+  return { ...item, mode: 'delivery', storeId: null };
 }
 
 export interface Address {
@@ -72,7 +79,7 @@ interface CartState {
   addItem: (item: Omit<CartItem, 'id'>) => void;
   removeItem: (id: string) => void;
   updateQty: (id: string, qty: number) => void;
-  updateMode: (id: string, mode: 'pickup' | 'delivery', storeId?: string) => void;
+  updateMode: (id: string, mode: 'delivery', storeId?: string) => void;
   clearCart: () => void;
   applyPromo: (code: string) => { success: boolean; message: string };
   removePromo: () => void;
@@ -80,15 +87,11 @@ interface CartState {
   updateDeliveryFee: (fee: number, breakdown?: FeeBreakdown) => void;
 }
 
-// ─── Promo codes ──────────────────────────────────────────────
-
-const PROMOS: Record<string, PromoResult> = {
-  DIY10:      { code: 'DIY10',      discountPct: 10, label: '10% хямдрал' },
-  ШИНЭ20:     { code: 'ШИНЭ20',     discountPct: 20, label: 'Шинэ хэрэглэгчид 20%' },
-  БАЯНЗҮРХ:   { code: 'БАЯНЗҮРХ',   discountPct:  5, label: 'Баянзүрх салбарын 5%' },
-};
-
 export const DEFAULT_DELIVERY_FEE = 550_000; // ₮5,500 fallback
+
+function cartRowId(prefix: string) {
+  return `${prefix}-${globalThis.crypto.randomUUID()}`;
+}
 
 // ─── Store ────────────────────────────────────────────────────
 
@@ -107,16 +110,19 @@ export const useCartStore = create<CartState>()(
             (i) => i.variantId === item.variantId && i.supplierId === item.supplierId,
           );
           if (existing) {
+            const nextQty = existing.qty + item.qty;
+            if (typeof item.stock === 'number' && nextQty > item.stock) return {};
             return {
               items: s.items.map((i) =>
                 i.variantId === item.variantId && i.supplierId === item.supplierId
-                  ? { ...i, qty: i.qty + item.qty }
+                  ? { ...i, qty: nextQty, stock: item.stock ?? i.stock }
                   : i,
               ),
             };
           }
+          if (typeof item.stock === 'number' && item.qty > item.stock) return {};
           return {
-            items: [...s.items, { ...item, id: `${item.variantId}-${Date.now()}` }],
+            items: [...s.items, asDeliveryItem({ ...item, id: cartRowId(item.variantId) })],
           };
         }),
 
@@ -126,24 +132,22 @@ export const useCartStore = create<CartState>()(
       updateQty: (id, qty) => {
         if (qty < 1) return;
         set((s) => ({
-          items: s.items.map((i) => (i.id === id ? { ...i, qty } : i)),
+          items: s.items.map((i) => (i.id === id ? { ...i, qty: typeof i.stock === 'number' ? Math.min(qty, i.stock) : qty } : i)),
         }));
       },
 
       updateMode: (id, mode, storeId) =>
         set((s) => ({
           items: s.items.map((i) =>
-            i.id === id ? { ...i, mode, ...(storeId ? { storeId } : {}) } : i,
+            i.id === id ? asDeliveryItem({ ...i, mode, ...(storeId ? { storeId } : {}) }) : i,
           ),
         })),
 
       clearCart: () => set({ items: [], promo: null, customerAddress: null, deliveryFee: DEFAULT_DELIVERY_FEE, feeBreakdown: null }),
 
       applyPromo: (code) => {
-        const promo = PROMOS[code.trim().toUpperCase()];
-        if (!promo) return { success: false, message: 'Промо код буруу байна.' };
-        set({ promo });
-        return { success: true, message: `${promo.label} амжилттай нэмэгдлээ!` };
+        if (code.trim()) set({ promo: null });
+        return { success: false, message: 'Промо код түр идэвхгүй байна.' };
       },
 
       removePromo: () => set({ promo: null }),
@@ -154,9 +158,17 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'diy-store-cart',
+      version: 3,
+      migrate: (persisted) => ({
+        items: ((persisted as Partial<CartState> | undefined)?.items ?? []).map(asDeliveryItem),
+        promo: null,
+        customerAddress: (persisted as Partial<CartState> | undefined)?.customerAddress ?? null,
+        deliveryFee: (persisted as Partial<CartState> | undefined)?.deliveryFee ?? DEFAULT_DELIVERY_FEE,
+        feeBreakdown: (persisted as Partial<CartState> | undefined)?.feeBreakdown ?? null,
+      }),
       partialize: (s) => ({
         items: s.items,
-        promo: s.promo,
+        promo: null,
         customerAddress: s.customerAddress,
         deliveryFee: s.deliveryFee,
         feeBreakdown: s.feeBreakdown,
@@ -193,11 +205,10 @@ export function getSupplierGroups(items: CartItem[]): SupplierGroup[] {
 export const calcSubtotal = (items: CartItem[]) =>
   items.reduce((sum, i) => sum + i.price * i.qty, 0);
 
-export const calcDiscount = (subtotal: number, promo: PromoResult | null) =>
-  promo ? Math.round(subtotal * (promo.discountPct / 100)) : 0;
+export const calcDiscount = (_subtotal: number, _promo: PromoResult | null) => 0;
 
 export const calcDeliveryFee = (items: CartItem[], storedFee?: number) =>
-  items.some((i) => i.mode === 'delivery') ? (storedFee ?? DEFAULT_DELIVERY_FEE) : 0;
+  items.length > 0 ? (storedFee ?? DEFAULT_DELIVERY_FEE) : 0;
 
 export const calcTotal = (items: CartItem[], promo: PromoResult | null, storedFee?: number) => {
   const sub = calcSubtotal(items);

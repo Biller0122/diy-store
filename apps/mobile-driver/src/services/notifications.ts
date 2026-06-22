@@ -26,11 +26,14 @@ export async function setupDriverNotifications(driverId?: string) {
     : await Notifications.requestPermissionsAsync() as { status?: string; granted?: boolean };
   if (!finalStatus.granted && finalStatus.status !== 'granted') return null;
   const token = (await Notifications.getExpoPushTokenAsync()).data;
-  fetch(SHOP_API_URL.replace('/shop-api', '/api/device-token'), {
+  const response = await fetch(SHOP_API_URL.replace('/shop-api', '/api/device-token'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, role: 'driver', driverId }),
-  }).catch(() => {});
+  });
+  if (!response.ok) {
+    throw new Error(`Push token хадгалахад алдаа гарлаа (${response.status})`);
+  }
   return token;
 }
 

@@ -10,6 +10,7 @@ const QUICK_LINKS = [
   { href: '/account/orders', label: 'Захиалгууд', icon: '📦', desc: 'Захиалгын түүх харах' },
   { href: '/account/addresses', label: 'Хаягууд', icon: '📍', desc: 'Хүргэлтийн хаяг удирдах' },
   { href: '/account/wishlist', label: 'Хадгалсан бараа', icon: '❤️', desc: 'Таалагдсан бүтээгдэхүүн' },
+  { href: '/account/company-profile', label: 'Компанийн профайл', icon: '🏢', desc: 'Барилгын компани — ажлаа танилцуул' },
 ];
 
 export default function AccountDashboard() {

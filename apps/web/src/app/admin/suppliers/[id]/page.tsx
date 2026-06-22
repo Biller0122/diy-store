@@ -53,7 +53,7 @@ const STATUS_HISTORY_LABELS: Record<string, string> = {
   REJECTED:             'Татгалзсан',
 };
 
-const ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? 'http://localhost:3001/admin-api';
+const ADMIN_API = process.env.NEXT_PUBLIC_VENDURE_ADMIN_API ?? 'http://localhost:13001/admin-api';
 
 const SUPPLIER_GQL = `
   query AdminGetSupplier($id: ID!) {
@@ -249,7 +249,6 @@ export default function AdminSupplierDetailPage({ params }: { params: Promise<{ 
             ['Банк',            supplier.bankName || '—'],
             ['Данс',            supplier.bankAccount || '—'],
             ['Данс эзэмшигч',   supplier.bankAccountName || '—'],
-            ['Pickup',          supplier.pickupEnabled ? 'Тийм' : 'Үгүй'],
             ['Хүргэлт',         supplier.deliveryEnabled ? 'Тийм' : 'Үгүй'],
             ['Комисс',          `${supplier.commissionRate}%`],
             ['Бүртгэсэн огноо', new Date(supplier.createdAt).toLocaleString('mn-MN')],

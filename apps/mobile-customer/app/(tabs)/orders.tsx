@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/lib/store';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { shopFetch, MY_ORDERS_QUERY } from '@/lib/api';
 
 interface ApiOrder {
@@ -49,6 +49,8 @@ function formatDate(dateStr: string) {
 }
 
 function OrderCard({ order, onTrack }: { order: ApiOrder; onTrack: () => void }) {
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const info = getStateInfo(order.state);
   const items = order.lines.map((l) => l.productVariant.product.name);
 
@@ -86,6 +88,8 @@ function OrderCard({ order, onTrack }: { order: ApiOrder; onTrack: () => void })
 
 export default function OrdersScreen() {
   const router = useRouter();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const customer = useAppStore((s) => s.customer);
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,7 +196,7 @@ export default function OrdersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row',
@@ -248,7 +252,7 @@ const styles = StyleSheet.create({
     borderTopColor: C.border,
     paddingTop: 10,
   },
-  orderTotal: { color: C.primary, fontSize: 16, fontWeight: '800', fontFamily: 'monospace' },
+  orderTotal: { color: C.accent, fontSize: 16, fontWeight: '800', fontFamily: 'monospace' },
   trackBtn: {
     flexDirection: 'row',
     alignItems: 'center',

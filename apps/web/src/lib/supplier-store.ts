@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { setVendureAuthToken, vendureShopFetch } from './vendure';
+import { setSupplierAuthToken, setVendureAuthToken, vendureShopFetch } from './vendure';
 
 export type SupplierStatus = 'PENDING_VERIFICATION' | 'PENDING' | 'PENDING_APPROVAL' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED';
 
@@ -11,6 +11,18 @@ export interface SupplierUser {
   businessName: string;
   slug: string;
   logo?: string;
+  coverImage?: string;
+  youtubeUrl?: string;
+  posterUrls?: string[];
+  description?: string;
+  address?: string;
+  bankAccount?: string;
+  bankName?: string;
+  workingHours?: {
+    weekdays?: { start?: string; end?: string };
+    saturday?: { start?: string; end?: string };
+    sunday?: { closed: boolean; start?: string; end?: string };
+  };
   ownerName: string;
   phone: string;
   email: string;
@@ -26,6 +38,7 @@ interface SupplierState {
   supplier: SupplierUser | null;
   devOtp: string | null;
   isLoading: boolean;
+  hasHydrated: boolean;
   error: string | null;
   requestLoginOtp: (email: string) => Promise<boolean>;
   verifyLoginOtp: (email: string, otp: string) => Promise<{ success: boolean; redirectTo?: string }>;
@@ -66,6 +79,14 @@ const SUPPLIER_QUERY = `
       businessName
       slug
       logo
+      coverImage
+      youtubeUrl
+      posterUrls
+      description
+      address
+      bankAccount
+      bankName
+      workingHours { weekdays { start end } saturday { start end } sunday { closed start end } }
       ownerName
       phone
       email
@@ -172,6 +193,7 @@ export const useSupplierStore = create<SupplierState>()(
       supplier: null,
       devOtp: null,
       isLoading: false,
+      hasHydrated: false,
       error: null,
 
       requestLoginOtp: async (emailInput) => {
@@ -223,7 +245,7 @@ export const useSupplierStore = create<SupplierState>()(
             return { success: false };
           }
 
-          setVendureAuthToken(data.verifySupplierOTP.token ?? null);
+          setSupplierAuthToken(data.verifySupplierOTP.token ?? null);
           const supplier = await loadSupplierFromApi(data.verifySupplierOTP.supplierId);
           if (!supplier) {
             set({ isLoading: false, error: 'Нийлүүлэгчийн мэдээлэл олдсонгүй' });
@@ -254,6 +276,7 @@ export const useSupplierStore = create<SupplierState>()(
 
       logout: () => {
         setSupplierCookies(null);
+        setSupplierAuthToken(null);
         setVendureAuthToken(null);
         set({ supplier: null });
       },
@@ -270,6 +293,7 @@ export const useSupplierStore = create<SupplierState>()(
       partialize: (s) => ({ supplier: s.supplier }),
       onRehydrateStorage: () => (state) => {
         if (state?.supplier) setSupplierCookies(state.supplier);
+        if (state) state.hasHydrated = true;
       },
     },
   ),

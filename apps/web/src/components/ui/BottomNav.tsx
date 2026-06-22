@@ -3,30 +3,26 @@
 import { m } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, Grid3x3, ShoppingCart, User, type LucideIcon } from 'lucide-react';
+import { Home, Grid3x3, ShoppingCart, User, type LucideIcon } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
-import { useUIStore } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  action?: 'search' | 'cart';
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/',          label: 'Нүүр',    icon: Home },
-  { href: '/search',    label: 'Хайлт',   icon: Search,    action: 'search' },
   { href: '/category',  label: 'Ангилал', icon: Grid3x3 },
-  { href: '/cart',      label: 'Сагс',    icon: ShoppingCart, action: 'cart' },
-  { href: '/account',   label: 'Данс',    icon: User },
+  { href: '/account',   label: 'Бүртгэл', icon: User },
+  { href: '/cart',      label: 'Сагс',    icon: ShoppingCart },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
   const { items } = useCartStore();
-  const { openSearch, openCart } = useUIStore();
   const cartCount = items.reduce((a, i) => a + i.qty, 0);
 
   const isActive = (href: string) => {
@@ -38,21 +34,14 @@ export function BottomNav() {
     <nav data-testid="bottom-nav" className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-safe">
       <div className="glass-strong border-t border-[var(--glass-border)] px-1 py-2">
         <div className="flex items-center justify-around">
-          {NAV_ITEMS.map(({ href, label, icon: Icon, action }) => {
-            const active = isActive(href) && action !== 'search';
-            const isCart = action === 'cart';
-            const isSearch = action === 'search';
-
-            const handleClick = (e: React.MouseEvent) => {
-              if (isSearch) { e.preventDefault(); openSearch(); }
-              if (isCart) { e.preventDefault(); openCart(); }
-            };
+          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+            const active = isActive(href);
+            const isCart = href === '/cart';
 
             return (
               <Link
                 key={href}
-                href={isSearch || isCart ? '#' : href}
-                onClick={handleClick}
+                href={href}
                 className={cn(
                   'relative flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-colors min-w-[56px]',
                   active ? 'text-brand' : 'text-foreground-muted',

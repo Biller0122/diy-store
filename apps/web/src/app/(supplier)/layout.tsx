@@ -6,13 +6,18 @@ import { useRouter, usePathname } from 'next/navigation';
 import { m, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Package, ShoppingCart, DollarSign,
-  Star, Settings, LogOut, Menu, X, ChevronRight, Bell, Store,
+  Star, Settings, LogOut, Menu, X, ChevronRight, Store,
 } from 'lucide-react';
 import { useSupplierStore } from '@/lib/supplier-store';
 import { Providers } from '@/components/providers';
+import { getCustomerHomeHref } from '@/lib/portal-links';
+import { BrandLogo } from '@/components/BrandLogo';
+import { SupplierNotifications } from '@/components/supplier/SupplierNotifications';
+import { hasSupplierAuthToken } from '@/lib/vendure';
 
 const NAV = [
   { href: '/supplier',          icon: LayoutDashboard, label: 'Хяналтын самбар' },
+  { href: '/supplier/store-profile', icon: Store,       label: 'Дэлгүүрийн профайл' },
   { href: '/supplier/products', icon: Package,         label: 'Миний бараа' },
   { href: '/supplier/orders',   icon: ShoppingCart,    label: 'Захиалгууд' },
   { href: '/supplier/revenue',  icon: DollarSign,      label: 'Орлого' },
@@ -34,15 +39,9 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-[var(--glass-border)]">
-        <div className="w-9 h-9 rounded-xl bg-brand flex items-center justify-center shadow-lg shadow-brand/30 shrink-0">
-          <Store size={18} className="text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-foreground leading-tight">
-            DIY<span className="text-brand">Store</span>
-          </p>
-          <p className="text-[10px] text-foreground-muted">Нийлүүлэгч</p>
-        </div>
+        <Link href={getCustomerHomeHref()} onClick={onClose} className="flex min-w-0 items-center gap-3">
+          <BrandLogo variant="sidebar" portalLabel="Нийлүүлэгч" />
+        </Link>
         <button onClick={onClose} className="ml-auto lg:hidden text-foreground-muted hover:text-foreground">
           <X size={18} />
         </button>
@@ -130,18 +129,23 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function SupplierGuard({ children }: { children: React.ReactNode }) {
-  const { supplier } = useSupplierStore();
+  const { supplier, hasHydrated, logout } = useSupplierStore();
   const router = useRouter();
   const pathname = usePathname();
   const publicRoute = pathname === '/supplier/login' || pathname === '/supplier/register' || pathname === '/supplier/pending';
 
   useEffect(() => {
-    if (!supplier && !publicRoute) {
+    if (hasHydrated && supplier && !publicRoute && !hasSupplierAuthToken()) {
+      logout();
+      router.replace('/supplier/login?reason=session-expired');
+      return;
+    }
+    if (hasHydrated && !supplier && !publicRoute) {
       router.replace('/supplier/login');
     }
-  }, [supplier, publicRoute, router]);
+  }, [supplier, hasHydrated, publicRoute, router, logout]);
 
-  if (!supplier && !publicRoute) {
+  if ((!hasHydrated || !supplier) && !publicRoute) {
     return (
       <div className="min-h-screen bg-dark flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
@@ -181,10 +185,7 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
               </button>
               <h1 className="text-sm font-semibold text-foreground">{pageTitle}</h1>
               <div className="ml-auto flex items-center gap-2">
-                <button className="relative p-2 rounded-xl hover:bg-white/5 text-foreground-muted">
-                  <Bell size={16} />
-                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand" />
-                </button>
+                <SupplierNotifications />
                 <div className="w-7 h-7 rounded-full bg-brand/20 flex items-center justify-center">
                   <span className="text-[11px] font-bold text-brand">{supplier?.ownerName?.[0] ?? 'S'}</span>
                 </div>

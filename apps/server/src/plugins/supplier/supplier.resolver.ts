@@ -1,12 +1,51 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, Order, Permission, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Allow, AssetService, Ctx, ID, Order, Permission, RequestContext, TransactionalConnection } from '@vendure/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Supplier, SupplierStatus } from './supplier.entity';
 import { SupplierProduct } from './supplier-product.entity';
 import { RegisterSupplierInput, SupplierProductInput, SupplierService, VerifySupplierOtpInput } from './supplier.service';
-import { requirePlatformRole } from '../../utils/auth';
+import { exposeOtp, requirePlatformRole } from '../../utils/auth';
 import { DeliveryRequest } from '../delivery/delivery-request.entity';
+import { Readable } from 'stream';
+
+type SupplierProfileImageInput = {
+  filename: string;
+  mimeType: string;
+  dataUrl: string;
+};
+
+function supplierAssetPublicUrl(value?: string | null) {
+  const source = value?.trim();
+  if (!source) return '';
+  if (/^(data:|blob:)/i.test(source)) return source;
+
+  const assetPath = source.replace(/^\/+/, '').replace(/^assets\//, '');
+  const publicBase = (
+    process.env.ASSET_PUBLIC_URL ||
+    process.env.PRODUCTION_BASE_URL ||
+    process.env.STOREFRONT_URL ||
+    process.env.ASSET_URL_PREFIX ||
+    'https://shoptool.mn'
+  ).replace(/\/+$/, '');
+
+  const safePublicBase = /\.elb\.amazonaws\.com/i.test(publicBase) ? 'https://shoptool.mn' : publicBase;
+  if (/^https?:/i.test(source)) {
+    try {
+      const url = new URL(source);
+      const assetIndex = url.pathname.indexOf('/assets/');
+      if (assetIndex >= 0 && (/\.cloudfront\.net$/i.test(url.hostname) || /\.elb\.amazonaws\.com$/i.test(url.hostname))) {
+        return `${safePublicBase}${url.pathname.slice(assetIndex)}`;
+      }
+    } catch {
+      return source;
+    }
+    return source;
+  }
+  if (!safePublicBase) return `/assets/${assetPath}`;
+  const baseIncludesAssets = /\/assets$/i.test(safePublicBase);
+  return `${safePublicBase}${baseIncludesAssets ? '' : '/assets'}/${assetPath}`;
+}
 
 @Resolver()
 export class SupplierResolver {
@@ -19,11 +58,13 @@ export class SupplierResolver {
     private readonly deliveryRepo: Repository<DeliveryRequest>,
     private readonly supplierService: SupplierService,
     private readonly connection: TransactionalConnection,
+    private readonly assetService: AssetService,
   ) {}
 
   @Query()
   @Allow(Permission.Public)
   async suppliers(
+    @Ctx() ctx: RequestContext,
     @Args('status') status?: SupplierStatus,
     @Args('take') take = 20,
     @Args('skip') skip = 0,
@@ -35,25 +76,28 @@ export class SupplierResolver {
       take,
       skip,
     });
-    return { items, total };
+    return { items: items.map((item) => this.sanitizeSupplier(ctx, item)), total };
   }
 
   @Query()
   @Allow(Permission.Public)
-  async getAllSuppliers() {
-    return this.supplierService.getAllSuppliers();
+  async getAllSuppliers(@Ctx() ctx: RequestContext) {
+    const result = await this.supplierService.getAllSuppliers();
+    return { items: result.items.map((item) => this.sanitizeSupplier(ctx, item)), total: result.total };
   }
 
   @Query()
   @Allow(Permission.Public)
-  async supplierBySlug(@Args('slug') slug: string) {
-    return this.supplierRepo.findOne({ where: { slug } });
+  async supplierBySlug(@Ctx() ctx: RequestContext, @Args('slug') slug: string) {
+    const supplier = await this.supplierRepo.findOne({ where: { slug } });
+    return this.sanitizeSupplier(ctx, supplier);
   }
 
   @Query()
   @Allow(Permission.Public)
-  async supplier(@Args('id') id: ID) {
-    return this.supplierService.getSupplierById(String(id));
+  async supplier(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+    const supplier = await this.supplierService.getSupplierById(String(id));
+    return this.sanitizeSupplier(ctx, supplier);
   }
 
   @Mutation()
@@ -65,7 +109,7 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
-        otp: this.exposeOtp(supplier.otpCode),
+        otp: exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
@@ -86,7 +130,7 @@ export class SupplierResolver {
         success: true,
         message: 'Баталгаажуулах код и-мэйлээр илгээгдлээ',
         email: supplier.email,
-        otp: this.exposeOtp(supplier.otpCode),
+        otp: exposeOtp(supplier.otpCode),
       };
     } catch (error) {
       return {
@@ -142,6 +186,28 @@ export class SupplierResolver {
     @Args('input') input: Partial<Supplier>,
   ) {
     this.requireAdminOrSupplier(ctx, String(id));
+    const workingHoursInput = (input as unknown as {
+      workingHours?: {
+        weekdaysStart?: string;
+        weekdaysEnd?: string;
+        saturdayStart?: string;
+        saturdayEnd?: string;
+        sundayClosed?: boolean;
+        sundayStart?: string;
+        sundayEnd?: string;
+      };
+    }).workingHours;
+    if (workingHoursInput) {
+      input.workingHours = {
+        weekdays: { start: workingHoursInput.weekdaysStart ?? '09:00', end: workingHoursInput.weekdaysEnd ?? '18:00' },
+        saturday: { start: workingHoursInput.saturdayStart ?? '10:00', end: workingHoursInput.saturdayEnd ?? '17:00' },
+        sunday: {
+          closed: workingHoursInput.sundayClosed ?? true,
+          ...(workingHoursInput.sundayStart ? { start: workingHoursInput.sundayStart } : {}),
+          ...(workingHoursInput.sundayEnd ? { end: workingHoursInput.sundayEnd } : {}),
+        },
+      };
+    }
     if (ctx.apiType !== 'admin') {
       delete (input as Partial<Supplier> & { status?: SupplierStatus }).status;
       delete (input as Partial<Supplier> & { commissionRate?: number }).commissionRate;
@@ -149,6 +215,31 @@ export class SupplierResolver {
     }
     await this.supplierRepo.update(String(id), input);
     return this.supplierService.getSupplierById(String(id));
+  }
+
+  @Mutation()
+  @Allow(Permission.Public)
+  async uploadSupplierProfileImage(
+    @Ctx() ctx: RequestContext,
+    @Args('supplierId') supplierId: ID,
+    @Args('input') input: SupplierProfileImageInput,
+  ) {
+    this.requireAdminOrSupplier(ctx, String(supplierId));
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(input.mimeType)) {
+      throw new Error('Зөвхөн PNG, JPG, WEBP зураг оруулна уу');
+    }
+
+    const encoded = input.dataUrl.includes(',') ? input.dataUrl.split(',').pop() : input.dataUrl;
+    if (!encoded) throw new Error('Зургийн дата хоосон байна');
+    const buffer = Buffer.from(encoded, 'base64');
+    if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
+      throw new Error('Зургийн хэмжээ 5MB-аас бага байна');
+    }
+
+    const safeFilename = input.filename.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase() || 'supplier-image.jpg';
+    const asset = await this.assetService.createFromFileStream(Readable.from(buffer), safeFilename, ctx);
+    if ('errorCode' in asset) throw new Error(asset.message);
+    return supplierAssetPublicUrl(asset.preview || asset.source);
   }
 
   @Mutation()
@@ -296,6 +387,40 @@ export class SupplierResolver {
     if (principal.id !== supplierId) throw new Error('Өөр нийлүүлэгчийн мэдээлэлд хандах эрхгүй');
   }
 
+  private tryPlatformRole(ctx: RequestContext, role: 'SUPPLIER' | 'DRIVER' | 'ADMIN' | 'CUSTOMER') {
+    try {
+      return requirePlatformRole(ctx, role);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Strip sensitive fields (PII + bank + secrets) from a supplier unless the
+   * caller is an admin or the supplier owner. Public storefront queries
+   * (suppliers / supplierBySlug / supplier) must never leak email, bank
+   * details, registration number, OTP code or password hash.
+   */
+  private sanitizeSupplier<T extends Supplier | null | undefined>(ctx: RequestContext, supplier: T): T {
+    if (!supplier) return supplier;
+    if (ctx.apiType === 'admin' && ctx.activeUserId) return supplier;
+    if (this.tryPlatformRole(ctx, 'ADMIN')) return supplier;
+    const owner = this.tryPlatformRole(ctx, 'SUPPLIER');
+    if (owner && String(owner.id) === String(supplier.id)) return supplier;
+
+    return {
+      ...(supplier as Supplier),
+      email: null,
+      passwordHash: null,
+      otpCode: null,
+      otpExpiresAt: null,
+      bankAccount: null,
+      bankName: null,
+      bankAccountName: null,
+      registrationNumber: null,
+    } as unknown as T;
+  }
+
   private toSupplierOrder(order: Order) {
     return {
       id: String(order.id),
@@ -317,7 +442,4 @@ export class SupplierResolver {
     };
   }
 
-  private exposeOtp(otp: string | null) {
-    return process.env.NODE_ENV !== 'production' || process.env.OTP_MOCK_MODE === 'true' ? otp : null;
-  }
 }

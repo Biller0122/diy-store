@@ -1,7 +1,9 @@
+// Maintains driver auth state while persisting session tokens in SecureStore.
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 import { createJSONStorage, persist, StateStorage } from 'zustand/middleware';
 import { Driver, getDriverProfile, loginDriver, refreshDriverToken, registerDriver, requestDriverOtp, setAuthToken, updateDriverStatus, verifyDriverOtp } from '../api/client';
+import { deleteDriverId, deleteToken, getDriverId, saveDriverId, saveToken } from '../../services/auth';
 
 const secureStorage: StateStorage = {
   getItem: async (name) => (await SecureStore.getItemAsync(name)) ?? null,
@@ -31,6 +33,7 @@ type AuthState = {
   error: string | null;
   devOtp: string | null;
   login: (email: string, password: string) => Promise<boolean>;
+  loginWithToken: (token: string, driverId?: string | null) => Promise<boolean>;
   requestLoginOtp: (phone: string) => Promise<boolean>;
   verifyOtp: (phone: string, otp: string) => Promise<boolean>;
   register: (input: RegisterInput) => Promise<boolean>;
@@ -75,6 +78,8 @@ export const useAuthStore = create<AuthState>()(
           }
           const token = data.loginDriverByPassword.token ?? `driver-session-${data.loginDriverByPassword.driverId}`;
           setAuthToken(token);
+          await saveToken(token);
+          await saveDriverId(data.loginDriverByPassword.driverId);
           const profile = await getDriverProfile(data.loginDriverByPassword.driverId);
           const driver = profile.getDriverProfile;
           if (!driver) {
@@ -85,6 +90,33 @@ export const useAuthStore = create<AuthState>()(
           return true;
         } catch (error) {
           set({ isLoading: false, error: mapLoginError(error) });
+          return false;
+        }
+      },
+
+      loginWithToken: async (token, driverId) => {
+        set({ isLoading: true, error: null });
+        try {
+          const driver = get().driver;
+          const profileDriverId = driver?.id ?? driverId ?? await getDriverId();
+          if (!profileDriverId) {
+            set({ isLoading: false, error: 'Face ID нэвтрэлтийг дахин идэвхжүүлнэ үү' });
+            return false;
+          }
+          setAuthToken(token);
+          await saveToken(token);
+          await saveDriverId(profileDriverId);
+          const profile = await getDriverProfile(profileDriverId);
+          const nextDriver = profile.getDriverProfile ?? driver;
+          if (!nextDriver) {
+            set({ isLoading: false, error: 'Жолоочийн мэдээлэл олдсонгүй' });
+            return false;
+          }
+          set({ driver: nextDriver, token, isAuthenticated: true, isLoading: false, devOtp: null });
+          return true;
+        } catch (error) {
+          setAuthToken(null);
+          set({ isLoading: false, error: error instanceof Error ? error.message : 'Нэвтрэхэд алдаа гарлаа' });
           return false;
         }
       },
@@ -121,6 +153,8 @@ export const useAuthStore = create<AuthState>()(
           }
           const token = data.verifyDriverOTP.token ?? null;
           setAuthToken(token);
+          if (token) await saveToken(token);
+          await saveDriverId(data.verifyDriverOTP.driverId);
           const profile = await getDriverProfile(data.verifyDriverOTP.driverId);
           const driver = profile.getDriverProfile;
           if (!driver) {
@@ -215,6 +249,8 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         setAuthToken(null);
+        deleteToken().catch((error) => console.warn('[auth] token cleanup failed', error));
+        deleteDriverId().catch((error) => console.warn('[auth] driver id cleanup failed', error));
         set({ driver: null, token: null, isAuthenticated: false, error: null, devOtp: null });
       },
 

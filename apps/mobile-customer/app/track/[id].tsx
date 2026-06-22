@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { C } from '@/lib/colors';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { shopFetch, DELIVERY_REQUEST_QUERY } from '@/lib/api';
 
 interface DeliveryRequest {
@@ -55,7 +55,7 @@ const STATUS_INFO: Record<string, { label: string; icon: string; color: string; 
     color: '#6482FF',
     bg: 'rgba(100,130,255,0.15)',
   },
-  DELIVERED: {
+  COMPLETED: {
     label: 'Амжилттай хүргэгдлээ ✅',
     icon: 'checkmark-done-circle-outline',
     color: '#00D4AA',
@@ -79,10 +79,10 @@ const STEPS = [
   { key: 'SEARCHING', label: 'Жолооч хайж байна' },
   { key: 'ACCEPTED', label: 'Жолооч хүлээн авсан' },
   { key: 'IN_PROGRESS', label: 'Хүргэлт явагдаж байна' },
-  { key: 'DELIVERED', label: 'Хүргэгдлээ' },
+  { key: 'COMPLETED', label: 'Хүргэгдлээ' },
 ];
 
-const STEP_ORDER = ['SEARCHING', 'OFFERED', 'ACCEPTED', 'IN_PROGRESS', 'DELIVERED'];
+const STEP_ORDER = ['SEARCHING', 'OFFERED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED'];
 
 function getStepIndex(status: string) {
   return STEP_ORDER.indexOf(status);
@@ -95,39 +95,47 @@ function formatFee(fee: number) {
 
 export default function TrackScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const C = useTheme();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const { id, t } = useLocalSearchParams<{ id: string; t?: string }>();
   const [delivery, setDelivery] = useState<DeliveryRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
 
   const fetchDelivery = useCallback(async () => {
     if (!id) return;
     try {
       const data = await shopFetch<{ deliveryRequest: DeliveryRequest | null }>(
         DELIVERY_REQUEST_QUERY,
-        { orderId: id }
+        { orderId: id, token: t ?? null }
       );
-      if (data.deliveryRequest) {
+      if (mountedRef.current && data.deliveryRequest) {
         setDelivery(data.deliveryRequest);
       }
-    } catch {
-      // keep previous state
+    } catch (error) {
+      console.error('[TrackScreen] fetchDelivery failed', error);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
-    fetchDelivery();
+    mountedRef.current = true;
+    void fetchDelivery();
+    if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(fetchDelivery, 5000);
     return () => {
+      mountedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     };
   }, [fetchDelivery]);
 
   useEffect(() => {
-    if (delivery && (delivery.status === 'DELIVERED' || delivery.status === 'CANCELLED' || delivery.status === 'TIMEOUT')) {
+    if (delivery && (delivery.status === 'COMPLETED' || delivery.status === 'CANCELLED' || delivery.status === 'TIMEOUT')) {
       if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     }
   }, [delivery?.status]);
 
@@ -246,14 +254,14 @@ export default function TrackScreen() {
           </View>
 
           {/* Auto-refresh notice */}
-          {delivery.status !== 'DELIVERED' && delivery.status !== 'CANCELLED' && (
+          {delivery.status !== 'COMPLETED' && delivery.status !== 'CANCELLED' && (
             <View style={styles.refreshNotice}>
               <ActivityIndicator color={C.textTertiary} size="small" />
               <Text style={styles.refreshText}>5 секунд тутам шинэчлэгдэж байна</Text>
             </View>
           )}
 
-          {delivery.status === 'DELIVERED' && (
+          {delivery.status === 'COMPLETED' && (
             <TouchableOpacity
               style={styles.doneBtn}
               onPress={() => router.push('/(tabs)/orders' as never)}
@@ -269,7 +277,7 @@ export default function TrackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   navHeader: {
     flexDirection: 'row',
