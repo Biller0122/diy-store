@@ -39,6 +39,17 @@ const RUNTIME_COLUMNS: RuntimeColumn[] = [
     name: 'trackingToken',
     definition: "character varying NOT NULL DEFAULT ''",
   },
+  // Барилгын компани хэрэглэгчийн профайл (Customer customFields) — production
+  // (DB_SYNCHRONIZE=false) тул багануудыг гараар үүсгэнэ. Нэрс Vendure customFields
+  // багана нэрлэлттэй тохирно (локал synchronize-аар баталгаажсан).
+  { table: 'customer', name: 'customFieldsIscompany', definition: 'boolean DEFAULT false' },
+  { table: 'customer', name: 'customFieldsCompanyname', definition: 'character varying' },
+  { table: 'customer', name: 'customFieldsCompanyslug', definition: 'character varying' },
+  { table: 'customer', name: 'customFieldsCompanylogo', definition: 'character varying' },
+  { table: 'customer', name: 'customFieldsCompanycover', definition: 'character varying' },
+  { table: 'customer', name: 'customFieldsCompanyphone', definition: 'character varying' },
+  { table: 'customer', name: 'customFieldsCompanydescription', definition: 'text' },
+  { table: 'customer', name: 'customFieldsCompanyportfolio', definition: 'text' },
 ];
 
 function quoteIdentifier(value: string) {

@@ -29,6 +29,7 @@ import { CmsPlugin } from './plugins/cms/cms.plugin';
 import { SearchPlugin } from './plugins/search/search.plugin';
 import { ProductAiPlugin } from './plugins/product-ai/product-ai.plugin';
 import { CustomerAuthPlugin } from './plugins/customer-auth/customer-auth.plugin';
+import { CompanyProfilePlugin } from './plugins/company-profile/company-profile.plugin';
 import { QpayCheckoutPlugin } from './plugins/payment/qpay-checkout.plugin';
 
 loadEnv({ path: path.join(__dirname, '../../../.env') });
@@ -196,6 +197,26 @@ export const config: VendureConfig = {
         label: [{ languageCode: LanguageCode.en, value: 'Review count' }],
       },
     ],
+    // Барилгын компани хэрэглэгчийн нийтийн профайл (дэлгүүрийн профайлтай адил).
+    // Нэвтэрсэн customer өөрийн ажил/үнийн саналын зургийг харуулна.
+    Customer: [
+      { name: 'isCompany', type: 'boolean', defaultValue: false,
+        label: [{ languageCode: LanguageCode.en, value: 'Is construction company' }] },
+      { name: 'companyName', type: 'string', nullable: true,
+        label: [{ languageCode: LanguageCode.en, value: 'Company name' }] },
+      { name: 'companySlug', type: 'string', nullable: true,
+        label: [{ languageCode: LanguageCode.en, value: 'Company slug' }] },
+      { name: 'companyLogo', type: 'string', nullable: true,
+        label: [{ languageCode: LanguageCode.en, value: 'Company logo / profile picture' }] },
+      { name: 'companyCover', type: 'string', nullable: true,
+        label: [{ languageCode: LanguageCode.en, value: 'Company cover image' }] },
+      { name: 'companyPhone', type: 'string', nullable: true,
+        label: [{ languageCode: LanguageCode.en, value: 'Company phone' }] },
+      { name: 'companyDescription', type: 'text', nullable: true,
+        label: [{ languageCode: LanguageCode.en, value: 'Company description' }] },
+      { name: 'companyPortfolio', type: 'text', nullable: true,
+        label: [{ languageCode: LanguageCode.en, value: 'Portfolio image URLs (JSON)' }] },
+    ],
   },
   plugins: [
     ReviewPlugin,
@@ -209,6 +230,7 @@ export const config: VendureConfig = {
     SearchPlugin,
     ProductAiPlugin,
     CustomerAuthPlugin,
+    CompanyProfilePlugin,
     QpayCheckoutPlugin,
     AssetServerPlugin.init({
       route: 'assets',
